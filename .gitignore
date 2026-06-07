@@ -206,7 +206,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-docs/
-.db
-.claude/
-CLAUDE.md
+# DB-файлы SQLite
+*.db
+*.sqlite3
+
+# Claude Code: локальные настройки игнорируем, но agents/commands/settings.json — ТРЕКАЮТСЯ (конфиг проекта, roadmap §5)
+.claude/settings.local.json
+
+# ВНИМАНИЕ: docs/ и CLAUDE.md — SSOT проекта, НЕ игнорировать (раньше тут стояли docs/ и CLAUDE.md — снято)
