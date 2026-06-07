@@ -1,0 +1,12 @@
+aiogram==3.13.1
+sqlalchemy==2.0.36
+aiosqlite==0.20.0          # драйвер для SQLite (асинхронный)
+alembic==1.14.0            # миграции базы данных
+pydantic-settings==2.6.1   # загрузка конфига из .env
+python-dotenv==1.0.1
+groq==1.1.2                # SDK Groq для расчёта КБЖУ (vision + text, OpenAI-совместимый)
+aiohttp==3.9.5             # HTTP-сервер мини-апы "Еда" (приходит и как зависимость aiogram)
+
+# Когда переедешь на PostgreSQL — добавь:
+# asyncpg==0.30.0          # асинхронный драйвер для PostgreSQL
+# и поменяй DATABASE_URL в .env на postgresql+asyncpg://...
