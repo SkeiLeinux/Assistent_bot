@@ -6,7 +6,13 @@ pydantic-settings==2.6.1   # загрузка конфига из .env
 python-dotenv==1.0.1
 groq==1.1.2                # SDK Groq для расчёта КБЖУ (vision + text, OpenAI-совместимый)
 aiohttp==3.9.5             # HTTP-сервер мини-апы "Еда" (приходит и как зависимость aiogram)
+tzdata==2026.2             # IANA-таймзоны для zoneinfo (обязателен на Windows; на Linux есть системные)
 
 # Когда переедешь на PostgreSQL — добавь:
 # asyncpg==0.30.0          # асинхронный драйвер для PostgreSQL
 # и поменяй DATABASE_URL в .env на postgresql+asyncpg://...
+
+# ── Dev / архитектурные границы (Срез 0) ────────────────────────────────────
+import-linter==2.11        # контракт слоёв (ADR-0004), прогон lint-imports
+pytest==9.0.3              # тесты
+pytest-asyncio==1.4.0      # async-тесты (на будущее; S0 использует asyncio.run)

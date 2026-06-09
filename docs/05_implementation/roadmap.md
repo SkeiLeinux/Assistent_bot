@@ -76,7 +76,7 @@ app/
 
 ## 4. Порядок реализации (срезы)
 
-### Срез 0 — Скаффолд + инфра  *(закрывает F6.1, частично F6.2)*
+### Срез 0 — Скаффолд + инфра ✅ выполнено (Code, 2026-06-07)  *(закрывает F6.1, частично F6.2)*
 
 Стратегия — инкрементальная (§0): переносим **весь** код в `app/`, чтобы поднималось и линтер был зелёным; **домен не решейпим** (это срезы S1–S3). Шаг 0 — `git init` + первый коммит (точка отката).
 
@@ -105,11 +105,13 @@ app/
 - **`scheduler/`** — generic тик (N сек) + реестр job; импортирует только `asyncio` (+ `kernel`-типы при необходимости, §3). **`notifications/`** — извлечь send-loop + admin-alert в generic `deliver`/`alert_admin` (полная retry/alert-политика ADR-0003 — S3). **`delivery/bot`** — вход `/start`, запуск Mini App, generic-диспетчер callback'ов, error→`notifications.alert_admin`. **`main.py`** — один event-loop, DI Bot, `run_migrations`, старт web+scheduler, точки регистрации job.
 - **`lifeManager_bot/` удаляется** после переноса.
 - **DoD:** `python -m app.main` поднимается (миграции → polling → мини-апа 8080 → menu-button); `lint-imports` зелёный; `initData`-auth еды работает; пустой тик планировщика логируется; `/start`,`/lists`,`/food` живые; `lifeManager_bot/` удалена. Ничего не решейплено.
+- **Факты исполнения (2026-06-07, инфра-фиксы, не решейп):** (1) merge-миграция `c5e6eca700bb` — латентный multi-head исходных миграций (две головы от `51b617b93453`) ронял `upgrade head`; слит пустым узлом, оригиналы целы (S1 baseline сотрёт). (2) `tzdata` в requirements — Windows `zoneinfo` без IANA-базы → 500 в модуле еды. Структура `app/` соответствует карте §4; `tests/` = `test_architecture` (границы) + `test_scheduler` (тик).
 
 ### Срез 1 — kernel (Identity & Sharing)  *(фундамент, блокирует всё)*
 - Реализовать по ТЗ Identity: `User`(+`timezone`)/`Family`/`Membership`/`Invite`; миксин `Shareable` + `visible_to` + `VisibilityDTO`; `current_viewer`(initData HMAC, whitelist, max-age 30д); FSM пейринга. Переиспользовать current `family`/pairing/auth, расширить.
 - **Тест-харнесс видимости** (kernel A5/I10) — общий, переиспользуется доменами.
 - **DoD:** критерии Identity A1–A7.
+- **✅ Выполнено (2026-06-09):** `app/kernel/` (`models`/`sharing`/`auth`/`repositories`/`services`), REST `/api/v1/{me,family,family/join,family/invites}`, бот-пейринг, **greenfield-baseline `237ca7b0e901`** (5 миграций → 1). DoD A1–A7 закрыты (20 тестов + сквозной REST). Решение **«чистый kernel»** (С.): транзит Lists/Food снят с проводки (дормант; устаревшие ссылки на kernel-`User`/`Family`) → переписывается в S2; menu-button и `food api.py` сняты до S2/S4. `Shareable` — миксин с per-entity `<table>_hidden_from` (H3-a); `visible_to` — один WHERE+NOT EXISTS; `Viewer{id, family_id}`.
 
 ### Срез 2 — write-side домены  *(параллелизуемо после kernel)*
 - **Lists** (первое применение `Shareable`): `List`/`ListItem`(самоссылочный)/`ListItemHistory`/`list_item_hidden_from`; `specific_attrs` JSON + валидация на тип; двухуровневая видимость; REST `/api/v1/lists`,`/items`; `read`-модуль. Переработка current дерева списков, переезд в Mini App.

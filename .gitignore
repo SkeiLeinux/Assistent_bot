@@ -210,6 +210,9 @@ __marimo__/
 *.db
 *.sqlite3
 
+# import-linter cache
+.import_linter_cache/
+
 # Claude Code: локальные настройки игнорируем, но agents/commands/settings.json — ТРЕКАЮТСЯ (конфиг проекта, roadmap §5)
 .claude/settings.local.json
 
