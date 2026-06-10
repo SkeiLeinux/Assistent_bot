@@ -8,15 +8,17 @@
 import logging
 from typing import Any, Awaitable, Callable
 
-from aiogram import BaseMiddleware, Bot, Dispatcher
+from aiogram import BaseMiddleware, Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, ErrorEvent, Message, TelegramObject
 
-from app import notifications
 from app.config import settings
 from app.db.engine import async_session_maker
+from app.delivery.bot.callbacks import CallbackDispatcher
 from app.delivery.bot.handlers import router as pairing_router
+from app.kernel import Viewer
 from app.kernel.services import IdentityService
+from app.notifications import Notifier
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +79,30 @@ def _error_context(event: ErrorEvent) -> str:
     return ""
 
 
-def build_dispatcher() -> Dispatcher:
+def build_callback_router(dispatcher: CallbackDispatcher) -> Router:
+    """Router нажатий инлайн-кнопок push → generic callback-диспетчер (ТЗ §7).
+
+    dispatcher собирается композицией (main.py): там регистрируется связывание
+    префикса ``rem`` → reminder_service (delivery не импортирует contexts на
+    загрузке — шов через таблицу префиксов).
+    """
+    router = Router()
+
+    @router.callback_query()
+    async def on_callback(query: CallbackQuery, user, session) -> None:
+        family_id = await IdentityService(session).family_id_of(user.id)
+        viewer = Viewer(id=user.id, family_id=family_id)
+        result = await dispatcher.dispatch(viewer, query.data or "")
+        await session.commit()
+        await query.answer(result.answer or None, show_alert=result.alert)
+
+    return router
+
+
+def build_dispatcher(callback_dispatcher: CallbackDispatcher | None = None) -> Dispatcher:
+    """Собрать Dispatcher входа. ``callback_dispatcher`` инъектится композицией
+    (main.py) с привязанными обработчиками префиксов; без него callback'и
+    push-кнопок не маршрутизируются (только пейринг)."""
     dp = Dispatcher(storage=MemoryStorage())
 
     for observer in (dp.message, dp.callback_query):
@@ -85,9 +110,11 @@ def build_dispatcher() -> Dispatcher:
         observer.middleware(WhitelistProvisionMiddleware())
 
     dp.include_router(pairing_router)
+    if callback_dispatcher is not None:
+        dp.include_router(build_callback_router(callback_dispatcher))
 
     @dp.error()
     async def error_handler(event: ErrorEvent, bot: Bot) -> None:
-        await notifications.alert_admin(bot, event.exception, _error_context(event))
+        await Notifier(bot).alert_admin_exc(event.exception, _error_context(event))
 
     return dp

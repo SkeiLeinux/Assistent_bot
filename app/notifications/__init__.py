@@ -1,65 +1,31 @@
-"""Исходящий шов уведомлений (generic; транспорт Telegram через DI Bot).
+"""Исходящий шов уведомлений (supporting-контекст, ТЗ §1/§9, ADR-0004).
 
-Срез 0 извлекает два примитива:
-  deliver(bot, chat_ids, text)   — best-effort рассылка (из services/notification_service._send)
-  alert_admin(bot, exc, context) — алерт админу об ошибке (из bot.py error_handler)
+Единственная исходящая точка в Telegram (I1): домены формируют ЧТО и КОМУ,
+Notifications — КАК доставить (политика §5: лог → один ретрай → алерт админу).
+Stateless (ТЗ §3): ни БД-сущности, ни очередей (frozen §5) — попытка + один
+ретрай в общем event-loop.
 
-Полная политика ретраев/алертов (ADR-0003), маршрутизация callback'ов и
-change-уведомления Lists — Срез 3. Старый list-специфичный NotificationService
-остаётся в app/services/ до S3.
+Публичная поверхность:
+  Notifier(bot)          — шов доставки; Bot инъектится снаружи (I5, композиция в main.py)
+  Notifier.deliver(...)  — доставить с политикой §5 → DeliveryReport
+  Notifier.alert_admin(text) / .alert_admin_exc(exc, ctx) — служебный алерт
+  Button{text, callback_data}      — инлайн-кнопка push (CH-9)
+  DeliveryReport{sent, blocked, failed}
+  resolve_recipients(...)          — резолв получателей по scope/family (kernel)
 
 Контракт import-linter: notifications → kernel, db (+ aiogram Bot через DI).
+Контексты/delivery НЕ импортируются (supporting-слой ниже них).
 """
 
-import html
-import logging
-import traceback
+from app.notifications.models import Button, DeliveryReport
+from app.notifications.recipients import resolve_recipients
+from app.notifications.service import Notifier, render_keyboard, truncate
 
-from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
-
-from app.config import settings
-
-logger = logging.getLogger(__name__)
-
-
-async def deliver(bot: Bot, chat_ids: list[int], text: str) -> None:
-    """Разослать text получателям. Сбой доставки одному не прерывает остальных."""
-    for chat_id in chat_ids:
-        try:
-            await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
-        except TelegramForbiddenError:
-            logger.warning("Доставка %s: бот заблокирован", chat_id)
-        except TelegramBadRequest as e:
-            logger.warning("Доставка %s: %s", chat_id, e)
-        except Exception as e:  # noqa: BLE001 — best-effort, не валим вызвавшую операцию
-            logger.error("Доставка %s: неожиданная ошибка: %s", chat_id, e)
-
-
-async def alert_admin(bot: Bot, exc: BaseException, context: str = "") -> None:
-    """Отправить админу трейсбек ошибки. No-op, если admin_telegram_id не задан."""
-    logger.exception("Unhandled exception: %s", exc, exc_info=exc)
-    if not settings.admin_telegram_id:
-        return
-
-    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    tb_escaped = html.escape(tb)
-    max_len = 3800
-    if len(tb_escaped) > max_len:
-        tb_escaped = "...(обрезано)\n" + tb_escaped[-max_len:]
-
-    text = (
-        f"🔴 <b>Ошибка в боте</b>\n\n"
-        f"<b>Тип:</b> {html.escape(type(exc).__name__)}\n"
-        f"<b>Сообщение:</b> {html.escape(str(exc))}\n"
-    )
-    if context:
-        text += f"<b>Контекст:</b> {html.escape(context)}\n"
-    text += f"\n<pre>{tb_escaped}</pre>"
-
-    try:
-        await bot.send_message(
-            chat_id=settings.admin_telegram_id, text=text, parse_mode="HTML",
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.error("Не удалось отправить алерт админу: %s", e)
+__all__ = [
+    "Notifier",
+    "Button",
+    "DeliveryReport",
+    "resolve_recipients",
+    "render_keyboard",
+    "truncate",
+]

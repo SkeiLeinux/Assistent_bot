@@ -11,11 +11,12 @@ from .errors import (
     ListNotFound,
     MaxDepthExceeded,
 )
-from .list_service import ListService, SearchHit
+from .list_service import ItemChangeSnapshot, ListService, SearchHit
 
 __all__ = [
     "ListService",
     "SearchHit",
+    "ItemChangeSnapshot",
     "ListError",
     "ListNotFound",
     "ItemNotFound",

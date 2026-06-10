@@ -1,8 +1,9 @@
-"""Сборка миниапы: общий auth/error-middleware + монтаж kernel/lists/finance/nutrition.
+"""Сборка миниапы: общий auth/error-middleware + монтаж REST контекстов.
 
-Волна A (Срез 2): миниапа отдаёт kernel REST (/api/v1/{me,family,...}) + Lists REST
-(/api/v1/lists,/items) + Finance REST (/api/v1/finance/*) + Nutrition REST
-(/api/v1/nutrition/*). Старый food api.py удалён — функциональность в
+Волна A (Срез 2): kernel REST (/api/v1/{me,family,...}) + Lists (/api/v1/lists,/items)
++ Finance (/api/v1/finance/*) + Nutrition (/api/v1/nutrition/*).
+Волна B (Срез 3): + Reminders (/api/v1/reminders/*) + Analytics
+(/api/v1/analytics/*). Старый food api.py удалён — функциональность в
 contexts.nutrition.api.
 """
 
@@ -29,6 +30,14 @@ from app.contexts.nutrition.services import (
     LLMRateLimitError,
     NutritionError,
 )
+from app.contexts.reminders.api import register_routes as register_reminder_routes
+from app.contexts.reminders.services import (
+    FamilyRequired as ReminderFamilyRequired,
+    InvalidInput as ReminderInvalidInput,
+    ReminderError,
+    ReminderNotFound,
+)
+from app.analytics.api import register_routes as register_analytics_routes
 from app.delivery.miniapp_api._http import error_response
 from app.delivery.miniapp_api.kernel_api import register_kernel_routes
 
@@ -77,6 +86,16 @@ async def error_middleware(request: web.Request, handler):
         return error_response(str(exc) or "Нужна семья", "family_required", 409)
     except NutritionError as exc:
         return error_response(str(exc), "nutrition_error", 422)
+    # Reminders: плоские Exception без message/code/status — мапим явно
+    # (подклассы раньше базового ReminderError).
+    except ReminderNotFound as exc:
+        return error_response(str(exc) or "Напоминание не найдено", "not_found", 404)
+    except ReminderFamilyRequired as exc:
+        return error_response(str(exc) or "Нужна семья", "family_required", 409)
+    except ReminderInvalidInput as exc:
+        return error_response(str(exc) or "Некорректный ввод", "invalid_input", 422)
+    except ReminderError as exc:
+        return error_response(str(exc) or "Ошибка напоминаний", "reminder_error", 422)
     # LLM-ошибки (подклассы — раньше базового LLMError): 503 / 429 / 502.
     except LLMNotConfiguredError as exc:
         return error_response(str(exc) or "Модуль расчёта КБЖУ не настроен", "llm_unconfigured", 503)
@@ -95,6 +114,8 @@ def create_app() -> web.Application:
     register_list_routes(app)
     register_finance_routes(app)
     register_nutrition_routes(app)
+    register_reminder_routes(app)
+    register_analytics_routes(app)
     return app
 
 
@@ -106,7 +127,8 @@ async def start_web_server() -> web.AppRunner:
     site = web.TCPSite(runner, settings.webapp_host, settings.webapp_port)
     await site.start()
     logger.info(
-        "Веб-сервер мини-апы (kernel + lists + finance + nutrition) слушает http://%s:%s",
+        "Веб-сервер мини-апы (kernel + lists + finance + nutrition + reminders + analytics) "
+        "слушает http://%s:%s",
         settings.webapp_host,
         settings.webapp_port,
     )

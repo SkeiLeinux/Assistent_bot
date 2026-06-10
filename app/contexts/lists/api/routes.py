@@ -13,6 +13,7 @@ from aiohttp import web
 
 from app.kernel import Scope, VisibilityDTO, VisibilityError
 
+from app.contexts.lists.change_events import ListChangeData, emit
 from app.contexts.lists.models import ItemStatus, ListType
 from app.contexts.lists.services import InvalidInput, ListService
 
@@ -130,6 +131,17 @@ async def post_list(request: web.Request) -> web.Response:
         emoji=body.get("emoji"),
         visibility=VisibilityDTO(scope=scope),
     )
+    # F6.2: эмиссия после успешной мутации, ДО commit middleware (best-effort).
+    await emit(
+        request["session"],
+        ListChangeData(
+            event="list_created",
+            actor_id=request["viewer"].id,
+            family_id=lst.family_id,
+            scope=lst.scope,
+            list_name=lst.name,
+        ),
+    )
     return _json(_list_dto(lst, {"open": 0, "done": 0}), status=201)
 
 
@@ -162,11 +174,27 @@ async def patch_list(request: web.Request) -> web.Response:
 
 
 async def delete_list(request: web.Request) -> web.Response:
-    await _service(request).delete_list(request["viewer"], _path_int(request, "list_id"))
+    # delete_list возвращает снапшот (scope, family_id, name), снятый ДО удаления.
+    scope, family_id, list_name = await _service(request).delete_list(
+        request["viewer"], _path_int(request, "list_id")
+    )
+    # F6.2: эмиссия после успешной мутации, ДО commit middleware (best-effort).
+    await emit(
+        request["session"],
+        ListChangeData(
+            event="list_deleted",
+            actor_id=request["viewer"].id,
+            family_id=family_id,
+            scope=scope,
+            list_name=list_name,
+        ),
+    )
     return web.Response(status=204)
 
 
 async def post_clear_done(request: web.Request) -> web.Response:
+    # clear_done — массовая уборка done; НЕ эмитим change-событие (не единичное
+    # партнёр-релевантное изменение, F6.2 / NOTIFY_MATRIX).
     deleted = await _service(request).clear_done(
         request["viewer"], _path_int(request, "list_id")
     )
@@ -189,7 +217,29 @@ async def post_item(request: web.Request) -> web.Response:
         specific_attrs=body.get("specific_attrs"),
         hidden_from=body.get("hidden_from"),
     )
+    await _emit_item_change(request, svc, "item_added", item)
     return _json(await _item_dto_full(svc, item), status=201)
+
+
+async def _emit_item_change(request, svc: ListService, event: str, item) -> None:
+    """F6.2: эмиссия item-события с метой КОНТЕЙНЕРА-списка и hidden_from элемента.
+    После успешной мутации, ДО commit middleware (best-effort)."""
+    meta = await svc.list_meta(item.list_id)
+    if meta is None:
+        return
+    scope, family_id, list_name = meta
+    await emit(
+        request["session"],
+        ListChangeData(
+            event=event,
+            actor_id=request["viewer"].id,
+            family_id=family_id,
+            scope=scope,
+            list_name=list_name,
+            item_text=item.text,
+            hidden_from=await svc.hidden_from_ids(item.id),
+        ),
+    )
 
 
 async def patch_item(request: web.Request) -> web.Response:
@@ -207,11 +257,39 @@ async def patch_item(request: web.Request) -> web.Response:
     if "parent_id" in body:
         kwargs["parent_id"] = body["parent_id"]
     item = await svc.update_item(request["viewer"], _path_int(request, "item_id"), **kwargs)
+    # F6.2: один event на patch по приоритету изменения (без дублей):
+    # status→DONE ⇒ item_done; иначе parent_id ⇒ item_moved; иначе text ⇒
+    # item_text_edited (матрица его НЕ шлёт — хук отфильтрует через should_notify).
+    event = None
+    if "status" in body and item.status == ItemStatus.DONE:
+        event = "item_done"
+    elif "parent_id" in body:
+        event = "item_moved"
+    elif "text" in body:
+        event = "item_text_edited"
+    if event is not None:
+        await _emit_item_change(request, svc, event, item)
     return _json(await _item_dto_full(svc, item))
 
 
 async def delete_item(request: web.Request) -> web.Response:
-    await _service(request).delete_item(request["viewer"], _path_int(request, "item_id"))
+    # delete_item возвращает снапшот (текст + мета контейнера + hidden_from) ДО удаления.
+    snap = await _service(request).delete_item(
+        request["viewer"], _path_int(request, "item_id")
+    )
+    # F6.2: эмиссия после успешной мутации, ДО commit middleware (best-effort).
+    await emit(
+        request["session"],
+        ListChangeData(
+            event="item_deleted",
+            actor_id=request["viewer"].id,
+            family_id=snap.family_id,
+            scope=snap.scope,
+            list_name=snap.list_name,
+            item_text=snap.item_text,
+            hidden_from=snap.hidden_from,
+        ),
+    )
     return web.Response(status=204)
 
 

@@ -218,6 +218,63 @@ async def test_analytics_counts_only_visible_done(session):
     assert a2["done"] == 1 and a2["total"] == 1
 
 
+# ── recent_changes read-проекция (Q-an-1 / CH-5) ─────────────────────────────
+
+async def test_recent_changes_counts_added_and_done_by_type_in_period(session):
+    from datetime import date, datetime
+
+    from app.contexts.lists.read import recent_changes
+
+    u1, u2, _, v1, v2 = await _family(session)
+    svc = ListService(session)
+
+    inside = date(2026, 6, 5)
+    before = date(2026, 6, 1)
+    after = date(2026, 6, 30)
+    d_from, d_to = date(2026, 6, 3), date(2026, 6, 10)
+
+    tasks = await _mk_list(svc, v1, ListType.TASK, "Дела")
+    gifts = await _mk_list(svc, v1, ListType.GIFT, "Подарки")
+    movies = await _mk_list(svc, v1, ListType.MOVIE, "Кино")  # нулевая активность
+
+    # TASK: два добавлены в периоде, один выполнен в периоде
+    t1 = await svc.add_item(v1, tasks.id, text="t1")
+    t2 = await svc.add_item(v1, tasks.id, text="t2")
+    t1.created_at = datetime(inside.year, inside.month, inside.day, 9, 0)
+    t2.created_at = datetime(inside.year, inside.month, inside.day, 10, 0)
+    t1.status = ItemStatus.DONE
+    t1.completed_at = datetime(inside.year, inside.month, inside.day, 11, 0)
+
+    # TASK вне периода: добавлен раньше, выполнен позже — не должен считаться
+    t_out = await svc.add_item(v1, tasks.id, text="out")
+    t_out.created_at = datetime(before.year, before.month, before.day, 9, 0)
+    t_out.status = ItemStatus.DONE
+    t_out.completed_at = datetime(after.year, after.month, after.day, 9, 0)
+
+    # GIFT: общий добавлен в периоде; секрет (скрыт от v2) добавлен в периоде
+    g_shared = await svc.add_item(v1, gifts.id, text="общий")
+    g_secret = await svc.add_item(v1, gifts.id, text="секрет", hidden_from=[u2.id])
+    g_shared.created_at = datetime(inside.year, inside.month, inside.day, 9, 0)
+    g_secret.created_at = datetime(inside.year, inside.month, inside.day, 9, 0)
+    await session.flush()
+
+    # Владелец (v1): TASK added=2/done=1, GIFT added=2/done=0; MOVIE отсутствует
+    res_v1 = await recent_changes(session, v1, d_from, d_to)
+    assert res_v1 == [
+        {"type": "gift", "added": 2, "done": 0},
+        {"type": "task", "added": 2, "done": 1},
+    ]
+
+    # Партнёр (v2): секретный подарок скрыт → GIFT added=1; TASK как у владельца
+    res_v2 = await recent_changes(session, v2, d_from, d_to)
+    assert res_v2 == [
+        {"type": "gift", "added": 1, "done": 0},
+        {"type": "task", "added": 2, "done": 1},
+    ]
+    # тип с нулевой активностью (movie) не появляется в выдаче
+    assert all(r["type"] != "movie" for r in res_v2)
+
+
 # ── Инварианты видимости I7/I8/I9 + предусловия ──────────────────────────────
 
 async def test_hidden_from_invariants(session):

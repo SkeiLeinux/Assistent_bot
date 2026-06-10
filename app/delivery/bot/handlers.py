@@ -13,6 +13,8 @@ from aiogram.types import Message
 from app.kernel.services import IdentityService, PairingService
 from app.kernel.services.errors import KernelError
 
+from app.analytics import seed_default_schedules
+
 logger = logging.getLogger(__name__)
 router = Router()
 
@@ -40,6 +42,8 @@ async def cmd_newfamily(message: Message, user, session) -> None:
     ps = PairingService(session)
     try:
         family, invite = await ps.create_family(user)
+        # Дефолтные расписания дайджеста — вместе с семьёй (ТЗ §3.1), до commit.
+        seed_default_schedules(session, family.id)
         await session.commit()
     except KernelError as exc:
         await message.answer(f"⚠️ {exc.message}")

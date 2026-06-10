@@ -17,6 +17,7 @@ import pytest
 from app.kernel import Viewer
 from app.kernel.models import Family, Membership, User
 
+from app.contexts.nutrition.read import goals as read_goals
 from app.contexts.nutrition.read import macros_by_day, macros_total
 from app.contexts.nutrition.services import (
     FamilyRequired,
@@ -387,6 +388,26 @@ async def test_read_macros_total_sums_period(session):
     today = date.today()
     total = await macros_total(session, v1, today, today, timezone_name=TZ)
     assert total["kcal"] == 350.0 and total["days_with_data"] == 1
+
+
+async def test_read_goals_projection_owner_only(session):
+    """Q-an-2: read.goals отдаёт цели КБЖУ владельца для «факт vs цель»; PERSONAL.
+
+    Цель не задана → None; задана → {"kcal","protein","fat","carbs"}; чужие цели
+    не видны (фильтр по viewer.id).
+    """
+    _, _, _, v1, v2 = await _family(session)
+    svc = _svc(session)
+
+    # цели не заведены → проекция отдаёт None
+    assert await read_goals(session, v1) is None
+
+    await svc.set_goals(v1, kcal=2000, protein=120, fat=60, carbs=200)
+    g = await read_goals(session, v1)
+    assert g == {"kcal": 2000.0, "protein": 120.0, "fat": 60.0, "carbs": 200.0}
+
+    # партнёр чужие цели не видит (PERSONAL по viewer.id)
+    assert await read_goals(session, v2) is None
 
 
 # ── I1: границы суток считаются в таймзоне пользователя ───────────────────────

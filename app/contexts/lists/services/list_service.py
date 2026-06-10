@@ -44,6 +44,18 @@ class SearchHit:
     item: ListItem | None = None
 
 
+@dataclass(frozen=True)
+class ItemChangeSnapshot:
+    """Снапшот удаляемого элемента (текст + мета контейнера + hidden_from),
+    снятый ДО удаления — для эмиссии change-уведомления (F6.2, delete_item)."""
+
+    item_text: str
+    scope: Scope
+    family_id: int | None
+    list_name: str
+    hidden_from: list[int]
+
+
 class ListService:
     def __init__(self, session) -> None:
         self.session = session
@@ -117,11 +129,17 @@ class ListService:
         await self.session.flush()
         return lst
 
-    async def delete_list(self, viewer: Viewer, list_id: int) -> None:
+    async def delete_list(
+        self, viewer: Viewer, list_id: int
+    ) -> tuple[Scope, int | None, str]:
+        """Удаляет список; возвращает снапшот (scope, family_id, name) ДО удаления
+        для change-уведомления (F6.2). Снапшот берётся, пока сущность ещё жива."""
         lst = await self.lists.get_visible(viewer, list_id)
         if lst is None:
             raise ListNotFound("Список не найден")
+        snapshot = (lst.scope, lst.family_id, lst.name)
         await self.lists.delete(lst)
+        return snapshot
 
     async def clear_done(self, viewer: Viewer, list_id: int) -> int:
         lst = await self.lists.get_visible(viewer, list_id)
@@ -217,11 +235,24 @@ class ListService:
             await self.items.add_history(item.id, viewer.id, action, detail)
         return item
 
-    async def delete_item(self, viewer: Viewer, item_id: int) -> None:
+    async def delete_item(
+        self, viewer: Viewer, item_id: int
+    ) -> "ItemChangeSnapshot":
+        """Удаляет элемент; возвращает снапшот (текст + мета контейнера +
+        hidden_from) ДО удаления для change-уведомления (F6.2)."""
         item = await self.items.get_visible(viewer, item_id)
         if item is None:
             raise ItemNotFound("Элемент не найден")
+        lst = await self.lists.get(item.list_id)
+        snapshot = ItemChangeSnapshot(
+            item_text=item.text,
+            scope=lst.scope,
+            family_id=lst.family_id,
+            list_name=lst.name,
+            hidden_from=await self.items.hidden_from_ids(item.id),
+        )
         await self.items.delete(item)
+        return snapshot
 
     async def item_history(
         self, viewer: Viewer, item_id: int
@@ -232,6 +263,21 @@ class ListService:
 
     async def hidden_from_ids(self, item_id: int) -> list[int]:
         return await self.items.hidden_from_ids(item_id)
+
+    # ── Read-хелперы для change-уведомлений (F6.2) ───────────────────────────
+    # Возвращают мету контейнера-списка для сборки ListChangeData в api/routes.
+    # Существующие сигнатуры не трогаются — это аддитивные чтения.
+
+    async def list_meta(self, list_id: int) -> tuple[Scope, int | None, str] | None:
+        """(scope, family_id, name) контейнера-списка для эмиссии change-события.
+
+        Без проверки видимости — зовётся после успешной мутации, на уже
+        авторизованном пути. None, если списка нет.
+        """
+        lst = await self.lists.get(list_id)
+        if lst is None:
+            return None
+        return lst.scope, lst.family_id, lst.name
 
     # ── Поиск / аналитика ────────────────────────────────────────────────────
 

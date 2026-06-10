@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.kernel import Viewer
 
-from app.contexts.nutrition.models import FoodEntry
+from app.contexts.nutrition.models import FoodEntry, NutritionGoals
 
 _DEFAULT_TZ = "Europe/Amsterdam"
 
@@ -127,4 +127,36 @@ async def macros_total(
         "protein": round(total.protein, 1),
         "fat": round(total.fat, 1),
         "carbs": round(total.carbs, 1),
+    }
+
+
+def _round_opt(value: float | None) -> float | None:
+    """Округление как в macros_total; None (поле цели не задано) пробрасывается."""
+    return None if value is None else round(value, 1)
+
+
+async def goals(session: AsyncSession, viewer: Viewer) -> dict | None:
+    """Дневные цели КБЖУ владельца (`NutritionGoals` 1:1 по `user_id`).
+
+    Для виджета «факт vs цель» в Analytics (закрытие Q-an-2): даёт цель той же
+    формы, что и `macros_total` (`{"kcal","protein","fat","carbs"}`, округление до
+    0.1). Возвращает `None`, если строка целей не заведена.
+
+    Видимость (ТЗ §6 I4): цели PERSONAL — фильтр строго по `viewer.id` (как
+    `_visible_entries`); чужие цели не видны. Отдельные поля могут быть `None`
+    (цель по нутриенту не задана) — это не то же, что отсутствие строки целиком.
+    """
+    result = await session.execute(
+        select(NutritionGoals).where(
+            NutritionGoals.user_id == viewer.id  # PERSONAL: только владелец (I4)
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        return None
+    return {
+        "kcal": _round_opt(row.target_kcal),
+        "protein": _round_opt(row.target_protein),
+        "fat": _round_opt(row.target_fat),
+        "carbs": _round_opt(row.target_carbs),
     }

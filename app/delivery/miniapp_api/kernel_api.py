@@ -10,6 +10,7 @@ from aiohttp import web
 from app.kernel.services import IdentityService, PairingService
 from app.kernel.services.errors import NotInFamily
 
+from app.analytics import seed_default_schedules
 from app.delivery.miniapp_api._http import error_response, json_body, json_response
 
 
@@ -68,6 +69,9 @@ async def post_family(request: web.Request) -> web.Response:
     body = await json_body(request)
     ps = PairingService(request["session"])
     family, invite = await ps.create_family(user, name=body.get("name"))
+    # Дефолтные расписания дайджеста создаются вместе с семьёй (ТЗ §3.1);
+    # commit делает auth_middleware. join НЕ сидит — семья уже существует.
+    seed_default_schedules(request["session"], family.id)
     members = await ps.families.members(family.id)
     return json_response(
         {"family": _family_dto(family, members, user.id), "invite": _invite_dto(invite)},

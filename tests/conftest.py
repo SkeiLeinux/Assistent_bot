@@ -8,6 +8,8 @@ import app.kernel.models  # noqa: F401 — регистрирует kernel-та�
 import app.contexts.lists.models  # noqa: F401 — Lists (lists/list_items/history/hidden_from)
 import app.contexts.finance.models  # noqa: F401 — Finance (categories/budgets/actuals/income)
 import app.contexts.nutrition.models  # noqa: F401 — Nutrition (shared_foods/food_entries/nutrition_goals)
+import app.contexts.reminders.models  # noqa: F401 — Reminders (reminders, S3 wave B)
+import app.analytics.schedule  # noqa: F401 — Analytics (digest_schedules, S3 wave B)
 import tests.shareable_harness  # noqa: F401 — регистрирует синтетическую test_gifts
 from app.db.base import Base
 

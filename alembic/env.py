@@ -28,6 +28,8 @@ import app.kernel.models  # noqa: F401 — kernel: users/families/memberships/in
 import app.contexts.lists.models  # noqa: F401 — Lists: lists/list_items/hidden_from/history
 import app.contexts.finance.models  # noqa: F401 — Finance: categories/budgets/actuals/income
 import app.contexts.nutrition.models  # noqa: F401 — Nutrition: shared_foods/food_entries/nutrition_goals
+import app.contexts.reminders.models  # noqa: F401 — Reminders: reminders (S3 wave B)
+import app.analytics.schedule  # noqa: F401 — Analytics: digest_schedules (S3 wave B)
 from app.config import settings
 
 # Конфиг из alembic.ini (нужен для настройки логирования)
