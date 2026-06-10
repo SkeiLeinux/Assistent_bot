@@ -8,6 +8,7 @@ contexts.nutrition.api.
 """
 
 import logging
+from pathlib import Path
 
 from aiohttp import web
 
@@ -42,6 +43,8 @@ from app.delivery.miniapp_api._http import error_response
 from app.delivery.miniapp_api.kernel_api import register_kernel_routes
 
 logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @web.middleware
@@ -108,6 +111,11 @@ async def error_middleware(request: web.Request, handler):
         return error_response("Внутренняя ошибка сервера", "server", 500)
 
 
+async def index(request: web.Request) -> web.Response:
+    """Корень Mini App → index.html (вне /api/ — без initData-гварда, фронт грузится первым)."""
+    return web.FileResponse(STATIC_DIR / "index.html")
+
+
 def create_app() -> web.Application:
     app = web.Application(middlewares=[error_middleware, auth_middleware])
     register_kernel_routes(app)
@@ -116,6 +124,10 @@ def create_app() -> web.Application:
     register_nutrition_routes(app)
     register_reminder_routes(app)
     register_analytics_routes(app)
+    # Фронт Mini App (волна C): статика + корневой index.html. Не под /api/ — auth_middleware
+    # их пропускает (ассеты должны грузиться до initData-авторизации REST).
+    app.router.add_get("/", index)
+    app.router.add_static("/static/", STATIC_DIR, show_index=False)
     return app
 
 
@@ -127,8 +139,8 @@ async def start_web_server() -> web.AppRunner:
     site = web.TCPSite(runner, settings.webapp_host, settings.webapp_port)
     await site.start()
     logger.info(
-        "Веб-сервер мини-апы (kernel + lists + finance + nutrition + reminders + analytics) "
-        "слушает http://%s:%s",
+        "Веб-сервер мини-апы (фронт + kernel + lists + finance + nutrition + reminders "
+        "+ analytics) слушает http://%s:%s",
         settings.webapp_host,
         settings.webapp_port,
     )

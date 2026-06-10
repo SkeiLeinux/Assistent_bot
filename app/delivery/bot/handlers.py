@@ -8,8 +8,14 @@ import logging
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    WebAppInfo,
+)
 
+from app.config import settings
 from app.kernel.services import IdentityService, PairingService
 from app.kernel.services.errors import KernelError
 
@@ -17,6 +23,20 @@ from app.analytics import seed_default_schedules
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _app_keyboard() -> InlineKeyboardMarkup | None:
+    """Кнопка запуска Mini App ассистента. None, если webapp_url не задан (волна C)."""
+    if not settings.webapp_url:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🏠 Открыть ассистент",
+                web_app=WebAppInfo(url=settings.webapp_url),
+            )
+        ]]
+    )
 
 
 @router.message(CommandStart())
@@ -34,7 +54,24 @@ async def cmd_start(message: Message, user, session) -> None:
             "• /newfamily — создать семью и получить код-приглашение\n"
             "• /join КОД — вступить по коду партнёра"
         )
-    await message.answer(text)
+    await message.answer(text, reply_markup=_app_keyboard())
+
+
+@router.message(Command("app"))
+async def cmd_app(message: Message) -> None:
+    """Открыть Mini App ассистента (списки, финансы, питание, напоминания)."""
+    kb = _app_keyboard()
+    if kb is None:
+        await message.answer(
+            "Mini App ещё не настроена: не задан HTTPS-адрес (webapp_url в .env)."
+        )
+        return
+    await message.answer(
+        "🏠 <b>Семейный ассистент</b>\n\n"
+        "Списки, финансы, питание и напоминания — в одном приложении.\n"
+        "Нажми кнопку ниже, чтобы открыть.",
+        reply_markup=kb,
+    )
 
 
 @router.message(Command("newfamily"))

@@ -28,7 +28,7 @@ function withIds(items) {
   return items.map((it, i) => ({ id: i + 1, ...it, save: false }));
 }
 
-function App() {
+function NutritionApp({ onExit }) {
   // Навигация
   const [view, setView] = useState('today');     // today | history | export
   const [goalsOpen, setGoalsOpen] = useState(false);
@@ -387,9 +387,10 @@ function App() {
     if (confirmItems) { setConfirmItems(null); return; }
     if (goalsOpen) { setGoalsOpen(false); return; }
     if (view !== 'today') { setView('today'); return; }
-  }, [editEntry, createDishOpen, pickedFood, addOpen, confirmItems, goalsOpen, view]);
+    if (onExit) onExit();                              // корень дневника → хаб ассистента
+  }, [editEntry, createDishOpen, pickedFood, addOpen, confirmItems, goalsOpen, view, onExit]);
 
-  const canGoBack = !!(editEntry || createDishOpen || pickedFood || addOpen || confirmItems || goalsOpen || view !== 'today');
+  const canGoBack = !!(editEntry || createDishOpen || pickedFood || addOpen || confirmItems || goalsOpen || view !== 'today' || onExit);
   useEffect(() => {
     const tg = window.TG;
     if (!tg || !tg.BackButton) return;
@@ -416,6 +417,7 @@ function App() {
     content = <GoalsScreen goals={goals} saving={goalsSaving} onSave={handleGoalsSave} />;
   } else if (view === 'today') {
     header = <TgHeader title="Дневник питания" sub={day && day.is_today ? 'сегодня' : (date ? ddmmm(date) : '')}
+      onBack={onExit}
       right={
         <button className="tg-header__action" onClick={() => setGoalsOpen(true)} title="Цели">
           <IconGear size={20} />
@@ -499,4 +501,4 @@ function App() {
   );
 }
 
-window.App = App;
+window.NutritionApp = NutritionApp;
