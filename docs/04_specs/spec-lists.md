@@ -1,6 +1,6 @@
 # ТЗ — Lists (типизированные списки)
 
-**Версия:** 0.2 (принято; OQ-L1…L5 закрыты)
+**Версия:** 0.3 (принято; решения Q1-А6/А7/А8/А9/А10 влиты)
 **Статус:** ✅ Принято (С./Катя, 2026-06-07)
 **Опирается на:** `MVP_Requirements.md` §4.1/§5/§6/§9 · `DOMAIN_MODEL.md` §2/§3.2/§4 · `ADR-0001` (видимость) · `ADR-0004` (изоляция) · `ADR-0005` (SQLite→Postgres) · принятое **ТЗ Identity & Sharing** (`Shareable`, `visible_to`, `VisibilityDTO`, H3-a)
 **Закрывает:** контекст «Lists» доменной модели. Первый write-side контекст — **первым применяет `Shareable`**.
@@ -91,7 +91,7 @@ Lists — доменный контекст управления **типизи�
 | `detail` | str | да | Кратко (например, `OPEN→DONE`). |
 | `at` | datetime | нет | — |
 
-> **Кап хранения (L3):** ограничиваем рост под диск VPS — обрезка по возрасту или последние N событий на элемент (точные значения — в реализации). Полный field-diff не пишем.
+> **Кап хранения (L3, уточнено Q1-А7):** count-cap — **последние 50 событий на элемент** (`HISTORY_CAP=50`, module-константа репозитория, не конфиг); inline-обрезка при каждой вставке, фоновой подметалки нет. Полный field-diff не пишем. Соответствует реализации S2a (`test_history_is_capped`).
 
 ### 4.4 list_item_hidden_from — исключения видимости (H3-a)
 | Поле | Тип | NULL | Описание |
@@ -155,7 +155,7 @@ erDiagram
 - **I2.** `ListItem.list_id` совпадает с `list_id` родителя: вложение только внутри одного списка.
 - **I3.** Дерево `ListItem` ацикличное; глубина ≤ `max_depth` (10).
 - **I4.** `status=DONE` ⟺ `completed_at` заполнен.
-- **I5.** `specific_attrs` валидируется против схемы на `List.type` в приложении (реестр допустимых ключей/типов); неизвестные ключи отклоняются. Жёсткой БД-схемы нет (расширяемость под новые типы без миграций).
+- **I5.** `specific_attrs` валидируется против схемы на `List.type` в приложении (реестр допустимых ключей/типов); неизвестные ключи отклоняются. Жёсткой БД-схемы нет (расширяемость под новые типы без миграций). Реестр включает ключ `tags: [str]` для `GIFT`/`IDEA`/`LINK` (Q1-А9); кросс-типовой тег-фильтр — North Star.
 - **I6.** Удаление `List` каскадит элементы, историю, `list_item_hidden_from`. Удаление папки каскадит детей.
 - **I7. (наследование видимости)** `ListItem`/история own-`scope` не несут; `hidden_from` элемента учитывается только когда его `List.scope=FAMILY` (в `PERSONAL`-списке исключения бессмысленны).
 - **I8.** `added_by ∉ hidden_from` (владелец элемента всегда видит своё); `hidden_from ⊆ члены family` списка.
@@ -210,7 +210,7 @@ stateDiagram-v2
 - **S2.** Иерархия: внутри «Фильмы» — узлы-папки «Фантастика › Фэнтези», в них элементы; breadcrumb по `parent_id`.
 - **S3.** Отметить: `PATCH /items/{id} {status:DONE}` → `completed_at=now` + история.
 - **S4.** Скрыть подарок: в общий список добавить элемент с `hidden_from=[партнёр]` → партнёр элемент не видит (выдача/поиск/аналитика), владелец видит.
-- **S5.** Поиск: `GET /lists/search?q=` → элементы из видимых зрителю списков, минус скрытые от него.
+- **S5.** Поиск: `GET /lists/search?q=` → элементы из видимых списков (минус скрытые) **и сами списки по совпадению названия** (Q1-А8).
 - **S6.** Аналитика: `GET /lists/analytics?type=MOVIE&from=&to=` → число `DONE` за период (видимость учтена).
 
 ---
@@ -230,7 +230,7 @@ stateDiagram-v2
 | PATCH | `/items/{id}` | Текст/статус/attrs/скрытие/перенос | `{text?,status?,specific_attrs?,hidden_from?,parent_id?}` | `ItemDTO` | 401,403,404,422 |
 | DELETE | `/items/{id}` | Удалить (каскад детей) | — | `204` | 401,403,404 |
 | POST | `/lists/{id}/clear-done` | Удалить отмеченные | — | `{deleted:int}` | 401,403,404 |
-| GET | `/lists/search` | Поиск по видимым | `?q=` | `[SearchHitDTO]` | 401,403 |
+| GET | `/lists/search` | Поиск по видимым элементам и названиям списков | `?q=` | `[SearchHitDTO]` | 401,403 |
 | GET | `/lists/analytics` | Аналитика по типу | `?type=&from=&to=` | `ListAnalyticsDTO` | 401,403,422 |
 | GET | `/items/{id}/history` | История элемента | — | `[HistoryDTO]` | 401,403,404 |
 
@@ -238,7 +238,7 @@ stateDiagram-v2
 - `ListDTO` = `{id, type, name, emoji, scope, counts:{open,done}, created_at}` (counts — для зрителя, скрытые элементы исключены).
 - `ListDetailDTO` = `ListDTO` + `{items:[ItemDTO]}` (дерево через `parent_id`).
 - `ItemDTO` = `{id, list_id, parent_id, text, status, completed_at, specific_attrs, hidden_from:[user_id], position, added_by, created_at, updated_at}`.
-- `SearchHitDTO` = `{item:ItemDTO, list:{id,type,name}}`.
+- `SearchHitDTO` = `{kind:"item"|"list", item?:ItemDTO, list:{id,type,name}}` — item-хит несёт `item`+`list`; list-хит (совпадение названия, Q1-А8) — только `list`.
 - `ListAnalyticsDTO` = `{type, from, to, total, done, by_period:[{period,done}]}`.
 - `HistoryDTO` = `{action, detail, user_id, at}`.
 - `scope` задаётся через kernel-`VisibilityDTO` (контейнер), `hidden_from` — поэлементно.
@@ -260,7 +260,7 @@ app/contexts/lists/
   repositories/   # list_repo (дерево, поиск, JSON-доступ изолирован), item_repo
   services/       # list_service (visible_to, история, валидация specific_attrs по type)
   api/            # REST Mini App (/api/v1/lists, /items)
-  read/           # visibility-фильтрованные проекции для Analytics (counts по type/status/период)
+  read/           # visibility-фильтрованные проекции для Analytics: counts по type/status/период + recent-changes (added/done за период по полям ListItem — Q1-А10; history не источник)
 ```
 
 **Импорты (import-linter, граф §2):** `contexts.lists → только kernel`; sibling-контексты не импортируются; `analytics` читает только `contexts.lists.read`; `delivery` зовёт `lists.api`/`services`, Lists не импортирует `delivery`. БД-специфика JSON-доступа (`specific_attrs`) изолирована в `repositories` (ADR-0005).
@@ -274,6 +274,7 @@ app/contexts/lists/
 - Поиск/аналитика не возвращают невидимые зрителю элементы.
 - `hidden_from` в `PERSONAL`-списке / с `added_by` / с не-членом → **422** (I7/I8).
 - Удаление — каскад (элементы, история, `list_item_hidden_from`).
+- `clear-done` удаляет только **видимые зрителю** DONE-элементы; скрытые от него не затрагиваются (Q1-А6).
 
 ---
 
@@ -292,6 +293,7 @@ app/contexts/lists/
 - **A4.** Вложение между списками и превышение глубины → 422; `specific_attrs` валидируется по типу.
 - **A5.** Аналитика по типу считает только `DONE` из видимых зрителю элементов.
 - **A6. (изоляция)** Analytics берёт данные только через `contexts.lists.read`; прямой импорт падает в import-linter.
+- **A7. (поиск, Q1-А8)** `/lists/search` возвращает и элементы, и списки по совпадению названия (`kind:"list"`); видимость соблюдена. *(Дельта к S2a-коду — проверить/доделать на приёмке.)*
 
 ---
 
@@ -307,5 +309,6 @@ app/contexts/lists/
 ---
 
 ## 17. История изменений
+- **0.3 (2026-06-10):** влиты решения Q1 (С.): кап истории = count-cap 50/элемент, как в S2a (А7); поиск включает названия списков — `SearchHitDTO.kind`, критерий A7 (А8); `tags` в реестре `specific_attrs` для GIFT/IDEA/LINK (А9); clear-done — только видимые зрителю (А6); read-модуль отдаёт recent-changes по полям ListItem для дайджеста (А10/CH-5).
 - **0.2 (2026-06-07):** закрыты OQ-L1…L5. Скрытие переведено на уровень элемента (`ListItem.hidden_from`, `list_item_hidden_from`), `scope` оставлен на `List` (личные списки); type-поля — единый JSON `specific_attrs` с валидацией схемы на тип (вместо колонок); история — action-лог с капом. Видимость стала двухуровневой (контейнер + элемент); ERD/инварианты/REST/DTO/edge обновлены. Статус → принято.
 - **0.1 (2026-06-07):** первый черновик ТЗ Lists (модель, ERD, инварианты, статус-FSM, REST, структура пакета, критерии приёмки, 5 OQ).
