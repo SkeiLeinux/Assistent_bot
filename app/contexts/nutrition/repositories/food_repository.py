@@ -1,24 +1,25 @@
-"""
-repositories/food_repository.py — CRUD для дневника питания (FoodEntry).
+"""repositories/food_repository.py — CRUD дневника (FoodEntry, PERSONAL).
 
-Как и остальные репозитории: знает только о базе, ничего о Telegram и
-бизнес-правилах. commit делает сервис — здесь только flush.
+Знает только о базе: ничего о Telegram и бизнес-правилах. commit делает сервис —
+здесь только flush.
 
-Про время:
-  created_at хранится как наивный UTC (SQLite CURRENT_TIMESTAMP = UTC).
-  Поэтому выборки за день/период принимают ГОТОВЫЕ границы [start, end) в UTC.
-  Перевод "сегодня в таймзоне пользователя" → UTC-границы делает сервис
-  (FoodService), чтобы репозиторий оставался тупым диапазонным запросом.
+Видимость PERSONAL (ТЗ §6 I4, §10): дневник видит только владелец. Разрешение
+PERSONAL зависит лишь от владельца (kernel §3.5) — фильтр прямой по `user_id`
+(== `viewer.id`), без семьи. Выборки за день/период принимают ГОТОВЫЕ границы
+[start, end) в UTC — перевод «сегодня в таймзоне пользователя» → UTC делает
+сервис, чтобы репозиторий оставался тупым диапазонным запросом.
 """
 
 from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import FoodEntry
+
+from app.contexts.nutrition.models import FoodEntry
 
 
 class FoodRepository:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     async def create(
@@ -49,8 +50,8 @@ class FoodRepository:
             photo_file_id=photo_file_id,
             shared_food_id=shared_food_id,
         )
-        # created_at задаём только если передали явно (бэкдейтинг).
-        # Иначе сработает server_default=func.now() из модели.
+        # created_at задаём только если передали явно (бэкдейтинг);
+        # иначе сработает server_default=func.now() из модели.
         if created_at is not None:
             entry.created_at = created_at
         self.session.add(entry)
@@ -63,10 +64,10 @@ class FoodRepository:
     async def get_in_range(
         self, user_id: int, start: datetime, end: datetime
     ) -> list[FoodEntry]:
-        """
-        Все записи пользователя в полуинтервале [start, end) по UTC,
-        отсортированные по времени приёма пищи.
-        Используется и для "за день", и для "за период".
+        """Записи владельца в полуинтервале [start, end) по UTC, по времени приёма.
+
+        Один запрос и для «за день», и для «за период». Фильтр по `user_id` ⇒
+        видимость PERSONAL (партнёр чужой дневник не видит, I4).
         """
         result = await self.session.execute(
             select(FoodEntry)

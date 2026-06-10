@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(git log:*)",
       "Bash(git diff:*)",
@@ -10,7 +11,11 @@
       "Bash(npm run typecheck:*)",
       "Bash(cat:*)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash",
+      "Edit",
+      "Write",
+      "WebFetch"
     ],
     "deny": [
       "Bash(git push:*)",
@@ -18,7 +23,9 @@
       "Bash(rm -rf:*)",
       "Bash(drop table:*)",
       "Bash(truncate:*)",
-      "Bash(delete from * where 1:*)"
+      "Bash(delete from * where 1:*)",
+      "Bash(git push *)",
+      "Bash(rm -rf *)"
     ]
   }
 }

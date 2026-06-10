@@ -1,11 +1,9 @@
-# ⚠️ Транзит S0 (дормант). ListService мигрировал в app/contexts/lists/ (Срез 2a) и удалён
-# отсюда. Остаток (Food/User/Notification) приводится к specs в S2c/S3.
+# ⚠️ Транзит S0 (дормант). ListService мигрировал в app/contexts/lists/ (Срез 2a).
+# Food/LLM-сервисы мигрировали в app/contexts/nutrition/services/ (Срез 2c, волна A)
+# и удалены отсюда — re-export'ы сняты, иначе висят ссылки на удалённые файлы.
+# Остаток (User/Notification) приводится к specs в S3 (модули ещё ссылаются на
+# переехавшие kernel-символы → импортировать пакет рантаймом нельзя, это ожидаемо).
 from .user_service import UserService
 from .notification_service import NotificationService
-from .food_service import FoodService
-from .llm_service import LLMService
 
-__all__ = [
-    "UserService", "NotificationService",
-    "FoodService", "LLMService",
-]
+__all__ = ["UserService", "NotificationService"]

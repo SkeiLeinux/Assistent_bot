@@ -1,0 +1,519 @@
+"""REST Mini App контекста Nutrition (ТЗ §9/§10) — транспортный шов.
+
+Контекст НЕ импортирует delivery: аутентификацию (current_viewer), сессию и общий
+error-middleware даёт миниапа (delivery). Хендлеры читают request['viewer']
+(видимость) и request['user'] (timezone для границ суток), зовут FoodService,
+сериализуют под короткие имена полей фронта (name/w/p/f/c/meal/time) — чтобы
+дизайн-прототип почти не пришлось менять. Доменные/LLM-ошибки ловит общий
+middleware миниапы.
+
+Пути — под префиксом `/api/v1/nutrition/*` (дельта OQ-N3); поведение 1:1 с
+current-state (маппинг старых bare-путей — ТЗ §9).
+"""
+
+import base64
+import json
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+from aiohttp import web
+
+from app.contexts.nutrition.services import FoodService, InvalidInput, NutritionItem
+
+_DEFAULT_TZ = "Europe/Amsterdam"
+
+
+# ── JSON / разбор ────────────────────────────────────────────────────────────
+
+def _json(data, status: int = 200) -> web.Response:
+    return web.json_response(
+        data, status=status, dumps=lambda o: json.dumps(o, ensure_ascii=False)
+    )
+
+
+async def _body(request: web.Request) -> dict:
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _service(request: web.Request) -> FoodService:
+    return FoodService(request["session"])
+
+
+def _viewer(request: web.Request):
+    return request["viewer"]
+
+
+def _tz_name(request: web.Request) -> str:
+    """Таймзона пользователя из kernel-User (границы суток). Дефолт безопасен."""
+    user = request.get("user")
+    return getattr(user, "timezone", None) or _DEFAULT_TZ
+
+
+def _tz(request: web.Request) -> ZoneInfo:
+    try:
+        return ZoneInfo(_tz_name(request))
+    except Exception:
+        return ZoneInfo(_DEFAULT_TZ)
+
+
+def _num(value, default: float = 0.0) -> float:
+    if value is None or value == "":
+        return default
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return default
+
+
+def _num_or_none(value) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _path_int(request: web.Request, key: str) -> int:
+    try:
+        return int(request.match_info[key])
+    except (KeyError, ValueError):
+        raise InvalidInput("Некорректный идентификатор в пути")
+
+
+# ── Сериализация под поля фронта ─────────────────────────────────────────────
+
+def _entry(e, tz: ZoneInfo) -> dict:
+    local = e.created_at.replace(tzinfo=timezone.utc).astimezone(tz)
+    return {
+        "id": e.id,
+        "time": local.strftime("%H:%M"),
+        "meal": e.meal_type,
+        "name": e.description,
+        "w": e.weight_g,
+        "kcal": round(e.kcal, 1),
+        "p": round(e.protein, 1),
+        "f": round(e.fat, 1),
+        "c": round(e.carbs, 1),
+        "src": e.source,
+    }
+
+
+def _totals(t) -> dict:
+    return {
+        "kcal": round(t.kcal, 1),
+        "p": round(t.protein, 1),
+        "f": round(t.fat, 1),
+        "c": round(t.carbs, 1),
+    }
+
+
+def _goals(g) -> dict:
+    return {"kcal": g.kcal, "protein": g.protein, "fat": g.fat, "carbs": g.carbs}
+
+
+def _progress(prog: dict) -> dict:
+    return {
+        key: {
+            "consumed": round(mp.consumed, 1),
+            "target": mp.target,
+            "percent": mp.percent,
+            "remaining": mp.remaining,
+        }
+        for key, mp in prog.items()
+    }
+
+
+def _shared_food(f, viewer_id: int) -> dict:
+    return {
+        "id": f.id,
+        "name": f.name,
+        "weight_g": f.weight_g,
+        "kcal_per_100g": round(f.kcal_per_100g, 2),
+        "protein_per_100g": round(f.protein_per_100g, 2),
+        "fat_per_100g": round(f.fat_per_100g, 2),
+        "carbs_per_100g": round(f.carbs_per_100g, 2),
+        "use_count": f.use_count,
+        "by_me": f.created_by == viewer_id,
+    }
+
+
+def _item(it: NutritionItem) -> dict:
+    return {
+        "name": it.description,
+        "w": it.weight_g,
+        "kcal": round(it.kcal, 1),
+        "p": round(it.protein, 1),
+        "f": round(it.fat, 1),
+        "c": round(it.carbs, 1),
+    }
+
+
+def _created_at_for(
+    svc: FoodService, tz_name: str, today: date, day: date | None
+) -> datetime | None:
+    """Запись в прошлый день → полдень того дня (UTC-naive). Сегодня → None."""
+    if day is None or day == today:
+        return None
+    tz = svc._tz(tz_name)
+    local_dt = datetime.combine(day, time(12, 0), tzinfo=tz)
+    return local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+# ── День / цели ──────────────────────────────────────────────────────────────
+
+async def get_day(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    tz_name = _tz_name(request)
+    tz = _tz(request)
+    today = svc.today(tz_name)
+    day = _parse_date(request.query.get("date")) or today
+
+    view = await svc.get_day(viewer, day, timezone_name=tz_name)
+    return _json(
+        {
+            "date": day.isoformat(),
+            "is_today": day == today,
+            "entries": [_entry(e, tz) for e in view.entries],
+            "totals": _totals(view.totals),
+            "goals": _goals(view.goals),
+            "progress": _progress(view.progress()),
+        }
+    )
+
+
+async def get_goals(request: web.Request) -> web.Response:
+    svc = _service(request)
+    return _json(_goals(await svc.get_goals(_viewer(request))))
+
+
+async def put_goals(request: web.Request) -> web.Response:
+    svc = _service(request)
+    body = await _body(request)
+    goals = await svc.set_goals(
+        _viewer(request),
+        kcal=_num_or_none(body.get("kcal")),
+        protein=_num_or_none(body.get("protein")),
+        fat=_num_or_none(body.get("fat")),
+        carbs=_num_or_none(body.get("carbs")),
+    )
+    return _json(_goals(goals))
+
+
+# ── Анализ (LLM, без записи, I5) ─────────────────────────────────────────────
+
+async def analyze(request: web.Request) -> web.Response:
+    svc = _service(request)
+    body = await _body(request)
+    kind = body.get("type")
+
+    if kind == "text":
+        text = (body.get("text") or "").strip()
+        if not text:
+            raise InvalidInput("Пустой запрос")
+        result = await svc.analyze_text(text)
+    elif kind == "photo":
+        image_b64 = body.get("image") or ""
+        if image_b64.startswith("data:"):
+            image_b64 = image_b64.split(",", 1)[-1]
+        try:
+            image_bytes = base64.b64decode(image_b64)
+        except (ValueError, TypeError):
+            raise InvalidInput("Не удалось прочитать фото")
+        if not image_bytes:
+            raise InvalidInput("Пустое фото")
+        result = await svc.analyze_photo(image_bytes, caption=body.get("caption", ""))
+    else:
+        raise InvalidInput("Неизвестный тип запроса")
+
+    return _json({"items": [_item(it) for it in result.items]})
+
+
+# ── Записи дневника ──────────────────────────────────────────────────────────
+
+async def post_entries(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    tz_name = _tz_name(request)
+    tz = _tz(request)
+    body = await _body(request)
+
+    raw_items = body.get("items") or []
+    items: list[NutritionItem] = []
+    save_flags: list[bool] = []
+    for ri in raw_items:
+        name = (ri.get("name") or "").strip()
+        if not name:
+            continue
+        items.append(
+            NutritionItem(
+                description=name,
+                weight_g=_num_or_none(ri.get("w")),
+                kcal=_num(ri.get("kcal")),
+                protein=_num(ri.get("p")),
+                fat=_num(ri.get("f")),
+                carbs=_num(ri.get("c")),
+            )
+        )
+        save_flags.append(bool(ri.get("save")))
+
+    if not items:
+        raise InvalidInput("Нет позиций для сохранения")
+
+    today = svc.today(tz_name)
+    created_at = _created_at_for(svc, tz_name, today, _parse_date(body.get("date")))
+    saved = await svc.save_entries(
+        viewer,
+        items,
+        source=body.get("source", "manual"),
+        timezone_name=tz_name,
+        meal_type=body.get("meal_type"),
+        created_at=created_at,
+        save_to_db=save_flags,
+    )
+    return _json({"count": len(saved), "saved": [_entry(e, tz) for e in saved]})
+
+
+async def post_entry_from_food(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    tz_name = _tz_name(request)
+    tz = _tz(request)
+    body = await _body(request)
+
+    food_id = body.get("food_id")
+    weight_g = _num_or_none(body.get("weight_g"))
+    if not food_id or not weight_g or weight_g <= 0:
+        raise InvalidInput("Не задан food_id или weight_g")
+
+    today = svc.today(tz_name)
+    created_at = _created_at_for(svc, tz_name, today, _parse_date(body.get("date")))
+    entry = await svc.create_entry_from_shared(
+        viewer,
+        int(food_id),
+        weight_g,
+        meal_type=body.get("meal_type"),
+        timezone_name=tz_name,
+        created_at=created_at,
+    )
+    if entry is None:
+        return _json({"error": "Блюдо не найдено", "code": "not_found"}, status=404)
+    return _json({"ok": True, "entry": _entry(entry, tz)})
+
+
+_PATCH_FIELD_MAP = {
+    "name": "description",
+    "w": "weight_g",
+    "kcal": "kcal",
+    "p": "protein",
+    "f": "fat",
+    "c": "carbs",
+    "meal_type": "meal_type",
+}
+
+
+async def patch_entry(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    tz = _tz(request)
+    entry_id = _path_int(request, "entry_id")
+    body = await _body(request)
+
+    fields: dict = {}
+    for src_key, dst_key in _PATCH_FIELD_MAP.items():
+        if src_key not in body:
+            continue
+        value = body[src_key]
+        if dst_key == "description":
+            fields[dst_key] = (value or "").strip()
+        elif dst_key == "meal_type":
+            fields[dst_key] = value
+        elif dst_key == "weight_g":
+            fields[dst_key] = _num_or_none(value)
+        else:
+            fields[dst_key] = _num(value)
+
+    if not fields:
+        raise InvalidInput("Нет полей для обновления")
+
+    entry = await svc.update_entry(viewer, entry_id, **fields)
+    if entry is None:
+        return _json({"error": "Запись не найдена", "code": "not_found"}, status=404)
+    return _json(_entry(entry, tz))
+
+
+async def delete_entry(request: web.Request) -> web.Response:
+    ok = await _service(request).delete_entry(
+        _viewer(request), _path_int(request, "entry_id")
+    )
+    if not ok:
+        return _json({"error": "Запись не найдена", "code": "not_found"}, status=404)
+    return _json({"ok": True})
+
+
+# ── Период / выгрузка ────────────────────────────────────────────────────────
+
+async def get_period(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    tz_name = _tz_name(request)
+    today = svc.today(tz_name)
+
+    end = _parse_date(request.query.get("to")) or today
+    start = _parse_date(request.query.get("from")) or (end - timedelta(days=6))
+
+    period = await svc.get_period(viewer, start, end, timezone_name=tz_name)
+    goals = await svc.get_goals(viewer)
+    days = [
+        {
+            "date": d.day.isoformat(),
+            "totals": _totals(d.totals),
+            "count": len(d.entries),
+        }
+        for d in period.days
+    ]
+    return _json(
+        {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "today": today.isoformat(),
+            "goal_kcal": goals.kcal,
+            "totals": _totals(period.totals),
+            "days": days,
+        }
+    )
+
+
+async def get_export(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    tz_name = _tz_name(request)
+    today = svc.today(tz_name)
+    end = _parse_date(request.query.get("to")) or today
+    start = _parse_date(request.query.get("from")) or (end - timedelta(days=6))
+    markdown = await svc.export_period(viewer, start, end, timezone_name=tz_name)
+    return _json({"markdown": markdown})
+
+
+# ── Каталог блюд (FAMILY) ────────────────────────────────────────────────────
+
+async def get_foods(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    q = request.query.get("q", "").strip()
+    if q:
+        items = await svc.search_shared_foods(viewer, q)
+    else:
+        items = await svc.get_quick_pick(viewer)
+    return _json([_shared_food(f, viewer.id) for f in items])
+
+
+async def post_food(request: web.Request) -> web.Response:
+    svc = _service(request)
+    viewer = _viewer(request)
+    body = await _body(request)
+
+    name = (body.get("name") or "").strip()
+    weight_g = _num_or_none(body.get("weight_g"))
+    kcal = _num_or_none(body.get("kcal"))
+    protein = _num_or_none(body.get("protein"))
+    fat = _num_or_none(body.get("fat"))
+    carbs = _num_or_none(body.get("carbs"))
+
+    if not name or not weight_g or weight_g <= 0:
+        raise InvalidInput("Обязательны: name и weight_g > 0")
+    if any(v is None for v in (kcal, protein, fat, carbs)):
+        raise InvalidInput("Обязательны: kcal, protein, fat, carbs")
+
+    sf = await svc.save_shared_food(
+        viewer,
+        name=name,
+        weight_g=weight_g,
+        kcal=kcal,
+        protein=protein,
+        fat=fat,
+        carbs=carbs,
+    )
+    await svc.session.commit()
+    return _json(_shared_food(sf, viewer.id), status=201)
+
+
+async def post_food_analyze(request: web.Request) -> web.Response:
+    """LLM-разбор состава блюда → КБЖУ без сохранения. Режим — по наличию полей.
+
+    text + images → combined; только text → text; только images → photos.
+    """
+    svc = _service(request)
+    body = await _body(request)
+
+    name = (body.get("name") or "").strip()
+    weight_g = _num_or_none(body.get("weight_g"))
+    if not name or not weight_g or weight_g <= 0:
+        raise InvalidInput("Обязательны: name и weight_g > 0")
+
+    description = (body.get("text") or "").strip()
+    raw_images = body.get("images") or []
+    images_b64: list[str] = []
+    for img in raw_images[:5]:
+        b64 = img.split(",", 1)[-1] if img.startswith("data:") else img
+        if b64:
+            images_b64.append(b64)
+
+    has_text = bool(description)
+    has_images = bool(images_b64)
+    if not has_text and not has_images:
+        raise InvalidInput("Нужен текст состава или хотя бы одно фото")
+
+    if has_text and has_images:
+        result = await svc.analyze_dish_combined(description, images_b64, name, weight_g)
+    elif has_text:
+        result = await svc.analyze_dish_text(description, name, weight_g)
+    else:
+        result = await svc.analyze_dish_photos(images_b64, name, weight_g)
+
+    item = result.items[0]
+    return _json(
+        {
+            "kcal": round(item.kcal, 1),
+            "protein": round(item.protein, 1),
+            "fat": round(item.fat, 1),
+            "carbs": round(item.carbs, 1),
+        }
+    )
+
+
+# ── Монтаж ───────────────────────────────────────────────────────────────────
+
+def register_routes(app: web.Application) -> None:
+    """Регистрирует маршруты Nutrition под /api/v1/nutrition/*.
+
+    Статические подпути (/foods, /entries/from-food) — раньше параметрических
+    (/entries/{id}), чтобы не перехватывались.
+    """
+    app.router.add_get("/api/v1/nutrition/day", get_day)
+    app.router.add_get("/api/v1/nutrition/goals", get_goals)
+    app.router.add_put("/api/v1/nutrition/goals", put_goals)
+    app.router.add_post("/api/v1/nutrition/analyze", analyze)
+    app.router.add_post("/api/v1/nutrition/entries/from-food", post_entry_from_food)
+    app.router.add_post("/api/v1/nutrition/entries", post_entries)
+    app.router.add_patch("/api/v1/nutrition/entries/{entry_id}", patch_entry)
+    app.router.add_delete("/api/v1/nutrition/entries/{entry_id}", delete_entry)
+    app.router.add_get("/api/v1/nutrition/period", get_period)
+    app.router.add_get("/api/v1/nutrition/export", get_export)
+    app.router.add_get("/api/v1/nutrition/foods", get_foods)
+    app.router.add_post("/api/v1/nutrition/foods/analyze", post_food_analyze)
+    app.router.add_post("/api/v1/nutrition/foods", post_food)

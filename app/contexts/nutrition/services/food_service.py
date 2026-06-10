@@ -1,26 +1,45 @@
-"""
-services/food_service.py — бизнес-логика дневника питания.
+"""services/food_service.py — бизнес-логика дневника питания (ТЗ §6/§7).
 
-Разделение ответственности:
-  - LLMService считает КБЖУ (text/photo) — но НЕ сохраняет.
+Standalone-шов (ADR-0004): принимает резолвнутого kernel-`Viewer` (видимость) и
+строку таймзоны пользователя (`user.timezone`, kernel) для границ суток —
+Telegram-агностичен. Транзакцией владеет вызывающий (REST-middleware делает
+commit) — здесь только flush через репозитории + commit на мутациях.
+
+Разделение ответственности (I5):
+  - LLM (`NutritionLLM`) считает КБЖУ (text/photo) — но НЕ сохраняет.
   - FoodService решает что и как сохранить, агрегирует по дням, делает выгрузку.
-  - Шаг подтверждения ("так? поправь порцию") живёт в UI: сначала analyze_*,
-    показали пользователю позиции, он подтвердил — потом save_entries.
+  - Шаг подтверждения («так? поправь порцию») живёт в UI: сначала analyze_*,
+    показали позиции, пользователь подтвердил — потом save_entries.
 
-Время:
-  created_at в БД — наивный UTC. "День" считаем в таймзоне пользователя
-  (user.timezone), переводя локальные границы суток в UTC перед запросом.
+Видимость (ТЗ §6 I4): дневник (`FoodEntry`) PERSONAL — фильтр по `viewer.id`;
+каталог (`SharedFood`) FAMILY — фильтр по `viewer.family_id`; цели
+(`NutritionGoals`) PERSONAL.
+
+Время: created_at в БД — наивный UTC. «День» считаем в таймзоне пользователя,
+переводя локальные границы суток в UTC перед запросом.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, date, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import FoodEntry, SharedFood, User
-from app.repositories import FoodRepository, SharedFoodRepository, UserRepository
-from app.services.llm_service import LLMService, NutritionItem, NutritionResult
+from app.kernel import Viewer
+
+from app.contexts.nutrition.models import FoodEntry, NutritionGoals, SharedFood
+from app.contexts.nutrition.repositories import (
+    FoodRepository,
+    GoalsRepository,
+    SharedFoodRepository,
+)
+from app.contexts.nutrition.services.errors import FamilyRequired
+from app.contexts.nutrition.services.llm_service import (
+    LLMService,
+    NutritionItem,
+    NutritionLLM,
+    NutritionResult,
+)
 
 _DEFAULT_TZ = "Europe/Amsterdam"
 
@@ -46,24 +65,28 @@ class Totals:
 @dataclass
 class Goals:
     """Дневные цели КБЖУ. None в поле = цель не задана."""
+
     kcal: float | None = None
     protein: float | None = None
     fat: float | None = None
     carbs: float | None = None
 
     @classmethod
-    def from_user(cls, user: User) -> "Goals":
+    def from_model(cls, goals: NutritionGoals | None) -> "Goals":
+        if goals is None:
+            return cls()
         return cls(
-            kcal=user.target_kcal,
-            protein=user.target_protein,
-            fat=user.target_fat,
-            carbs=user.target_carbs,
+            kcal=goals.target_kcal,
+            protein=goals.target_protein,
+            fat=goals.target_fat,
+            carbs=goals.target_carbs,
         )
 
 
 @dataclass
 class MacroProgress:
     """Прогресс по одному макросу для прогресс-бара: съедено / цель."""
+
     consumed: float
     target: float | None = None
 
@@ -85,6 +108,7 @@ class MacroProgress:
 @dataclass
 class MealGroup:
     """Записи одного приёма пищи + итоги по нему."""
+
     meal_type: str  # breakfast/lunch/dinner/snack/other
     entries: list[FoodEntry] = field(default_factory=list)
     totals: Totals = field(default_factory=Totals)
@@ -107,7 +131,7 @@ class DayView:
         }
 
     def by_meal(self) -> list[MealGroup]:
-        """Записи дня, сгруппированные по приёму пищи, с итогами по группе.
+        """Записи дня по приёму пищи, с итогами по группе.
 
         Порядок: завтрак → обед → ужин → перекус → other. Пустые группы
         пропускаются. Внутри группы сохраняется порядок по времени.
@@ -143,33 +167,42 @@ def _meal_type_by_hour(hour: int) -> str:
 
 
 class FoodService:
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self, session: AsyncSession, llm: NutritionLLM | None = None
+    ) -> None:
         self.session = session
         self.food_repo = FoodRepository(session)
-        self.user_repo = UserRepository(session)
         self.shared_repo = SharedFoodRepository(session)
-        self.llm = LLMService()
+        self.goals_repo = GoalsRepository(session)
+        # I7: зависимость только от контракта NutritionLLM. Дефолт — Groq;
+        # тесты инжектят фейк, живых вызовов из pytest нет (GAP-6).
+        self.llm: NutritionLLM = llm or LLMService()
 
-    # ── Таймзона / границы суток ────────────────────────────────────────────
+    # ── Таймзона / границы суток ─────────────────────────────────────────────
 
-    def _tz(self, user: User) -> ZoneInfo:
+    def _tz(self, timezone_name: str | None) -> ZoneInfo:
         try:
-            return ZoneInfo(user.timezone or _DEFAULT_TZ)
+            return ZoneInfo(timezone_name or _DEFAULT_TZ)
         except Exception:
             return ZoneInfo(_DEFAULT_TZ)
 
-    def _day_bounds_utc(self, user: User, day: date) -> tuple[datetime, datetime]:
+    def _day_bounds_utc(
+        self, timezone_name: str | None, day: date
+    ) -> tuple[datetime, datetime]:
         """Локальные [00:00, 24:00) указанного дня → наивные UTC-границы."""
-        tz = self._tz(user)
+        tz = self._tz(timezone_name)
         start_local = datetime.combine(day, time.min, tzinfo=tz)
         end_local = start_local + timedelta(days=1)
-        to_utc = lambda dt: dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+        def to_utc(dt: datetime) -> datetime:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
         return to_utc(start_local), to_utc(end_local)
 
-    def today(self, user: User) -> date:
-        return datetime.now(self._tz(user)).date()
+    def today(self, timezone_name: str | None) -> date:
+        return datetime.now(self._tz(timezone_name)).date()
 
-    # ── Анализ (LLM, без сохранения) ────────────────────────────────────────
+    # ── Анализ (LLM, без сохранения, I5) ─────────────────────────────────────
 
     async def analyze_text(self, text: str) -> NutritionResult:
         return await self.llm.parse_text(text)
@@ -197,21 +230,22 @@ class FoodService:
         """Текст с граммовками + фото этикеток → суммарное КБЖУ."""
         return await self.llm.analyze_dish_combined(text, images_b64, name, weight_g)
 
-    # ── Сохранение ──────────────────────────────────────────────────────────
+    # ── Сохранение ───────────────────────────────────────────────────────────
 
     async def save_entries(
         self,
-        user: User,
+        viewer: Viewer,
         items: list[NutritionItem],
         source: str,
+        timezone_name: str | None = None,
         photo_file_id: str | None = None,
         meal_type: str | None = None,
         created_at: datetime | None = None,
         save_to_db: list[bool] | None = None,
     ) -> list[FoodEntry]:
-        """Сохранить подтверждённые позиции. save_to_db[i]=True → также в SharedFood."""
+        """Сохранить подтверждённые позиции. save_to_db[i]=True → также в каталог."""
         if meal_type is None:
-            local_now = datetime.now(self._tz(user))
+            local_now = datetime.now(self._tz(timezone_name))
             meal_type = _meal_type_by_hour(local_now.hour)
 
         saved: list[FoodEntry] = []
@@ -220,17 +254,17 @@ class FoodService:
             do_save = save_to_db and i < len(save_to_db) and save_to_db[i]
             if do_save and item.weight_g and item.weight_g > 0:
                 sf = await self.save_shared_food(
+                    viewer,
                     name=item.description,
                     weight_g=item.weight_g,
                     kcal=item.kcal,
                     protein=item.protein,
                     fat=item.fat,
                     carbs=item.carbs,
-                    user_id=user.id,
                 )
                 shared_food_id = sf.id
             entry = await self.food_repo.create(
-                user_id=user.id,
+                user_id=viewer.id,
                 description=item.description,
                 kcal=item.kcal,
                 protein=item.protein,
@@ -247,10 +281,16 @@ class FoodService:
         await self.session.commit()
         return saved
 
-    # ── Общая база блюд ─────────────────────────────────────────────────────────
+    # ── Общий каталог блюд (FAMILY) ──────────────────────────────────────────
+
+    def _require_family(self, viewer: Viewer) -> int:
+        if viewer.family_id is None:
+            raise FamilyRequired("Каталог блюд доступен только в семье (/family).")
+        return viewer.family_id
 
     async def save_shared_food(
         self,
+        viewer: Viewer,
         *,
         name: str,
         weight_g: float,
@@ -258,9 +298,9 @@ class FoodService:
         protein: float,
         fat: float,
         carbs: float,
-        user_id: int,
     ) -> SharedFood:
-        """Вычисляет значения на 100 г и сохраняет блюдо в общую базу."""
+        """Вычисляет значения на 100 г (I2) и сохраняет блюдо в каталог семьи."""
+        family_id = self._require_family(viewer)
         factor = 100 / weight_g
         return await self.shared_repo.create(
             name=name,
@@ -269,35 +309,45 @@ class FoodService:
             protein_per_100g=round(protein * factor, 2),
             fat_per_100g=round(fat * factor, 2),
             carbs_per_100g=round(carbs * factor, 2),
-            created_by=user_id,
+            created_by=viewer.id,
+            family_id=family_id,
         )
 
-    async def search_shared_foods(self, query: str) -> list[SharedFood]:
+    async def search_shared_foods(
+        self, viewer: Viewer, query: str
+    ) -> list[SharedFood]:
+        family_id = self._require_family(viewer)
         query = query.strip()
         if not query:
             return []
-        return await self.shared_repo.search(query)
+        return await self.shared_repo.search(family_id, query)
 
-    async def get_quick_pick(self, user: User) -> list[SharedFood]:
-        return await self.shared_repo.get_quick_pick(user.id)
+    async def get_quick_pick(self, viewer: Viewer) -> list[SharedFood]:
+        family_id = self._require_family(viewer)
+        return await self.shared_repo.get_quick_pick(family_id, viewer.id)
 
     async def create_entry_from_shared(
         self,
-        user: User,
+        viewer: Viewer,
         food_id: int,
         weight_g: float,
         meal_type: str | None = None,
+        timezone_name: str | None = None,
         created_at: datetime | None = None,
     ) -> FoodEntry | None:
-        """Создаёт FoodEntry из SharedFood с масштабированием КБЖУ под заданный вес."""
-        food = await self.shared_repo.get_by_id(food_id)
+        """Создаёт FoodEntry из SharedFood с пересчётом КБЖУ под порцию (I2).
+
+        Каталог FAMILY: берём блюдо только из своей семьи.
+        """
+        family_id = self._require_family(viewer)
+        food = await self.shared_repo.get_visible(family_id, food_id)
         if not food:
             return None
         factor = weight_g / 100
         if meal_type is None:
-            meal_type = _meal_type_by_hour(datetime.now(self._tz(user)).hour)
+            meal_type = _meal_type_by_hour(datetime.now(self._tz(timezone_name)).hour)
         entry = await self.food_repo.create(
-            user_id=user.id,
+            user_id=viewer.id,
             description=food.name,
             kcal=round(food.kcal_per_100g * factor, 1),
             protein=round(food.protein_per_100g * factor, 1),
@@ -315,7 +365,7 @@ class FoodService:
 
     async def add_explicit(
         self,
-        user: User,
+        viewer: Viewer,
         description: str,
         kcal: float,
         protein: float,
@@ -323,54 +373,65 @@ class FoodService:
         carbs: float,
         weight_g: float | None = None,
         meal_type: str | None = None,
+        timezone_name: str | None = None,
     ) -> FoodEntry:
-        """Прямой ввод чисел пользователем, без LLM (fallback / точные данные с этикетки)."""
+        """Прямой ввод чисел без LLM (fallback / точные данные с этикетки)."""
         item = NutritionItem(
             description=description, weight_g=weight_g,
             kcal=kcal, protein=protein, fat=fat, carbs=carbs,
         )
-        saved = await self.save_entries(user, [item], source="manual", meal_type=meal_type)
+        saved = await self.save_entries(
+            viewer, [item], source="manual",
+            meal_type=meal_type, timezone_name=timezone_name,
+        )
         return saved[0]
 
-    # ── Цели КБЖУ ─────────────────────────────────────────────────────────────
+    # ── Цели КБЖУ (NutritionGoals, PERSONAL) ─────────────────────────────────
 
-    def get_goals(self, user: User) -> Goals:
-        return Goals.from_user(user)
+    async def get_goals(self, viewer: Viewer) -> Goals:
+        return Goals.from_model(await self.goals_repo.get(viewer.id))
 
     async def set_goals(
         self,
-        user: User,
+        viewer: Viewer,
         kcal: float | None = None,
         protein: float | None = None,
         fat: float | None = None,
         carbs: float | None = None,
     ) -> Goals:
         """Задать/обновить дневные цели. None в поле = снять цель."""
-        await self.user_repo.update_food_goals(user.id, kcal, protein, fat, carbs)
+        goals = await self.goals_repo.upsert(viewer.id, kcal, protein, fat, carbs)
         await self.session.commit()
-        return Goals.from_user(user)
+        return Goals.from_model(goals)
 
-    # ── Чтение / агрегация ──────────────────────────────────────────────────
+    # ── Чтение / агрегация ───────────────────────────────────────────────────
 
-    async def get_day(self, user: User, day: date | None = None) -> DayView:
-        day = day or self.today(user)
-        start, end = self._day_bounds_utc(user, day)
-        entries = await self.food_repo.get_in_range(user.id, start, end)
-        view = DayView(day=day, entries=entries, goals=Goals.from_user(user))
+    async def get_day(
+        self, viewer: Viewer, day: date | None = None, timezone_name: str | None = None
+    ) -> DayView:
+        day = day or self.today(timezone_name)
+        start, end = self._day_bounds_utc(timezone_name, day)
+        entries = await self.food_repo.get_in_range(viewer.id, start, end)
+        goals = Goals.from_model(await self.goals_repo.get(viewer.id))
+        view = DayView(day=day, entries=entries, goals=goals)
         for e in entries:
             view.totals.add(e)
         return view
 
     async def get_period(
-        self, user: User, start_date: date, end_date: date
+        self,
+        viewer: Viewer,
+        start_date: date,
+        end_date: date,
+        timezone_name: str | None = None,
     ) -> PeriodView:
         """Записи за [start_date, end_date] включительно, сгруппированные по дням."""
-        start_utc, _ = self._day_bounds_utc(user, start_date)
-        _, end_utc = self._day_bounds_utc(user, end_date)
-        entries = await self.food_repo.get_in_range(user.id, start_utc, end_utc)
+        start_utc, _ = self._day_bounds_utc(timezone_name, start_date)
+        _, end_utc = self._day_bounds_utc(timezone_name, end_date)
+        entries = await self.food_repo.get_in_range(viewer.id, start_utc, end_utc)
 
-        tz = self._tz(user)
-        goals = Goals.from_user(user)
+        tz = self._tz(timezone_name)
+        goals = Goals.from_model(await self.goals_repo.get(viewer.id))
         by_day: dict[date, DayView] = {}
         period = PeriodView(start=start_date, end=end_date)
         for e in entries:
@@ -386,23 +447,25 @@ class FoodService:
         period.days = [by_day[d] for d in sorted(by_day)]
         return period
 
-    # ── Редактирование / удаление (с проверкой владельца) ────────────────────
+    # ── Редактирование / удаление (с проверкой владельца, PERSONAL) ───────────
 
-    async def _owned(self, user: User, entry_id: int) -> FoodEntry | None:
+    async def _owned(self, viewer: Viewer, entry_id: int) -> FoodEntry | None:
         entry = await self.food_repo.get_by_id(entry_id)
-        if not entry or entry.user_id != user.id:
+        if not entry or entry.user_id != viewer.id:
             return None
         return entry
 
-    async def update_entry(self, user: User, entry_id: int, **fields) -> FoodEntry | None:
-        if not await self._owned(user, entry_id):
+    async def update_entry(
+        self, viewer: Viewer, entry_id: int, **fields
+    ) -> FoodEntry | None:
+        if not await self._owned(viewer, entry_id):
             return None
         entry = await self.food_repo.update(entry_id, **fields)
         await self.session.commit()
         return entry
 
-    async def delete_entry(self, user: User, entry_id: int) -> bool:
-        if not await self._owned(user, entry_id):
+    async def delete_entry(self, viewer: Viewer, entry_id: int) -> bool:
+        if not await self._owned(viewer, entry_id):
             return False
         ok = await self.food_repo.delete(entry_id)
         await self.session.commit()
@@ -410,20 +473,31 @@ class FoodService:
 
     # ── Выгрузка за период (дамп для вставки в ChatGPT/Claude) ────────────────
 
-    async def export_period(self, user: User, start_date: date, end_date: date) -> str:
+    async def export_period(
+        self,
+        viewer: Viewer,
+        start_date: date,
+        end_date: date,
+        timezone_name: str | None = None,
+    ) -> str:
         """Текстовый дамп: группировка по дням, итоги дня, общий итог, шаблон промпта."""
-        period = await self.get_period(user, start_date, end_date)
+        period = await self.get_period(viewer, start_date, end_date, timezone_name)
 
         def fmt_totals(t: Totals) -> str:
-            return (f"{round(t.kcal)} ккал · "
-                    f"Б {round(t.protein)} / Ж {round(t.fat)} / У {round(t.carbs)}")
+            return (
+                f"{round(t.kcal)} ккал · "
+                f"Б {round(t.protein)} / Ж {round(t.fat)} / У {round(t.carbs)}"
+            )
 
-        lines = [f"# Дневник питания {start_date:%d.%m.%Y} — {end_date:%d.%m.%Y}", ""]
+        lines = [
+            f"# Дневник питания {start_date:%d.%m.%Y} — {end_date:%d.%m.%Y}",
+            "",
+        ]
         if not period.days:
             lines.append("_Записей за период нет._")
             return "\n".join(lines)
 
-        tz = self._tz(user)
+        tz = self._tz(timezone_name)
         for day_view in period.days:
             lines.append(f"## {day_view.day:%d.%m.%Y}")
             for e in day_view.entries:

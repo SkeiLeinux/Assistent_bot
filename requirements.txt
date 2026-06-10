@@ -6,6 +6,7 @@ pydantic-settings==2.6.1   # загрузка конфига из .env
 python-dotenv==1.0.1
 groq==1.1.2                # SDK Groq для расчёта КБЖУ (vision + text, OpenAI-совместимый)
 aiohttp==3.9.5             # HTTP-сервер мини-апы "Еда" (приходит и как зависимость aiogram)
+openpyxl==3.1.5            # чтение/запись xlsx — Import ACL Finance (заперт в contexts.finance.importing)
 tzdata==2026.2             # IANA-таймзоны для zoneinfo (обязателен на Windows; на Linux есть системные)
 
 # Когда переедешь на PostgreSQL — добавь:

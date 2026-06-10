@@ -1,7 +1,8 @@
 """REST мини-апы (монтаж aiohttp).
 
-Срез 2: kernel REST (/api/v1/*) + Lists REST (/api/v1/lists,/items). Эндпоинты еды
-(api.py) сняты с проводки до миграции Nutrition (S2c) — файл остаётся, не импортируется.
+Волна A: kernel REST (/api/v1/*) + Lists (/api/v1/lists,/items) + Finance
+(/api/v1/finance/*) + Nutrition (/api/v1/nutrition/*). Старый food api.py удалён —
+функциональность переехала в contexts.nutrition.api.
 """
 
 from .web import create_app, start_web_server

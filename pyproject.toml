@@ -46,6 +46,65 @@ forbidden_modules = [
 ]
 allow_indirect_imports = "true"
 
+# A6 (Finance): Analytics берёт Finance ТОЛЬКО через contexts.finance.read.
+# importing/ включён в запрет — Import ACL не публичная поверхность для чтений.
+[[tool.importlinter.contracts]]
+name = "Analytics reads Finance only via read-module"
+type = "forbidden"
+source_modules = ["app.analytics"]
+forbidden_modules = [
+    "app.contexts.finance.models",
+    "app.contexts.finance.repositories",
+    "app.contexts.finance.services",
+    "app.contexts.finance.api",
+    "app.contexts.finance.importing",
+]
+allow_indirect_imports = "true"
+
+# A6 (Nutrition): Analytics берёт Nutrition ТОЛЬКО через contexts.nutrition.read.
+[[tool.importlinter.contracts]]
+name = "Analytics reads Nutrition only via read-module"
+type = "forbidden"
+source_modules = ["app.analytics"]
+forbidden_modules = [
+    "app.contexts.nutrition.models",
+    "app.contexts.nutrition.repositories",
+    "app.contexts.nutrition.services",
+    "app.contexts.nutrition.api",
+]
+allow_indirect_imports = "true"
+
+# Analytics не зависит от Reminders (нет read-поверхности; дайджест без напоминаний — Катя).
+[[tool.importlinter.contracts]]
+name = "Analytics does not depend on Reminders"
+type = "forbidden"
+source_modules = ["app.analytics"]
+forbidden_modules = ["app.contexts.reminders"]
+allow_indirect_imports = "true"
+
+# A6 (ACL-герметичность): Import ACL Finance импортируется ТОЛЬКО изнутри finance.
+# Кто угодно (delivery/analytics/другие контексты/main), КРОМЕ app.contexts.finance,
+# не имеет права тянуть importing НАПРЯМУЮ — openpyxl и знание формы таблицы заперты.
+# allow_indirect_imports: delivery/main легально зовут finance.api/services, которые
+# ВНУТРИ себя используют ACL (транзитная цепочка разрешена); запрещён прямой импорт.
+[[tool.importlinter.contracts]]
+name = "Finance Import ACL is imported only within Finance"
+type = "forbidden"
+source_modules = [
+    "app.main",
+    "app.delivery",
+    "app.analytics",
+    "app.notifications",
+    "app.scheduler",
+    "app.kernel",
+    "app.db",
+    "app.contexts.lists",
+    "app.contexts.nutrition",
+    "app.contexts.reminders",
+]
+forbidden_modules = ["app.contexts.finance.importing"]
+allow_indirect_imports = "true"
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"

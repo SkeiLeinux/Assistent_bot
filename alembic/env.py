@@ -26,7 +26,8 @@ from alembic import context
 from app.db.base import Base
 import app.kernel.models  # noqa: F401 — kernel: users/families/memberships/invites
 import app.contexts.lists.models  # noqa: F401 — Lists: lists/list_items/hidden_from/history
-import app.db.models  # noqa: F401 — транзит Nutrition: shared_foods/food_entries
+import app.contexts.finance.models  # noqa: F401 — Finance: categories/budgets/actuals/income
+import app.contexts.nutrition.models  # noqa: F401 — Nutrition: shared_foods/food_entries/nutrition_goals
 from app.config import settings
 
 # Конфиг из alembic.ini (нужен для настройки логирования)

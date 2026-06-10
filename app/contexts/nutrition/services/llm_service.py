@@ -1,28 +1,24 @@
-"""
-services/llm_service.py — обёртка над LLM для расчёта КБЖУ.
+"""services/llm_service.py — провайдер-агностичная обёртка над LLM для КБЖУ (ТЗ §I6/I7).
 
-Зачем отдельный сервис:
-  Хендлеры и FoodService не должны знать, какой провайдер считает калории.
-  Здесь спрятан Groq (модель llama-4-scout). Захочешь локальную модель
-  (Ollama + Qwen2.5-VL на 4070) — меняешь только этот файл, контракт тот же.
+Зачем отдельный сервис: FoodService и delivery не знают, какой провайдер считает
+калории. Здесь спрятан Groq (модель llama-4-scout). Замена Groq→локальная модель
+(Ollama + Qwen2.5-VL) меняет только этот файл — контракт `NutritionLLM` тот же (I7).
 
-Контракт:
-  parse_text(text)              -> NutritionResult   (ручной ввод)
-  analyze_photo(bytes, caption) -> NutritionResult   (фото + описание)
+Контракт (`NutritionLLM`): все методы возвращают `NutritionResult` (список
+`NutritionItem`), т.к. одна строка/тарелка может содержать несколько продуктов.
+Невалидный ответ / 429 → понятная `LLMError` (I6). Тесты подменяют реализацию
+фейком за этим интерфейсом — живых вызовов Groq из pytest нет (GAP-6).
 
-Обе возвращают СПИСОК позиций (NutritionItem), потому что одна строка ввода
-или одна тарелка на фото могут содержать несколько продуктов, а в модели
-FoodEntry одна позиция = одно описание + вес + КБЖУ.
-
-Почему НЕ считаем regex'ом: локальной базы состава продуктов у нас нет,
-поэтому сами числа КБЖУ может дать только модель — и для текста, и для фото.
+Почему НЕ regex: локальной базы состава продуктов нет — числа КБЖУ даёт только
+модель (и для текста, и для фото).
 """
 
 import base64
 import json
 import logging
+from typing import Protocol, runtime_checkable
 
-from groq import AsyncGroq, APIError, RateLimitError
+from groq import APIError, AsyncGroq, RateLimitError
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
@@ -33,7 +29,8 @@ logger = logging.getLogger(__name__)
 # ── Контракт данных ─────────────────────────────────────────────────────────
 
 class NutritionItem(BaseModel):
-    """Одна позиция: продукт/блюдо с КБЖУ уже для съеденной порции."""
+    """Одна позиция: продукт/блюдо с КБЖУ уже для съеденной порции (абсолют, I1)."""
+
     description: str
     weight_g: float | None = None
     kcal: float
@@ -44,13 +41,14 @@ class NutritionItem(BaseModel):
 
 class NutritionResult(BaseModel):
     """Обёртка-объект (JSON-режим требует объект на верхнем уровне, не массив)."""
+
     items: list[NutritionItem]
 
 
 # ── Ошибки ──────────────────────────────────────────────────────────────────
 
 class LLMError(Exception):
-    """Базовая ошибка LLM с понятным пользователю сообщением."""
+    """Базовая ошибка LLM с понятным пользователю сообщением (REST: 502)."""
 
 
 class LLMNotConfiguredError(LLMError):
@@ -61,7 +59,32 @@ class LLMRateLimitError(LLMError):
     """Превышен лимит запросов к модели (429) — стоит повторить позже."""
 
 
-# ── Промпт ────────────────────────────────────────────────────────────────
+# ── Провайдер-агностичный интерфейс (I7) ─────────────────────────────────────
+
+@runtime_checkable
+class NutritionLLM(Protocol):
+    """Контракт LLM-расчёта КБЖУ. FoodService зависит ТОЛЬКО от него (I7)."""
+
+    async def parse_text(self, text: str) -> NutritionResult: ...
+
+    async def analyze_photo(
+        self, image_bytes: bytes, caption: str = "", mime_type: str = "image/jpeg"
+    ) -> NutritionResult: ...
+
+    async def analyze_dish_text(
+        self, description: str, name: str, weight_g: float
+    ) -> NutritionResult: ...
+
+    async def analyze_dish_photos(
+        self, images_b64: list[str], name: str, weight_g: float
+    ) -> NutritionResult: ...
+
+    async def analyze_dish_combined(
+        self, text: str, images_b64: list[str], name: str, weight_g: float
+    ) -> NutritionResult: ...
+
+
+# ── Промпты ──────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = (
     "Ты — нутрициолог-калькулятор. По описанию еды или фото оцени КБЖУ.\n"
@@ -80,8 +103,7 @@ _SYSTEM_PROMPT = (
     "- Числа без единиц измерения. Никакого текста вне JSON."
 )
 
-# Промпт для анализа целого блюда по нескольким фото.
-# Возвращает ровно одну позицию — суммарное КБЖУ для указанной порции.
+# Анализ целого блюда по нескольким фото → ровно одна позиция (суммарное КБЖУ).
 _DISH_PROMPT = (
     "Ты — нутрициолог-калькулятор. По одному или нескольким фото оцени КБЖУ ВСЕГО блюда.\n"
     "Верни СТРОГО JSON-объект вида:\n"
@@ -95,8 +117,7 @@ _DISH_PROMPT = (
     "- Числа без единиц измерения. Никакого текста вне JSON."
 )
 
-# Промпт для совмещённого режима: текст с граммовками + фото этикеток.
-# Модель читает напечатанные значения с этикеток и применяет граммовки из текста.
+# Совмещённый режим: текст с граммовками + фото этикеток.
 _COMBINED_PROMPT = (
     "Ты — нутрициолог-калькулятор. Тебе дан состав блюда с граммовками (текст) "
     "и фото этикеток ингредиентов (изображения).\n"
@@ -115,9 +136,9 @@ _COMBINED_PROMPT = (
 )
 
 
-# ── Клиент (ленивый синглтон) ────────────────────────────────────────────────
-# AsyncGroq держит внутри httpx-клиент. Создаём один на процесс, чтобы не
-# плодить соединения на каждый запрос.
+# ── Клиент Groq (ленивый синглтон) ───────────────────────────────────────────
+# AsyncGroq держит httpx-клиент. Создаём один на процесс. Ленивость важна и для
+# тестов: импорт модуля не трогает сеть/ключ — клиент рождается только при вызове.
 
 _client: AsyncGroq | None = None
 
@@ -134,10 +155,7 @@ def _get_client() -> AsyncGroq:
 
 
 def _extract_json(content: str) -> dict:
-    """
-    Достаёт JSON из ответа модели. В json-режиме контент уже чистый JSON,
-    но на всякий случай срезаем ```-ограждения и берём внешние скобки.
-    """
+    """Достаёт JSON из ответа модели (срезает ```-ограждения, берёт внешние скобки)."""
     text = content.strip()
     if text.startswith("```"):
         text = text.split("```", 2)[1] if "```" in text[3:] else text
@@ -152,10 +170,14 @@ def _extract_json(content: str) -> dict:
 
 
 class LLMService:
+    """Groq-реализация контракта `NutritionLLM` (vision + text, строгий JSON)."""
+
     def __init__(self, model: str | None = None):
         self.model = model or settings.groq_model
 
-    async def _complete(self, user_content, system_prompt: str | None = None) -> NutritionResult:
+    async def _complete(
+        self, user_content, system_prompt: str | None = None
+    ) -> NutritionResult:
         """Общий вызов чата для текста и фото. user_content — str или список частей."""
         try:
             response = await _get_client().chat.completions.create(
@@ -169,7 +191,9 @@ class LLMService:
                 max_tokens=1024,
             )
         except RateLimitError as e:
-            raise LLMRateLimitError("Лимит запросов к модели исчерпан, попробуй позже") from e
+            raise LLMRateLimitError(
+                "Лимит запросов к модели исчерпан, попробуй позже"
+            ) from e
         except APIError as e:
             logger.error(f"Groq API error: {e}")
             raise LLMError("Сервис расчёта КБЖУ временно недоступен") from e
@@ -208,12 +232,9 @@ class LLMService:
         return await self._complete(parts)
 
     async def analyze_dish_text(
-        self,
-        description: str,
-        name: str,
-        weight_g: float,
+        self, description: str, name: str, weight_g: float
     ) -> NutritionResult:
-        """Текстовый состав блюда + название + вес → суммарное КБЖУ для одной порции."""
+        """Текстовый состав блюда + название + вес → суммарное КБЖУ одной порции."""
         text = (
             f'Блюдо: "{name}", вес порции: {weight_g} г. '
             f"Состав: {description}. "
@@ -222,12 +243,9 @@ class LLMService:
         return await self._complete(text, system_prompt=_DISH_PROMPT)
 
     async def analyze_dish_photos(
-        self,
-        images_b64: list[str],
-        name: str,
-        weight_g: float,
+        self, images_b64: list[str], name: str, weight_g: float
     ) -> NutritionResult:
-        """До 5 фото блюда + название + вес → суммарное КБЖУ для одной порции."""
+        """До 5 фото блюда + название + вес → суммарное КБЖУ одной порции."""
         parts: list[dict] = [
             {
                 "type": "text",
@@ -237,19 +255,17 @@ class LLMService:
                 ),
             }
         ]
-        for b64 in images_b64[:5]:
-            parts.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-            })
+        for b64 in images_b64[:5]:  # лимит Groq: ≤ 5 изображений (I6)
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                }
+            )
         return await self._complete(parts, system_prompt=_DISH_PROMPT)
 
     async def analyze_dish_combined(
-        self,
-        text: str,
-        images_b64: list[str],
-        name: str,
-        weight_g: float,
+        self, text: str, images_b64: list[str], name: str, weight_g: float
     ) -> NutritionResult:
         """Текст с граммовками + фото этикеток → суммарное КБЖУ. Самый точный режим."""
         parts: list[dict] = [
@@ -262,8 +278,10 @@ class LLMService:
             }
         ]
         for b64 in images_b64[:5]:
-            parts.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-            })
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                }
+            )
         return await self._complete(parts, system_prompt=_COMBINED_PROMPT)

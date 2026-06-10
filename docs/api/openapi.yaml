@@ -352,7 +352,6 @@ paths:
       summary: План/факт/разница/% по категориям (агрегат родителя + drill-down)
       description: "Каденс D/W/M/Q/Y + произвольный период. plan/diff = null вне целых календарных месяцев (Q1-А2, I9)."
       parameters:
-        - { name: metric, in: query, schema: { type: string } }
         - { name: period, in: query, schema: { type: string, enum: [D, W, M, Q, Y, custom] } }
         - { $ref: "#/components/parameters/From" }
         - { $ref: "#/components/parameters/To" }

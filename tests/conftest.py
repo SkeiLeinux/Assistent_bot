@@ -4,9 +4,10 @@ import pytest_asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import app.db.models  # noqa: F401 — транзит Nutrition (shared_foods/food_entries)
 import app.kernel.models  # noqa: F401 — регистрирует kernel-таблицы
 import app.contexts.lists.models  # noqa: F401 — Lists (lists/list_items/history/hidden_from)
+import app.contexts.finance.models  # noqa: F401 — Finance (categories/budgets/actuals/income)
+import app.contexts.nutrition.models  # noqa: F401 — Nutrition (shared_foods/food_entries/nutrition_goals)
 import tests.shareable_harness  # noqa: F401 — регистрирует синтетическую test_gifts
 from app.db.base import Base
 
