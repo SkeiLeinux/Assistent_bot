@@ -25,7 +25,8 @@ from alembic import context
 # и генерировать миграции автоматически (autogenerate)
 from app.db.base import Base
 import app.kernel.models  # noqa: F401 — kernel: users/families/memberships/invites
-import app.db.models  # noqa: F401 — транзит-домен: list_categories/list_items/shared_foods/food_entries
+import app.contexts.lists.models  # noqa: F401 — Lists: lists/list_items/hidden_from/history
+import app.db.models  # noqa: F401 — транзит Nutrition: shared_foods/food_entries
 from app.config import settings
 
 # Конфиг из alembic.ini (нужен для настройки логирования)

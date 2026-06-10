@@ -10,6 +10,7 @@ db/database.py — подключение к базе данных и иници
   обрабатывать другие сообщения пока идёт запрос к БД.
 """
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.db.base import Base
 from app.config import settings
@@ -22,6 +23,18 @@ engine = create_async_engine(
     settings.database_url,
     echo=True,
 )
+
+
+# SQLite по умолчанию НЕ форсит внешние ключи (PRAGMA foreign_keys=OFF), из-за чего
+# ondelete=CASCADE не срабатывает на Core-DELETE (например, clear-done каскадит детей/
+# историю/hidden_from). Включаем на каждом соединении. На Postgres FK форсятся всегда —
+# pragma не нужен (и приведёт к ошибке), поэтому только для sqlite.
+if engine.dialect.name == "sqlite":
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _record):  # noqa: ANN001
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 # Фабрика сессий. Сессия = единица работы с базой (Unit of Work паттерн).
 # expire_on_commit=False означает: после commit() объекты не "протухают"

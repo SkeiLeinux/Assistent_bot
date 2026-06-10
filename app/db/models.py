@@ -1,87 +1,22 @@
 """
-db/models.py — SQLAlchemy модели.
+db/models.py — транзитные доменные модели (дормант до своего среза).
 
-Изменения в этой версии:
-  ListCategory получила self-referential связь:
-    parent_id → ссылка на родительскую категорию (NULL = корневая)
-    children  → список дочерних категорий
-    parent    → родительская категория
+⚠️ Состояние Среза 2a:
+  • User/Family переехали в app/kernel/models/ (Срез 1).
+  • ListCategory/ListItem мигрировали в app/contexts/lists/models/ (Срез 2a) и удалены отсюда.
+  • Остались Nutrition-модели (SharedFood/FoodEntry) — приводятся к spec-nutrition в Срезе 2c
+    (тогда же: SharedFood.family_id, NutritionGoals, namespace /api/v1/nutrition/*).
 
-  Это паттерн Adjacency List — самый простой способ хранить деревья в SQL.
-  Каждая запись знает только своего непосредственного родителя.
-  Для получения всего пути (breadcrumb) идём вверх по цепочке parent.
+FK-колонки ссылаются на kernel-таблицы users/families по имени. Cross-relationships
+на User/Family срезаны (иначе маппер не сконфигурится с чистым kernel-User).
 """
 
 from datetime import datetime
-from sqlalchemy import (
-    BigInteger, Boolean, DateTime, Float, ForeignKey,
-    Integer, String, Text, func
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
-
-# ⚠️ Срез 1: User и Family переехали в app/kernel/models/ (kernel — источник идентичности).
-# Здесь остались ТОЛЬКО транзитные доменные модели (Lists/Nutrition); их FK-колонки
-# ссылаются на kernel-таблицы users/families по имени. Cross-relationships на User/Family
-# срезаны (иначе маппер не сконфигурится с чистым kernel-User) — будут восстановлены при
-# миграции доменов под Shareable/visible_to в Срезе 2. Сами модели приводятся к specs там же.
-
-
-class ListCategory(Base):
-    __tablename__ = "list_categories"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    family_id: Mapped[int] = mapped_column(ForeignKey("families.id"), index=True)
-    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    name: Mapped[str] = mapped_column(String(100))
-    emoji: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    # ── Иерархия (Adjacency List) ──────────────────────────────────────────
-    # parent_id = NULL означает корневую категорию (видна в главном меню).
-    # parent_id = 5 означает что эта категория вложена в категорию с id=5.
-    #
-    # remote_side=[id] — говорит SQLAlchemy что "родительская" сторона
-    # связи — это поле id ЭТОЙ ЖЕ таблицы. Без этого он не поймёт
-    # направление self-referential связи.
-    parent_id: Mapped[int | None] = mapped_column(
-        ForeignKey("list_categories.id", ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-    )
-    children: Mapped[list["ListCategory"]] = relationship(
-        back_populates="parent",
-        cascade="all, delete-orphan",  # удалил родителя — удалились все дети
-    )
-    parent: Mapped["ListCategory | None"] = relationship(
-        back_populates="children",
-        remote_side="ListCategory.id",  # строковая ссылка т.к. класс ещё не до конца определён
-    )
-    # ──────────────────────────────────────────────────────────────────────
-
-    items: Mapped[list["ListItem"]] = relationship(
-        back_populates="category",
-        cascade="all, delete-orphan",
-    )
-
-
-class ListItem(Base):
-    __tablename__ = "list_items"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("list_categories.id"), index=True)
-    added_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    text: Mapped[str] = mapped_column(Text)
-    is_checked: Mapped[bool] = mapped_column(Boolean, default=False)
-    position: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    category: Mapped["ListCategory"] = relationship(back_populates="items")
 
 
 class SharedFood(Base):

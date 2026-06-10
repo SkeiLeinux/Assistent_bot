@@ -5,6 +5,8 @@ from app.kernel.sharing.visibility import (
     Viewer,
     VisibilityDTO,
     VisibilityError,
+    not_hidden,
+    scope_visible,
     visible_to,
 )
 
@@ -13,5 +15,7 @@ __all__ = [
     "VisibilityDTO",
     "VisibilityError",
     "visible_to",
+    "scope_visible",
+    "not_hidden",
     "ShareableRepository",
 ]

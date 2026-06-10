@@ -1,0 +1,1113 @@
+openapi: 3.0.3
+info:
+  title: Семейный ассистент — REST API (MVP / E1)
+  version: 1.0.0-mvp
+  description: |
+    Консолидированный контракт всех контекстов E1 по принятым ТЗ (docs/04_specs/*, 2026-06-07).
+    SSOT при расхождении — ТЗ; этот файл — производный артефакт для фронта (волна C) и standalone-шва (E5).
+    Аутентификация: каждый запрос несёт Telegram initData в заголовке X-Telegram-Init-Data (HMAC, max-age 30 дней).
+    Все сообщения об ошибках — на русском. Контракты E2+ добавляются на входе своих этапов.
+    Пометка [as-built] у Nutrition: формы унаследованы из current-state кода, сверить при волне C.
+servers:
+  - url: /api/v1
+security:
+  - initData: []
+tags:
+  - name: identity
+    description: Kernel — пользователь, семья, пейринг (spec-identity-sharing §10)
+  - name: lists
+    description: Типизированные списки (spec-lists §10)
+  - name: finance
+    description: Бюджет план/факт + импорт xlsx (spec-finance §10)
+  - name: nutrition
+    description: Дневник питания, КБЖУ (spec-nutrition §9)
+  - name: reminders
+    description: Напоминания (spec-reminders §9)
+  - name: analytics
+    description: Кросс-сферный обзор и дайджест (spec-analytics §9)
+
+paths:
+  /me:
+    get:
+      tags: [identity]
+      summary: Текущий пользователь + семья + партнёр
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /family:
+    get:
+      tags: [identity]
+      summary: Семья и её члены
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Family" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [identity]
+      summary: Создать семью (если не состоит)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { name: { type: string, nullable: true } }
+      responses:
+        "200":
+          description: Семья создана; активный инвайт для партнёра
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  family: { $ref: "#/components/schemas/Family" }
+                  invite: { $ref: "#/components/schemas/Invite" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /family/invites:
+    post:
+      tags: [identity]
+      summary: (Пере)выпустить активный инвайт (старый → revoked)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Invite" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /family/join:
+    post:
+      tags: [identity]
+      summary: Вступить по инвайт-коду (гварды I3/I4/I5)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties: { code: { type: string } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Family" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "410": { description: Инвайт просрочен/использован/отозван, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /lists:
+    get:
+      tags: [lists]
+      summary: Видимые зрителю списки
+      parameters:
+        - { name: type, in: query, schema: { $ref: "#/components/schemas/ListType" } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/List" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [lists]
+      summary: Создать список
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, name]
+              properties:
+                type: { $ref: "#/components/schemas/ListType" }
+                name: { type: string }
+                emoji: { type: string, maxLength: 2, nullable: true }
+                scope: { $ref: "#/components/schemas/Scope" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/List" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /lists/{id}:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    get:
+      tags: [lists]
+      summary: Список + дерево элементов (видимость-фильтровано)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ListDetail" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [lists]
+      summary: Имя / иконка / scope
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                emoji: { type: string, maxLength: 2 }
+                scope: { $ref: "#/components/schemas/Scope" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/List" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [lists]
+      summary: Удалить список (каскад элементов/истории/исключений)
+      responses:
+        "204": { description: Удалено }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /lists/{id}/items:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    post:
+      tags: [lists]
+      summary: Добавить элемент или папку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                parent_id: { type: integer, nullable: true }
+                specific_attrs: { type: object, nullable: true, description: "Схема валидируется по List.type (I5)" }
+                hidden_from: { type: array, items: { type: integer }, description: "user_id; только в FAMILY-списке (I7/I8)" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Item" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /items/{id}:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    patch:
+      tags: [lists]
+      summary: Текст / статус / attrs / скрытие / перенос
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                status: { $ref: "#/components/schemas/ItemStatus" }
+                specific_attrs: { type: object }
+                hidden_from: { type: array, items: { type: integer } }
+                parent_id: { type: integer, nullable: true }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Item" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Не найден или скрыт от зрителя, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [lists]
+      summary: Удалить элемент (каскад детей)
+      responses:
+        "204": { description: Удалено }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /lists/{id}/clear-done:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    post:
+      tags: [lists]
+      summary: Удалить отмеченные (только видимые зрителю — CH-10)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { deleted: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /lists/search:
+    get:
+      tags: [lists]
+      summary: Поиск по видимым элементам и названиям списков (Q1-А8)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SearchHit" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /lists/analytics:
+    get:
+      tags: [lists]
+      summary: Аналитика по типу (DONE за период, динамика)
+      parameters:
+        - { name: type, in: query, required: true, schema: { $ref: "#/components/schemas/ListType" } }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ListAnalytics" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /items/{id}/history:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    get:
+      tags: [lists]
+      summary: История элемента (action-лог, капится)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/HistoryEntry" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /finance/import:
+    post:
+      tags: [finance]
+      summary: Загрузить и импортировать xlsx бюджета (идемпотентно по месяцу, fail-loud)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                year:
+                  type: integer
+                  description: "Год листов (решение Q1-А1); по умолчанию текущий, UI предзаполняет"
+      responses:
+        "200": { description: Отчёт импорта, content: { application/json: { schema: { $ref: "#/components/schemas/ImportResult" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: Структура не распознана / инвариант родитель=Σ нарушен — ничего не записано, content: { application/json: { schema: { $ref: "#/components/schemas/ImportResult" } } } }
+
+  /finance/months:
+    get:
+      tags: [finance]
+      summary: Импортированные месяцы
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/MonthInfo" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /finance/categories:
+    get:
+      tags: [finance]
+      summary: Дерево категорий
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, NEEDS_REVIEW] } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CategoryNode" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /finance/categories/review:
+    get:
+      tags: [finance]
+      summary: Очередь категорий на ревью (NEEDS_REVIEW)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CategoryNode" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /finance/categories/{id}/resolve:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    post:
+      tags: [finance]
+      summary: Подтвердить новую категорию или связать алиасом
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [accept, alias] }
+                target_id: { type: integer, description: "Канон для action=alias" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryNode" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /finance/analytics:
+    get:
+      tags: [finance]
+      summary: План/факт/разница/% по категориям (агрегат родителя + drill-down)
+      description: "Каденс D/W/M/Q/Y + произвольный период. plan/diff = null вне целых календарных месяцев (Q1-А2, I9)."
+      parameters:
+        - { name: metric, in: query, schema: { type: string } }
+        - { name: period, in: query, schema: { type: string, enum: [D, W, M, Q, Y, custom] } }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+        - { name: category_id, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FinanceAnalytics" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /finance/income:
+    get:
+      tags: [finance]
+      summary: Доходы по источникам/партнёрам, переходящий остаток, дельта
+      description: "Доходы агрегируются только по месяцам, целиком входящим в период (Q1-А4, I10)."
+      parameters:
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/IncomeReport" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /finance/export:
+    get:
+      tags: [finance]
+      summary: Выгрузка периода в xlsx (Q1-Б1)
+      description: "Лист «Сводка»: дерево категорий, план/факт/разница/%; лист «По дням»: подкатегория × дата."
+      parameters:
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200":
+          description: xlsx-файл
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /nutrition/day:
+    get:
+      tags: [nutrition]
+      summary: "Итоги дня: totals + цели + прогресс + приёмы [as-built]"
+      parameters:
+        - { name: date, in: query, schema: { type: string, format: date } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/NutritionDay" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /nutrition/goals:
+    get:
+      tags: [nutrition]
+      summary: Текущие цели КБЖУ (PERSONAL)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/NutritionGoals" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [nutrition]
+      summary: Задать/снять цели (null = снять)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NutritionGoals" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/NutritionGoals" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /nutrition/analyze:
+    post:
+      tags: [nutrition]
+      summary: LLM-разбор еды (текст/фото) — БЕЗ записи (I5)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [text, photo] }
+                text: { type: string }
+                image: { type: string, description: "base64 ≤ 4 МБ (I6)" }
+                caption: { type: string }
+      responses:
+        "200":
+          description: Распознанные позиции (черновик, на подтверждение)
+          content:
+            application/json:
+              schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/FoodItemDraft" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { description: Лимит Groq, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: LLMError, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /nutrition/entries:
+    post:
+      tags: [nutrition]
+      summary: Сохранить подтверждённые позиции в дневник
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, source]
+              properties:
+                items: { type: array, items: { $ref: "#/components/schemas/FoodItemDraft" } }
+                meal_type: { $ref: "#/components/schemas/MealType" }
+                source: { type: string, enum: [manual, photo, db] }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/FoodEntry" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /nutrition/entries/from-food:
+    post:
+      tags: [nutrition]
+      summary: Запись из каталога SharedFood (пересчёт по граммам, без LLM)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [food_id, weight_g]
+              properties:
+                food_id: { type: integer }
+                weight_g: { type: number }
+                meal_type: { $ref: "#/components/schemas/MealType" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FoodEntry" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /nutrition/entries/{id}:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    patch:
+      tags: [nutrition]
+      summary: Правка записи дневника (владелец)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FoodItemDraft" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/FoodEntry" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [nutrition]
+      summary: Удалить запись (владелец)
+      responses:
+        "204": { description: Удалено }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /nutrition/period:
+    get:
+      tags: [nutrition]
+      summary: Записи по дням за период (+ цели) [as-built]
+      parameters:
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/NutritionPeriod" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /nutrition/export:
+    get:
+      tags: [nutrition]
+      summary: Markdown-дамп периода для внешнего анализа
+      parameters:
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { text/markdown: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /nutrition/foods:
+    get:
+      tags: [nutrition]
+      summary: Каталог SharedFood (поиск / quick-pick, FAMILY)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SharedFood" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [nutrition]
+      summary: Создать блюдо в каталоге
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SharedFood" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SharedFood" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /nutrition/foods/analyze:
+    post:
+      tags: [nutrition]
+      summary: LLM-разбор состава блюда (текст/фото этикеток/комбо) — без записи
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                images: { type: array, items: { type: string }, maxItems: 5, description: "base64, суммарно ≤ 4 МБ" }
+      responses:
+        "200": { description: Черновик КБЖУ на 100 г, content: { application/json: { schema: { $ref: "#/components/schemas/SharedFood" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: Лимит Groq, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: LLMError, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /reminders:
+    get:
+      tags: [reminders]
+      summary: Видимые напоминания
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ReminderStatus" } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Reminder" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [reminders]
+      summary: Создать напоминание
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, fire_at, recurrence]
+              properties:
+                text: { type: string }
+                fire_at: { type: string, format: date-time, description: "Первый слот; для weekly задаёт и день недели" }
+                recurrence: { $ref: "#/components/schemas/Recurrence" }
+                interval_seconds: { type: integer, description: "Обязателен для interval" }
+                scope: { $ref: "#/components/schemas/Scope" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /reminders/{id}:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    get:
+      tags: [reminders]
+      summary: Одно напоминание
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [reminders]
+      summary: Правка (текст/время/recurrence/scope)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                fire_at: { type: string, format: date-time }
+                recurrence: { $ref: "#/components/schemas/Recurrence" }
+                interval_seconds: { type: integer }
+                scope: { $ref: "#/components/schemas/Scope" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [reminders]
+      summary: Удалить (→ CANCELLED)
+      responses:
+        "204": { description: Отменено }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reminders/{id}/ack:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    post:
+      tags: [reminders]
+      summary: «Выполнено» (одноразовое → DONE; повторяемое — подтверждает срабатывание)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reminders/{id}/snooze:
+    parameters: [ { $ref: "#/components/parameters/Id" } ]
+    post:
+      tags: [reminders]
+      summary: Отложить на N минут (next_fire_at = now + N)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [minutes]
+              properties: { minutes: { type: integer, minimum: 1 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /analytics/overview:
+    get:
+      tags: [analytics]
+      summary: Кросс-сферная сводка (видимость-фильтровано)
+      parameters:
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Overview" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /analytics/digest/preview:
+    get:
+      tags: [analytics]
+      summary: Превью дайджеста для зрителя (без отправки)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Digest" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /analytics/digest/schedules:
+    get:
+      tags: [analytics]
+      summary: Расписания дайджеста семьи (daily + weekly)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/DigestSchedule" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /analytics/digest/schedules/{cadence}:
+    parameters:
+      - { name: cadence, in: path, required: true, schema: { type: string, enum: [DAILY, WEEKLY] } }
+    put:
+      tags: [analytics]
+      summary: Задать расписание (время/weekday/вкл)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [time_of_day]
+              properties:
+                enabled: { type: boolean }
+                weekday: { type: integer, minimum: 0, maximum: 6, description: "Для WEEKLY; вс=6" }
+                time_of_day: { type: string, example: "23:59" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/DigestSchedule" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+components:
+  securitySchemes:
+    initData:
+      type: apiKey
+      in: header
+      name: X-Telegram-Init-Data
+      description: Telegram initData (HMAC по BOT_TOKEN, max-age 30 дней; whitelist)
+
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: integer } }
+    From: { name: from, in: query, schema: { type: string, format: date } }
+    To: { name: to, in: query, schema: { type: string, format: date } }
+
+  responses:
+    Unauthorized: { description: "initData отсутствует/битый/просрочен", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: "Не в whitelist", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: "Не найдено (или скрыто видимостью)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Conflict: { description: "Конфликт состояния (409)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Unprocessable: { description: "Валидация (422, вкл. I7–I9 видимости)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string, description: "ru" }
+
+    Scope: { type: string, enum: [personal, family], default: family }
+    ListType: { type: string, enum: [TASK, SHOPPING, IDEA, MOVIE, GIFT, LINK] }
+    ItemStatus: { type: string, enum: [OPEN, DONE] }
+    MealType: { type: string, enum: [breakfast, lunch, dinner, snack] }
+    Recurrence: { type: string, enum: [none, daily, weekly, interval] }
+    ReminderStatus: { type: string, enum: [ACTIVE, DONE, MISSED, CANCELLED] }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        telegram_user_id: { type: integer, format: int64 }
+        first_name: { type: string }
+        username: { type: string, nullable: true }
+        is_admin: { type: boolean }
+
+    Member:
+      type: object
+      properties:
+        user_id: { type: integer }
+        first_name: { type: string }
+        username: { type: string, nullable: true }
+        joined_at: { type: string, format: date-time }
+        is_self: { type: boolean }
+
+    Family:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        members: { type: array, items: { $ref: "#/components/schemas/Member" } }
+
+    Me:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        family:
+          allOf: [ { $ref: "#/components/schemas/Family" } ]
+          nullable: true
+
+    Invite:
+      type: object
+      properties:
+        code: { type: string }
+        status: { type: string, enum: [active, used, expired, revoked] }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    List:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { $ref: "#/components/schemas/ListType" }
+        name: { type: string }
+        emoji: { type: string, nullable: true }
+        scope: { $ref: "#/components/schemas/Scope" }
+        counts:
+          type: object
+          description: Для зрителя; скрытые элементы исключены
+          properties:
+            open: { type: integer }
+            done: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    Item:
+      type: object
+      properties:
+        id: { type: integer }
+        list_id: { type: integer }
+        parent_id: { type: integer, nullable: true }
+        text: { type: string }
+        status: { $ref: "#/components/schemas/ItemStatus" }
+        completed_at: { type: string, format: date-time, nullable: true }
+        specific_attrs: { type: object, nullable: true }
+        hidden_from: { type: array, items: { type: integer } }
+        position: { type: integer }
+        added_by: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ListDetail:
+      allOf:
+        - { $ref: "#/components/schemas/List" }
+        - type: object
+          properties:
+            items: { type: array, items: { $ref: "#/components/schemas/Item" }, description: "Дерево через parent_id" }
+
+    SearchHit:
+      type: object
+      description: "kind=item — совпадение в элементе (item+list); kind=list — совпадение в названии списка (только list)"
+      properties:
+        kind: { type: string, enum: [item, list] }
+        item: { $ref: "#/components/schemas/Item" }
+        list:
+          type: object
+          properties:
+            id: { type: integer }
+            type: { $ref: "#/components/schemas/ListType" }
+            name: { type: string }
+
+    ListAnalytics:
+      type: object
+      properties:
+        type: { $ref: "#/components/schemas/ListType" }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        total: { type: integer }
+        done: { type: integer }
+        by_period:
+          type: array
+          items:
+            type: object
+            properties:
+              period: { type: string }
+              done: { type: integer }
+
+    HistoryEntry:
+      type: object
+      properties:
+        action: { type: string, enum: [CREATED, EDITED, STATUS_CHANGED, MOVED] }
+        detail: { type: string, nullable: true }
+        user_id: { type: integer }
+        at: { type: string, format: date-time }
+
+    ImportResult:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, failed] }
+        months:
+          type: array
+          items:
+            type: object
+            properties:
+              month: { type: string, example: "2026-03" }
+              categories: { type: integer }
+              income: { type: integer }
+        created_for_review: { type: array, items: { $ref: "#/components/schemas/CategoryNode" } }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: integer }
+              reason: { type: string }
+
+    MonthInfo:
+      type: object
+      properties:
+        month: { type: string, example: "2026-03" }
+        imported_at: { type: string, format: date-time }
+        categories: { type: integer }
+        has_facts: { type: boolean }
+
+    CategoryNode:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        parent_id: { type: integer, nullable: true }
+        status: { type: string, enum: [ACTIVE, NEEDS_REVIEW] }
+        children: { type: array, items: { $ref: "#/components/schemas/CategoryNode" } }
+
+    FinanceAnalytics:
+      type: object
+      properties:
+        period: { type: string }
+        range: { type: string }
+        total:
+          type: object
+          properties:
+            plan: { type: number, nullable: true }
+            fact: { type: number }
+            diff: { type: number, nullable: true }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              category_id: { type: integer }
+              name: { type: string }
+              plan: { type: number, nullable: true }
+              fact: { type: number }
+              diff: { type: number, nullable: true }
+              pct: { type: number, description: "Доля от общего" }
+              children: { type: array, items: { type: object }, description: "Рекурсивно та же форма" }
+
+    IncomeReport:
+      type: object
+      properties:
+        range: { type: string }
+        by_source:
+          type: array
+          items:
+            type: object
+            properties:
+              source: { type: string }
+              kind: { type: string, enum: [CARRYOVER, PARTNER, CASHBACK, OTHER] }
+              partner: { type: string, nullable: true }
+              plan: { type: number, nullable: true }
+              fact: { type: number, nullable: true }
+        carryover: { type: number }
+        total_income: { type: number }
+        total_expense: { type: number }
+        delta: { type: number }
+
+    NutritionGoals:
+      type: object
+      description: null = цель не задана
+      properties:
+        kcal: { type: number, nullable: true }
+        protein: { type: number, nullable: true }
+        fat: { type: number, nullable: true }
+        carbs: { type: number, nullable: true }
+
+    FoodItemDraft:
+      type: object
+      description: Позиция на подтверждении (КБЖУ — абсолют за порцию)
+      properties:
+        description: { type: string }
+        weight_g: { type: number, nullable: true }
+        kcal: { type: number }
+        protein: { type: number }
+        fat: { type: number }
+        carbs: { type: number }
+
+    FoodEntry:
+      allOf:
+        - { $ref: "#/components/schemas/FoodItemDraft" }
+        - type: object
+          properties:
+            id: { type: integer }
+            created_at: { type: string, format: date-time }
+            meal_type: { $ref: "#/components/schemas/MealType" }
+            source: { type: string, enum: [manual, photo, db] }
+            shared_food_id: { type: integer, nullable: true }
+
+    NutritionDay:
+      type: object
+      description: "[as-built] форма current-state; сверить при волне C"
+      properties:
+        date: { type: string, format: date }
+        totals: { $ref: "#/components/schemas/FoodItemDraft" }
+        goals: { $ref: "#/components/schemas/NutritionGoals" }
+        progress: { type: object, description: "4 прогресс-бара (% от цели)" }
+        meals:
+          type: array
+          items:
+            type: object
+            properties:
+              meal_type: { $ref: "#/components/schemas/MealType" }
+              subtotal: { $ref: "#/components/schemas/FoodItemDraft" }
+              entries: { type: array, items: { $ref: "#/components/schemas/FoodEntry" } }
+
+    NutritionPeriod:
+      type: object
+      description: "[as-built]"
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        days:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              totals: { $ref: "#/components/schemas/FoodItemDraft" }
+              entries: { type: array, items: { $ref: "#/components/schemas/FoodEntry" } }
+
+    SharedFood:
+      type: object
+      description: КБЖУ — на 100 г (пересчёт по порции при добавлении записи)
+      properties:
+        id: { type: integer, readOnly: true }
+        name: { type: string }
+        weight_g: { type: number, description: "Стандартная порция" }
+        kcal_per_100g: { type: number }
+        protein_per_100g: { type: number }
+        fat_per_100g: { type: number }
+        carbs_per_100g: { type: number }
+        use_count: { type: integer, readOnly: true }
+
+    Reminder:
+      type: object
+      properties:
+        id: { type: integer }
+        text: { type: string }
+        next_fire_at: { type: string, format: date-time, nullable: true }
+        recurrence: { $ref: "#/components/schemas/Recurrence" }
+        interval_seconds: { type: integer, nullable: true }
+        scope: { $ref: "#/components/schemas/Scope" }
+        status: { $ref: "#/components/schemas/ReminderStatus" }
+        last_fired_at: { type: string, format: date-time, nullable: true }
+        owner_id: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    Overview:
+      type: object
+      description: Секции — по видимости зрителя
+      properties:
+        range: { type: string }
+        lists:
+          type: object
+          properties:
+            by_type: { type: array, items: { type: object } }
+        finance:
+          type: object
+          properties:
+            plan: { type: number, nullable: true }
+            fact: { type: number }
+            diff: { type: number, nullable: true }
+            top_deviations: { type: array, items: { type: object } }
+        nutrition:
+          type: object
+          properties:
+            kcal: { type: number }
+            goal: { type: number, nullable: true }
+
+    Digest:
+      type: object
+      properties:
+        period: { type: string }
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              sphere: { type: string, enum: [lists, finance, nutrition] }
+              items: { type: array, items: { type: string } }
+
+    DigestSchedule:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        cadence: { type: string, enum: [DAILY, WEEKLY] }
+        weekday: { type: integer, nullable: true }
+        time_of_day: { type: string, example: "23:59" }
+        last_sent_at: { type: string, format: date-time, nullable: true }

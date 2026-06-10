@@ -20,6 +20,32 @@ layers = [
     "app.db",
 ]
 
+# Контексты не зависят друг от друга (ADR-0004 §12): write-side домены изолированы,
+# общение — только через read-модули соседей (через Analytics) и общий kernel.
+[[tool.importlinter.contracts]]
+name = "Contexts are mutually independent"
+type = "independence"
+modules = [
+    "app.contexts.lists",
+    "app.contexts.finance",
+    "app.contexts.nutrition",
+    "app.contexts.reminders",
+]
+
+# A6: Analytics берёт данные домена ТОЛЬКО через contexts.<X>.read — прямой импорт
+# models/repositories/services/api запрещён (indirect через .read разрешён).
+[[tool.importlinter.contracts]]
+name = "Analytics reads Lists only via read-module"
+type = "forbidden"
+source_modules = ["app.analytics"]
+forbidden_modules = [
+    "app.contexts.lists.models",
+    "app.contexts.lists.repositories",
+    "app.contexts.lists.services",
+    "app.contexts.lists.api",
+]
+allow_indirect_imports = "true"
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"

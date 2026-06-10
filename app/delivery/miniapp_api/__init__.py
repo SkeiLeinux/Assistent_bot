@@ -1,9 +1,9 @@
 """REST мини-апы (монтаж aiohttp).
 
-Срез 1: отдаём только kernel REST (/api/v1/*). Эндпоинты еды (api.py) сняты с
-проводки до миграции Nutrition в Срезе 2 — файл остаётся, не импортируется.
+Срез 2: kernel REST (/api/v1/*) + Lists REST (/api/v1/lists,/items). Эндпоинты еды
+(api.py) сняты с проводки до миграции Nutrition (S2c) — файл остаётся, не импортируется.
 """
 
-from .kernel_api import create_app, start_web_server
+from .web import create_app, start_web_server
 
 __all__ = ["create_app", "start_web_server"]

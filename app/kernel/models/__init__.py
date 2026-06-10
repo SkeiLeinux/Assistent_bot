@@ -5,7 +5,7 @@
 
 from app.kernel.models.family import Family, Membership
 from app.kernel.models.invite import Invite, InviteStatus
-from app.kernel.models.shareable import Scope, Shareable
+from app.kernel.models.shareable import Hideable, Scope, Scoped, Shareable
 from app.kernel.models.user import User
 
 __all__ = [
@@ -15,5 +15,7 @@ __all__ = [
     "Invite",
     "InviteStatus",
     "Shareable",
+    "Scoped",
+    "Hideable",
     "Scope",
 ]

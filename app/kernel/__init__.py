@@ -13,10 +13,12 @@ from app.kernel.auth import (
 )
 from app.kernel.models import (
     Family,
+    Hideable,
     Invite,
     InviteStatus,
     Membership,
     Scope,
+    Scoped,
     Shareable,
     User,
 )
@@ -26,6 +28,8 @@ from app.kernel.sharing import (
     Viewer,
     VisibilityDTO,
     VisibilityError,
+    not_hidden,
+    scope_visible,
     visible_to,
 )
 
@@ -40,8 +44,12 @@ __all__ = [
     "Invite",
     "InviteStatus",
     "Shareable",
+    "Scoped",
+    "Hideable",
     "Scope",
     "visible_to",
+    "scope_visible",
+    "not_hidden",
     "Viewer",
     "VisibilityDTO",
     "VisibilityError",

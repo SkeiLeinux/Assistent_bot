@@ -1,11 +1,18 @@
 """kernel.sharing.visibility — механизм видимости (ТЗ Identity §5/§7, ADR-0001).
 
 Единственная точка определения фильтра видимости. Домены НЕ переписывают его у себя —
-читают через ShareableRepository (I10). Фильтр — один WHERE с NOT EXISTS (горячий путь §13).
+композируют из этих клауз (I10). Фильтр — WHERE с NOT EXISTS (горячий путь §13).
 
-Разрешение для зрителя v:
-  PERSONAL → owner_id == v.id
-  FAMILY   → family_id == v.family_id  AND  v.id NOT IN hidden_from(entity)
+Две композируемые грани (под разную гранулярность scope/hidden_from, kernel §7):
+  scope_visible(model, v)  — контейнерный фильтр (Scoped):
+      PERSONAL → owner_id == v.id
+      FAMILY   → family_id == v.family_id
+  not_hidden(model, v)     — поэлементный фильтр (Hideable):
+      v.id NOT IN hidden_from(entity)
+  visible_to(model, v)     — обе грани на одной сущности (Shareable): scope_visible ∧ not_hidden
+
+Двухуровневые контексты (Lists) композируют сами: контейнер — scope_visible(List),
+элемент — not_hidden(ListItem), join по принадлежности.
 """
 
 from dataclasses import dataclass
@@ -25,22 +32,27 @@ class Viewer:
     family_id: int | None = None
 
 
-def visible_to(model: type, viewer: Viewer) -> ColumnElement[bool]:
-    """WHERE-условие видимости shareable-`model` глазами `viewer`."""
-    hidden = model.hidden_from_table()
-    not_hidden = ~exists().where(
-        and_(hidden.c.entity_id == model.id, hidden.c.user_id == viewer.id)
-    )
+def scope_visible(model: type, viewer: Viewer) -> ColumnElement[bool]:
+    """Контейнерный фильтр Scoped-модели: personal→владелец, family→семья зрителя."""
     personal = and_(model.scope == Scope.PERSONAL, model.owner_id == viewer.id)
     if viewer.family_id is None:
         # Без семьи виден только personal-контент самого зрителя.
         return personal
-    family = and_(
-        model.scope == Scope.FAMILY,
-        model.family_id == viewer.family_id,
-        not_hidden,
-    )
+    family = and_(model.scope == Scope.FAMILY, model.family_id == viewer.family_id)
     return or_(personal, family)
+
+
+def not_hidden(model: type, viewer: Viewer) -> ColumnElement[bool]:
+    """Поэлементный фильтр Hideable-модели: зритель не в hidden_from сущности."""
+    hidden = model.hidden_from_table()
+    return ~exists().where(
+        and_(hidden.c.entity_id == model.id, hidden.c.user_id == viewer.id)
+    )
+
+
+def visible_to(model: type, viewer: Viewer) -> ColumnElement[bool]:
+    """Полная видимость Shareable-сущности (scope + скрытие на одной таблице)."""
+    return and_(scope_visible(model, viewer), not_hidden(model, viewer))
 
 
 # ── Валидация дескриптора видимости в пейлоадах доменов ──────────────────────
