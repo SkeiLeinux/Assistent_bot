@@ -105,6 +105,21 @@ source_modules = [
 forbidden_modules = ["app.contexts.finance.importing"]
 allow_indirect_imports = "true"
 
+# ADR-0013 / spec-nutrition-retrieval §2: резолвер `resolve` зависит от
+# services/models, НЕ наоборот. Цикла нет: extractor тянет Groq-клиент из
+# services.llm_service (resolve→services), а домен (models/repositories/services/
+# read) НЕ импортирует resolve — резолвер собирается в композиционном корне (api).
+[[tool.importlinter.contracts]]
+name = "Nutrition resolve is a leaf within Nutrition"
+type = "forbidden"
+source_modules = [
+    "app.contexts.nutrition.models",
+    "app.contexts.nutrition.repositories",
+    "app.contexts.nutrition.services",
+    "app.contexts.nutrition.read",
+]
+forbidden_modules = ["app.contexts.nutrition.resolve"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"

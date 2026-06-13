@@ -201,6 +201,8 @@ function NutritionApp({ onExit }) {
       const items = confirmItems.map(it => ({
         name: it.name, w: it.w, kcal: it.kcal, p: it.p, f: it.f, c: it.c,
         save: it.save || false,
+        // Провенанс из /analyze (ADR-0013): сохраняем источник позиции на запись.
+        source: it.source, source_ref: it.source_ref,
       }));
       const resp = await API.saveEntries({
         items, meal_type: mealType, source: confirmSource, date,

@@ -43,8 +43,13 @@ class FoodEntry(Base):
     fat: Mapped[float] = mapped_column(Float)
     carbs: Mapped[float] = mapped_column(Float)
 
-    # manual (текст) / photo (фото+vision) / db (из каталога).
-    source: Mapped[str] = mapped_column(String(10), default="manual")
+    # Провенанс КБЖУ (ADR-0013, ProvenanceSource): label/off/web/nutritionix/
+    # estimate — откуда взяты числа; db — из каталога; manual — ручной ввод.
+    # Семантика сменилась с input-mode (manual/photo/db) на провенанс данных.
+    # Ширина 20: длиннейшее значение enum — «nutritionix» (11) (R2/позже).
+    source: Mapped[str] = mapped_column(String(20), default="manual")
+    # Ссылка/код источника (URL OFF, цитата web); только для off/web.
+    source_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
     photo_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Источник из каталога (для source="db").
     shared_food_id: Mapped[int | None] = mapped_column(

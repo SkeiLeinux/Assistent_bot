@@ -21,6 +21,7 @@ commit) — здесь только flush через репозитории + co
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
+from time import monotonic
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -166,9 +167,18 @@ def _meal_type_by_hour(hour: int) -> str:
     return "snack"
 
 
+_DEFAULT_RESOLVER_BUDGET_S = 12.0
+# Провенанс, который кэшируем в каталог при сохранении (§11; estimate/db/manual — нет).
+_CACHEABLE_SOURCES = {"label", "off", "web"}
+
+
 class FoodService:
     def __init__(
-        self, session: AsyncSession, llm: NutritionLLM | None = None
+        self,
+        session: AsyncSession,
+        llm: NutritionLLM | None = None,
+        extractor=None,
+        resolver=None,
     ) -> None:
         self.session = session
         self.food_repo = FoodRepository(session)
@@ -176,7 +186,13 @@ class FoodService:
         self.goals_repo = GoalsRepository(session)
         # I7: зависимость только от контракта NutritionLLM. Дефолт — Groq;
         # тесты инжектят фейк, живых вызовов из pytest нет (GAP-6).
+        # llm используется только каталогом (/foods/analyze, расчётный путь).
         self.llm: NutritionLLM = llm or LLMService()
+        # ADR-0013: извлекатель (сегментация+per100g) и резолвер (лестница источников)
+        # для дневникового /analyze. Собираются в композиционном корне (api-роут)
+        # или инжектятся тестами — FoodService НЕ импортирует resolve (границы §2).
+        self.extractor = extractor
+        self.resolver = resolver
 
     # ── Таймзона / границы суток ─────────────────────────────────────────────
 
@@ -202,16 +218,86 @@ class FoodService:
     def today(self, timezone_name: str | None) -> date:
         return datetime.now(self._tz(timezone_name)).date()
 
-    # ── Анализ (LLM, без сохранения, I5) ─────────────────────────────────────
+    # ── Анализ дневника: извлечение + резолвер (ADR-0013, мульти-продукт, I5) ──
 
     async def analyze_text(self, text: str) -> NutritionResult:
-        return await self.llm.parse_text(text)
+        """1 LLM-вызов сегментирует ввод → СПИСОК позиций; резолвер уточняет каждую."""
+        extracted = await self._require_extractor().extract(text=text)
+        return await self._resolve_extracted(extracted)
 
     async def analyze_photo(
         self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
     ) -> NutritionResult:
-        """До 5 снимков дневника одним вызовом → позиции с КБЖУ (паритет с каталогом)."""
-        return await self.llm.analyze_photo(images, caption, mime_type)
+        """До 5 снимков дневника одним вызовом → позиции с КБЖУ + провенанс.
+
+        Этикетка читается → label (per100g точные); иначе резолвер ищет в OFF, в
+        пределе — estimate (оценка модели). Мультифото-аплоадер уже на проде (#2).
+        """
+        extracted = await self._require_extractor().extract(
+            images=images, caption=caption, mime_type=mime_type
+        )
+        return await self._resolve_extracted(extracted)
+
+    def _require_extractor(self):
+        if self.extractor is None:
+            raise RuntimeError(
+                "FoodService.extractor не сконфигурирован (см. resolve.build_extractor)"
+            )
+        return self.extractor
+
+    async def _resolve_extracted(self, extracted: list) -> NutritionResult:
+        """Резолвит КАЖДУЮ извлечённую позицию (лестница §4), масштабирует на порцию.
+
+        Бюджет на весь ввод (§3): дедлайн на сетевые ступени; после превышения
+        оставшиеся позиции отдаём как estimate без сети (числа уже есть в позиции).
+        """
+        if self.resolver is None:
+            raise RuntimeError(
+                "FoodService.resolver не сконфигурирован (см. resolve.build_resolver)"
+            )
+        budget = float(
+            getattr(self.resolver, "total_budget_s", _DEFAULT_RESOLVER_BUDGET_S)
+        )
+        deadline = monotonic() + budget
+        items: list[NutritionItem] = []
+        for ext in extracted:
+            allow_network = monotonic() < deadline
+            resolved = await self.resolver.refine(ext, allow_network=allow_network)
+            items.append(self._to_item(ext, resolved))
+        return NutritionResult(items=items)
+
+    @staticmethod
+    def _compose_name(ext) -> str:
+        """Отображаемое имя: родовое имя + бренд + жирность (§10: «молоко Домик в деревне 3.2%»)."""
+        fat = f"{ext.fat_pct:g}%" if ext.fat_pct is not None else None
+        return " ".join(p for p in (ext.name, ext.brand, fat) if p)
+
+    @staticmethod
+    def _to_item(ext, resolved) -> NutritionItem:
+        """ExtractedItem + ResolvedNutrition → NutritionItem (абсолют за порцию, I1).
+
+        per100g протаскивается на позицию (опция C, С. 2026-06-14): confirm-экран
+        пересчитывает КБЖУ при правке веса. portion_g=None → начально числа = per100g,
+        вес пуст; как только пользователь введёт вес, фронт пересчитает из per100g.
+        """
+        per = resolved.per100g
+        portion = ext.portion_g
+        factor = (portion / 100.0) if (portion and portion > 0) else 1.0
+        return NutritionItem(
+            description=FoodService._compose_name(ext),
+            weight_g=portion,
+            kcal=round(per.kcal * factor, 1),
+            protein=round(per.protein * factor, 1),
+            fat=round(per.fat * factor, 1),
+            carbs=round(per.carbs * factor, 1),
+            source=resolved.source,
+            source_ref=resolved.source_ref,
+            matched_name=resolved.matched_name,
+            kcal_100g=round(per.kcal, 2),
+            protein_100g=round(per.protein, 2),
+            fat_100g=round(per.fat, 2),
+            carbs_100g=round(per.carbs, 2),
+        )
 
     async def analyze_dish_text(
         self, description: str, name: str, weight_g: float
@@ -255,19 +341,24 @@ class FoodService:
 
         saved: list[FoodEntry] = []
         for i, item in enumerate(items):
+            # Провенанс per-item (ADR-0013): источник позиции побеждает; для «голой»
+            # ручной позиции (source=None) — дефолт вызова (канал/manual).
+            entry_source = item.source or source
             shared_food_id = None
-            do_save = save_to_db and i < len(save_to_db) and save_to_db[i]
-            if do_save and item.weight_g and item.weight_g > 0:
-                sf = await self.save_shared_food(
-                    viewer,
-                    name=item.description,
-                    weight_g=item.weight_g,
-                    kcal=item.kcal,
-                    protein=item.protein,
-                    fat=item.fat,
-                    carbs=item.carbs,
-                )
-                shared_food_id = sf.id
+
+            do_save = bool(save_to_db and i < len(save_to_db) and save_to_db[i])
+            if do_save:
+                # Явный тумблер «в базу»: каталог требует семьи (текущий контракт).
+                sf = await self._upsert_cached(viewer, item, require_family=True)
+                if sf is not None:
+                    shared_food_id = sf.id
+            elif entry_source in _CACHEABLE_SOURCES:
+                # Авто-кэш найденного (§11): off/label/web → каталог семьи; вне семьи
+                # тихо пропускаем (запись в дневник всё равно идёт).
+                sf = await self._upsert_cached(viewer, item, require_family=False)
+                if sf is not None:
+                    shared_food_id = sf.id
+
             entry = await self.food_repo.create(
                 user_id=viewer.id,
                 description=item.description,
@@ -277,7 +368,8 @@ class FoodService:
                 carbs=item.carbs,
                 weight_g=item.weight_g,
                 meal_type=meal_type,
-                source=source,
+                source=entry_source,
+                source_ref=item.source_ref,
                 photo_file_id=photo_file_id,
                 created_at=created_at,
                 shared_food_id=shared_food_id,
@@ -285,6 +377,55 @@ class FoodService:
             saved.append(entry)
         await self.session.commit()
         return saved
+
+    # ── Кэш найденного в каталоге (синергия со SharedFood, §11) ───────────────
+
+    @staticmethod
+    def _norm_name(name: str) -> str:
+        """Тривиальная нормализация имени для дедупа (lower, trim, ё→е, схлоп пробелов).
+
+        Зеркалит resolve.cache.normalize_name; держим локально, чтобы services не
+        импортировал resolve (границы §2). Полный ключ (с barcode) — в resolve.cache.
+        """
+        return " ".join(name.strip().lower().replace("ё", "е").split())
+
+    async def _find_cached(self, viewer: Viewer, name: str) -> SharedFood | None:
+        """Существующее блюдо каталога семьи с тем же (нормализованным) именем."""
+        target = self._norm_name(name)
+        if not target:
+            return None
+        for candidate in await self.shared_repo.search(viewer.family_id, name):
+            if self._norm_name(candidate.name) == target:
+                return candidate
+        return None
+
+    async def _upsert_cached(
+        self, viewer: Viewer, item: NutritionItem, *, require_family: bool
+    ) -> SharedFood | None:
+        """Дедуп-upsert блюда в каталог: есть по ключу → use_count++; иначе создать.
+
+        require_family=True (явный тумблер) — нет семьи → FamilyRequired (контракт).
+        require_family=False (авто-кэш) — нет семьи/веса → тихий пропуск (None).
+        """
+        if viewer.family_id is None:
+            if require_family:
+                self._require_family(viewer)  # raises FamilyRequired
+            return None
+        if not (item.weight_g and item.weight_g > 0):
+            return None
+        existing = await self._find_cached(viewer, item.description)
+        if existing is not None:
+            await self.shared_repo.increment_use_count(existing.id)
+            return existing
+        return await self.save_shared_food(
+            viewer,
+            name=item.description,
+            weight_g=item.weight_g,
+            kcal=item.kcal,
+            protein=item.protein,
+            fat=item.fat,
+            carbs=item.carbs,
+        )
 
     # ── Общий каталог блюд (FAMILY) ──────────────────────────────────────────
 

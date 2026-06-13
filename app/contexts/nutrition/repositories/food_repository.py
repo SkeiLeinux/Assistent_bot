@@ -33,6 +33,7 @@ class FoodRepository:
         weight_g: float | None = None,
         meal_type: str | None = None,
         source: str = "manual",
+        source_ref: str | None = None,
         photo_file_id: str | None = None,
         created_at: datetime | None = None,
         shared_food_id: int | None = None,
@@ -47,6 +48,7 @@ class FoodRepository:
             weight_g=weight_g,
             meal_type=meal_type,
             source=source,
+            source_ref=source_ref,
             photo_file_id=photo_file_id,
             shared_food_id=shared_food_id,
         )

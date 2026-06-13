@@ -469,7 +469,7 @@ paths:
               properties:
                 items: { type: array, items: { $ref: "#/components/schemas/FoodItemDraft" } }
                 meal_type: { $ref: "#/components/schemas/MealType" }
-                source: { type: string, enum: [manual, photo, db] }
+                source: { $ref: "#/components/schemas/ProvenanceSource" }
       responses:
         "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/FoodEntry" } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -584,7 +584,17 @@ paths:
                 text: { type: string }
                 images: { type: array, items: { type: string }, maxItems: 5, description: "base64, суммарно ≤ 4 МБ" }
       responses:
-        "200": { description: Черновик КБЖУ на 100 г, content: { application/json: { schema: { $ref: "#/components/schemas/SharedFood" } } } }
+        "200":
+          description: "Черновик КБЖУ на 100 г (+провенанс, ADR-0013)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/SharedFood" }
+                  - type: object
+                    properties:
+                      source: { $ref: "#/components/schemas/ProvenanceSource" }
+                      source_ref: { type: string, nullable: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { description: Лимит Groq, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
@@ -777,6 +787,14 @@ components:
     ListType: { type: string, enum: [TASK, SHOPPING, IDEA, MOVIE, GIFT, LINK] }
     ItemStatus: { type: string, enum: [OPEN, DONE] }
     MealType: { type: string, enum: [breakfast, lunch, dinner, snack] }
+    ProvenanceSource:
+      type: string
+      description: >-
+        Происхождение КБЖУ (ADR-0013): label=с этикетки, off=Open Food Facts,
+        web=Compound-поиск, nutritionix=Nutritionix, estimate=оценка модели,
+        db=из каталога SharedFood, manual=ввод вручную. Заменяет прежний
+        input-mode source [manual/photo/db] на провенанс данных.
+      enum: ["label", "off", "web", "nutritionix", "estimate", "db", "manual"]
     Recurrence: { type: string, enum: [none, daily, weekly, interval] }
     ReminderStatus: { type: string, enum: [ACTIVE, DONE, MISSED, CANCELLED] }
 
@@ -998,6 +1016,18 @@ components:
         protein: { type: number }
         fat: { type: number }
         carbs: { type: number }
+        source: { $ref: "#/components/schemas/ProvenanceSource" }
+        source_ref: { type: string, nullable: true, description: "URL/код товара/цитата источника (off/web)" }
+        matched_name: { type: string, nullable: true, description: "Как продукт назван в источнике (доверие/UI)" }
+        per100g:
+          type: object
+          nullable: true
+          description: "КБЖУ на 100 г — транспорт /analyze для пересчёта на confirm при правке веса (ADR-0013 опция C); не персистится"
+          properties:
+            kcal: { type: number }
+            p: { type: number }
+            f: { type: number }
+            c: { type: number }
 
     FoodEntry:
       allOf:
@@ -1007,7 +1037,7 @@ components:
             id: { type: integer }
             created_at: { type: string, format: date-time }
             meal_type: { $ref: "#/components/schemas/MealType" }
-            source: { type: string, enum: [manual, photo, db] }
+            source: { $ref: "#/components/schemas/ProvenanceSource" }
             shared_food_id: { type: integer, nullable: true }
 
     NutritionDay:

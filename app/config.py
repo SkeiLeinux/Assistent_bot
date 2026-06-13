@@ -18,6 +18,20 @@ class Settings(BaseSettings):
     # llama-4-scout — мультимодальная (текст + изображения), есть JSON-режим.
     groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 
+    # ── Резолвер КБЖУ (ADR-0013 / spec-nutrition-retrieval §12) ─────────────
+    # Open Food Facts: бесплатно, без ключа, но обязателен кастомный User-Agent.
+    # Фича-флагов нет — резолвер всегда включён, надёжность даёт деградация
+    # лестницы (источник не ответил → следующая → в пределе estimate).
+    off_base_url: str = "https://world.openfoodfacts.org"
+    # User-Agent обязателен по правилам OFF (имя приложения + реальный контакт).
+    # Дефолт уже валиден для прода; при необходимости переопределить в .env.
+    off_user_agent: str = "lifeManager_bot (skyline987650@gmail.com)"
+    off_lc: str = "ru"            # локаль поиска OFF (RU-выдача)
+    off_timeout_s: float = 2.5    # таймаут одного запроса к OFF
+    # Мягкий бюджет на ВСЕ сетевые ступени одного ввода: при превышении
+    # оставшиеся позиции отдаём как estimate без сети (числа уже есть).
+    resolver_total_budget_s: float = 12.0
+
     # ── Мини-апа "Еда" (Telegram Web App) ──────────────────────────────────
     # Внутренний адрес, на котором aiohttp слушает в одном процессе с ботом.
     # За HTTPS отвечает внешний слой (cloudflared-туннель или nginx+TLS).

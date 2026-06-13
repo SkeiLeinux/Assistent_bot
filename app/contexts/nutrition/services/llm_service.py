@@ -29,7 +29,13 @@ logger = logging.getLogger(__name__)
 # ── Контракт данных ─────────────────────────────────────────────────────────
 
 class NutritionItem(BaseModel):
-    """Одна позиция: продукт/блюдо с КБЖУ уже для съеденной порции (абсолют, I1)."""
+    """Одна позиция: продукт/блюдо с КБЖУ уже для съеденной порции (абсолют, I1).
+
+    Провенанс (ADR-0013, §5): `source`/`source_ref` происходят от резолвера и
+    сохраняются в FoodEntry. `matched_name` — только транспорт analyze→confirm
+    (как назван матч в источнике, для доверия/UI); в БД не пишется. `source=None`
+    на «голой» позиции (ручной ввод) → save_entries подставит дефолт вызова.
+    """
 
     description: str
     weight_g: float | None = None
@@ -37,6 +43,15 @@ class NutritionItem(BaseModel):
     protein: float
     fat: float
     carbs: float
+    source: str | None = None        # провенанс: label/off/web/estimate/db/manual
+    source_ref: str | None = None    # URL/код товара/цитата (off/web)
+    matched_name: str | None = None  # как назван матч в источнике (не персистится)
+    # per100g — транспорт для confirm-экрана (пересчёт КБЖУ при правке веса, ADR-0013
+    # опция C). НЕ персистится (FoodEntry хранит абсолют за порцию, I1).
+    kcal_100g: float | None = None
+    protein_100g: float | None = None
+    fat_100g: float | None = None
+    carbs_100g: float | None = None
 
 
 class NutritionResult(BaseModel):

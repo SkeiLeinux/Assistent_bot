@@ -18,9 +18,21 @@ from zoneinfo import ZoneInfo
 
 from aiohttp import web
 
+from app.contexts.nutrition.resolve import build_extractor, build_resolver
 from app.contexts.nutrition.services import FoodService, InvalidInput, NutritionItem
 
 _DEFAULT_TZ = "Europe/Amsterdam"
+
+# Провенанс КБЖУ (ADR-0013, ProvenanceSource) — допустимые значения source.
+# Канал ввода ('text'/'photo') больше не провенанс → нормализуем в 'manual'.
+_VALID_PROVENANCE = {
+    "label", "off", "web", "nutritionix", "estimate", "db", "manual",
+}
+
+
+def _provenance(value) -> str | None:
+    """Валидный ProvenanceSource или None (неизвестное/канал ввода → None)."""
+    return value if value in _VALID_PROVENANCE else None
 
 
 # ── JSON / разбор ────────────────────────────────────────────────────────────
@@ -40,7 +52,17 @@ async def _body(request: web.Request) -> dict:
 
 
 def _service(request: web.Request) -> FoodService:
-    return FoodService(request["session"])
+    """Композиционный корень: собираем извлекатель+резолвер (ADR-0013) и инжектим.
+
+    Здесь, в api-слое, допустимо тянуть resolve (FoodService — нет, границы §2).
+    Конструкция дешёвая (сеть к OFF — только на самом lookup); резолвер деградирует
+    в estimate, если источник недоступен.
+    """
+    return FoodService(
+        request["session"],
+        extractor=build_extractor(),
+        resolver=build_resolver(),
+    )
 
 
 def _viewer(request: web.Request):
@@ -108,7 +130,8 @@ def _entry(e, tz: ZoneInfo) -> dict:
         "p": round(e.protein, 1),
         "f": round(e.fat, 1),
         "c": round(e.carbs, 1),
-        "src": e.source,
+        "src": e.source,             # провенанс (ADR-0013)
+        "source_ref": e.source_ref,  # ссылка/код источника (off/web)
     }
 
 
@@ -152,14 +175,27 @@ def _shared_food(f, viewer_id: int) -> dict:
 
 
 def _item(it: NutritionItem) -> dict:
-    return {
+    # Провенанс на позицию (ADR-0013): фронт показывает источник, save несёт его обратно.
+    out = {
         "name": it.description,
         "w": it.weight_g,
         "kcal": round(it.kcal, 1),
         "p": round(it.protein, 1),
         "f": round(it.fat, 1),
         "c": round(it.carbs, 1),
+        "source": it.source,
+        "source_ref": it.source_ref,
+        "matched_name": it.matched_name,
     }
+    # per100g (опция C): confirm-экран пересчитывает КБЖУ при правке веса.
+    if it.kcal_100g is not None:
+        out["per100g"] = {
+            "kcal": it.kcal_100g,
+            "p": it.protein_100g,
+            "f": it.fat_100g,
+            "c": it.carbs_100g,
+        }
+    return out
 
 
 def _created_at_for(
@@ -279,6 +315,9 @@ async def post_entries(request: web.Request) -> web.Response:
                 protein=_num(ri.get("p")),
                 fat=_num(ri.get("f")),
                 carbs=_num(ri.get("c")),
+                # Провенанс позиции (ADR-0013): из /analyze; ручная позиция → None.
+                source=_provenance(ri.get("source")),
+                source_ref=(ri.get("source_ref") or None),
             )
         )
         save_flags.append(bool(ri.get("save")))
@@ -291,7 +330,8 @@ async def post_entries(request: web.Request) -> web.Response:
     saved = await svc.save_entries(
         viewer,
         items,
-        source=body.get("source", "manual"),
+        # Дефолт для позиций без своего провенанса; канал ввода → 'manual'.
+        source=_provenance(body.get("source")) or "manual",
         timezone_name=tz_name,
         meal_type=body.get("meal_type"),
         created_at=created_at,
@@ -498,12 +538,16 @@ async def post_food_analyze(request: web.Request) -> web.Response:
         result = await svc.analyze_dish_photos(images_b64, name, weight_g)
 
     item = result.items[0]
+    # Каталог — расчётный путь (ADR-0013 §17): резолвер НЕ вызывается, провенанс
+    # всегда estimate (числа — оценка модели по составу).
     return _json(
         {
             "kcal": round(item.kcal, 1),
             "protein": round(item.protein, 1),
             "fat": round(item.fat, 1),
             "carbs": round(item.carbs, 1),
+            "source": "estimate",
+            "source_ref": None,
         }
     )
 

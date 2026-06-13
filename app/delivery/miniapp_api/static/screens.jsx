@@ -607,12 +607,55 @@ function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
   );
 }
 
+// Провенанс КБЖУ на позицию (ADR-0013): откуда взяты числа. estimate — прикидка
+// (нейтральный серый), остальное — найдено в источнике (цветной бейдж).
+const SRC_META = {
+  off:      { label: 'Open Food Facts', color: '#4285F4', icon: '✓' },
+  label:    { label: 'с этикетки',      color: '#34A853', icon: '✓' },
+  web:      { label: 'веб-поиск',       color: '#4285F4', icon: '✓' },
+  estimate: { label: 'оценка модели',   color: '#9AA0A6', icon: '≈' },
+};
+
+function SourceBadge({ source, matchedName }) {
+  const meta = SRC_META[source];
+  if (!meta) return null;
+  return (
+    <span
+      title={matchedName || ''}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6,
+        fontSize: 11, fontWeight: 600, color: meta.color,
+        background: meta.color + '1A', borderRadius: 6, padding: '2px 8px',
+        alignSelf: 'flex-start',
+      }}
+    >
+      {meta.icon} {meta.label}
+    </span>
+  );
+}
+
 // ─── Confirm screen ────────────────────────────────────────────
 function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCancel, source, saving }) {
   const sum = sumEntries(items.map(e => ({ kcal: +e.kcal || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0 })));
 
   function update(id, field, value) {
-    setItems(items.map(it => it.id === id ? { ...it, [field]: value } : it));
+    setItems(items.map(it => {
+      if (it.id !== id) return it;
+      const next = { ...it, [field]: value };
+      // ADR-0013 (опция C): правка веса → пересчёт КБЖУ из per100g (если он есть,
+      // т.е. позиция из /analyze). Ручные позиции без per100g правятся как раньше.
+      if (field === 'w' && next.per100g) {
+        const w = parseFloat(value);
+        if (w > 0) {
+          const r1 = x => Math.round((parseFloat(x) || 0) * w / 100 * 10) / 10;
+          next.kcal = r1(next.per100g.kcal);
+          next.p = r1(next.per100g.p);
+          next.f = r1(next.per100g.f);
+          next.c = r1(next.per100g.c);
+        }
+      }
+      return next;
+    }));
   }
   function remove(id) { setItems(items.filter(it => it.id !== id)); }
   function add() {
@@ -644,6 +687,7 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCance
                 <IconTrash size={16} />
               </button>
             </div>
+            <SourceBadge source={it.source} matchedName={it.matched_name} />
             <div className="confirm-item__grid">
               <NumField label="вес, г" value={it.w} onChange={v => update(it.id, 'w', v)} />
               <NumField label="ккал" value={it.kcal} onChange={v => update(it.id, 'kcal', v)} kcal />

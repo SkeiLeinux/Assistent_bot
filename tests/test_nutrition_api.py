@@ -18,6 +18,7 @@ import pytest
 from app.kernel import Viewer
 
 from app.contexts.nutrition.api import routes as nutri_routes
+from app.contexts.nutrition.resolve.ports import ExtractedItem, Macros, ResolvedNutrition
 from app.contexts.nutrition.services import (
     FoodService,
     InvalidInput,
@@ -77,20 +78,30 @@ async def test_llm_analyze_photo_caps_at_five(monkeypatch):
 
 
 # ── Уровень роута: парсинг images, cap, обратная совместимость, 0 → 422 ───────
+# /analyze (type=photo) теперь идёт через извлекатель (ADR-0013), а не llm.analyze_photo:
+# фиксируем, что роут довёл изображения до извлекателя (парсинг/cap/back-compat — в роуте).
 
-class RecordingLLM:
-    """Фейк за контрактом NutritionLLM — фиксирует, что пришло в analyze_photo."""
+class RecordingExtractor:
+    """Фейк-извлекатель — фиксирует, что пришло в extract(images=...)."""
 
     def __init__(self) -> None:
         self.calls = 0
         self.last_images = None
 
-    async def analyze_photo(self, images, caption="", mime_type="image/jpeg"):
+    async def extract(self, *, text=None, images=None, caption="", mime_type="image/jpeg"):
         self.calls += 1
         self.last_images = images
-        return NutritionResult(
-            items=[NutritionItem(description="блюдо", weight_g=100, kcal=1, protein=1, fat=1, carbs=1)]
-        )
+        return [
+            ExtractedItem(name="блюдо", portion_g=100, label_complete=False,
+                          per100g=Macros(kcal=1, protein=1, fat=1, carbs=1))
+        ]
+
+
+class _PassthroughResolver:
+    total_budget_s = 12.0
+
+    async def refine(self, item, *, allow_network=True):
+        return ResolvedNutrition(per100g=item.per100g, source="estimate")
 
 
 class FakeRequest(dict):
@@ -110,12 +121,18 @@ class FakeRequest(dict):
         return self._body
 
 
-def _inject(monkeypatch, session, rec: RecordingLLM):
-    monkeypatch.setattr(nutri_routes, "_service", lambda req: FoodService(req["session"], llm=rec))
+def _inject(monkeypatch, session, rec: RecordingExtractor):
+    monkeypatch.setattr(
+        nutri_routes,
+        "_service",
+        lambda req: FoodService(
+            req["session"], extractor=rec, resolver=_PassthroughResolver()
+        ),
+    )
 
 
 async def test_route_analyze_photo_multi_single_call(session, monkeypatch):
-    rec = RecordingLLM()
+    rec = RecordingExtractor()
     _inject(monkeypatch, session, rec)
     images = ["data:image/jpeg;base64," + _b64(b"a"), _b64(b"b"), _b64(b"c")]
     req = FakeRequest(session, Viewer(id=1, family_id=1),
@@ -124,12 +141,12 @@ async def test_route_analyze_photo_multi_single_call(session, monkeypatch):
     resp = await nutri_routes.analyze(req)
 
     assert resp.status == 200
-    assert rec.calls == 1  # один вызов LLM
+    assert rec.calls == 1  # один вызов извлекателя
     assert len(rec.last_images) == 3 and all(isinstance(b, bytes) for b in rec.last_images)
 
 
 async def test_route_analyze_photo_caps_at_five(session, monkeypatch):
-    rec = RecordingLLM()
+    rec = RecordingExtractor()
     _inject(monkeypatch, session, rec)
     images = [_b64(bytes([i])) for i in range(6)]
     req = FakeRequest(session, Viewer(id=1, family_id=1),
@@ -141,18 +158,18 @@ async def test_route_analyze_photo_caps_at_five(session, monkeypatch):
 
 
 async def test_route_analyze_photo_empty_is_422(session, monkeypatch):
-    rec = RecordingLLM()
+    rec = RecordingExtractor()
     _inject(monkeypatch, session, rec)
     req = FakeRequest(session, Viewer(id=1, family_id=1),
                       body={"type": "photo", "images": []})
 
     with pytest.raises(InvalidInput):  # маппится в 422 общим middleware миниапы
         await nutri_routes.analyze(req)
-    assert rec.calls == 0  # до LLM не дошли
+    assert rec.calls == 0  # до извлекателя не дошли
 
 
 async def test_route_analyze_photo_single_image_backward_compat(session, monkeypatch):
-    rec = RecordingLLM()
+    rec = RecordingExtractor()
     _inject(monkeypatch, session, rec)
     req = FakeRequest(session, Viewer(id=1, family_id=1),
                       body={"type": "photo", "image": "data:image/jpeg;base64," + _b64(b"x")})
@@ -161,3 +178,18 @@ async def test_route_analyze_photo_single_image_backward_compat(session, monkeyp
 
     assert resp.status == 200
     assert rec.calls == 1 and len(rec.last_images) == 1  # одиночное поле image работает
+
+
+async def test_route_analyze_photo_returns_provenance(session, monkeypatch):
+    """Контракт §10: каждая позиция /analyze несёт source (провенанс)."""
+    rec = RecordingExtractor()
+    _inject(monkeypatch, session, rec)
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "photo", "images": [_b64(b"a")]})
+
+    resp = await nutri_routes.analyze(req)
+    payload = json.loads(resp.body.decode())
+    item = payload["items"][0]
+    assert item["source"] == "estimate"
+    # опция C: per100g протащен на позицию (для пересчёта при правке веса)
+    assert item["per100g"] == {"kcal": 1, "p": 1, "f": 1, "c": 1}

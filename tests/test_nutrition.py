@@ -20,6 +20,7 @@ from app.kernel.models import Family, Membership, User
 
 from app.contexts.nutrition.read import goals as read_goals
 from app.contexts.nutrition.read import macros_by_day, macros_total
+from app.contexts.nutrition.resolve.ports import ExtractedItem, Macros, ResolvedNutrition
 from app.contexts.nutrition.services import (
     FamilyRequired,
     FoodService,
@@ -104,6 +105,56 @@ class RaisingLLM:
         raise self.exc
 
 
+# ── Фейковые извлекатель/резолвер дневникового /analyze (ADR-0013, без сети) ───
+
+def _default_extracted() -> list[ExtractedItem]:
+    """Канонический разбор «гречка 200, курица 150»: per100g × порция = абсолют.
+
+    340×2=680 ккал / 12.5×2=25 Б (гречка); 160×1.5=240 ккал / 30×1.5=45 Б (курица)
+    → совпадает с прежним FakeLLM-результатом (920 ккал / 70 Б суммарно)."""
+    return [
+        ExtractedItem(name="гречка", portion_g=200,
+                      per100g=Macros(kcal=340, protein=12.5, fat=3, carbs=70)),
+        ExtractedItem(name="курица", portion_g=150,
+                      per100g=Macros(kcal=160, protein=30, fat=4, carbs=0)),
+    ]
+
+
+class FakeExtractor:
+    """Возвращает заданный список ExtractedItem (1 «вызов», без LLM)."""
+
+    def __init__(self, items: list[ExtractedItem] | None = None) -> None:
+        self.items = items if items is not None else _default_extracted()
+        self.calls = 0
+
+    async def extract(self, *, text=None, images=None, caption="", mime_type="image/jpeg"):
+        self.calls += 1
+        return self.items
+
+
+class RaisingExtractor:
+    """Извлекатель, имитирующий сбой LLM (невалидный ответ / 429) — A5/I6."""
+
+    def __init__(self, exc: Exception) -> None:
+        self.exc = exc
+
+    async def extract(self, **kwargs):
+        raise self.exc
+
+
+class PassthroughResolver:
+    """Резолвер-заглушка: per100g без изменений, source=estimate (сеть не трогаем)."""
+
+    total_budget_s = 12.0
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def refine(self, item, *, allow_network: bool = True):
+        self.calls += 1
+        return ResolvedNutrition(per100g=item.per100g, source="estimate")
+
+
 # ── Фикстуры семьи/зрителей ───────────────────────────────────────────────────
 
 async def _family(session):
@@ -130,8 +181,13 @@ async def _family(session):
     )
 
 
-def _svc(session, llm=None) -> FoodService:
-    return FoodService(session, llm=llm or FakeLLM())
+def _svc(session, llm=None, extractor=None, resolver=None) -> FoodService:
+    return FoodService(
+        session,
+        llm=llm or FakeLLM(),
+        extractor=extractor or FakeExtractor(),
+        resolver=resolver or PassthroughResolver(),
+    )
 
 
 # ── A1: дневник / 3 способа ввода / цели / выгрузка под kernel ────────────────
@@ -338,29 +394,38 @@ async def test_save_to_db_creates_shared_food(session):
 # ── A5: LLM-контракт — провайдер-агностичность + ошибки ──────────────────────
 
 async def test_llm_error_propagates_invalid(session):
-    """A5/I6: невалидный ответ модели → LLMError (понятное сообщение)."""
+    """A5/I6: невалидный ответ модели при извлечении → LLMError (понятное сообщение)."""
     _, _, _, v1, _ = await _family(session)
-    svc = _svc(session, llm=RaisingLLM(LLMError("Модель вернула некорректные данные")))
+    svc = _svc(session, extractor=RaisingExtractor(LLMError("Модель вернула некорректные данные")))
     with pytest.raises(LLMError):
         await svc.analyze_text("что-то")
 
 
 async def test_llm_rate_limit_propagates(session):
-    """A5/I6: 429 → LLMRateLimitError (подкласс LLMError)."""
+    """A5/I6: 429 при извлечении → LLMRateLimitError (подкласс LLMError)."""
     _, _, _, v1, _ = await _family(session)
-    svc = _svc(session, llm=RaisingLLM(LLMRateLimitError("Лимит исчерпан")))
+    svc = _svc(session, extractor=RaisingExtractor(LLMRateLimitError("Лимит исчерпан")))
     with pytest.raises(LLMError):
         await svc.analyze_photo([b"\xff\xd8x"])
 
 
+async def test_dish_llm_error_propagates(session):
+    """A5/I6: каталог (/foods/analyze) — расчётный путь LLM; сбой → LLMError."""
+    _, _, _, v1, _ = await _family(session)
+    svc = _svc(session, llm=RaisingLLM(LLMError("Сервис недоступен")))
+    with pytest.raises(LLMError):
+        await svc.analyze_dish_combined("состав", ["b64"], "блюдо", 200)
+
+
 async def test_llm_is_injectable_provider_agnostic(session):
-    """A5/I7: FoodService зависит лишь от контракта NutritionLLM — фейк подменяет Groq."""
+    """A5/I7: оба шва инъектируемы — извлекатель (дневник) и LLM (каталог); без сети."""
     _, _, _, v1, _ = await _family(session)
     fake = FakeLLM()
-    svc = FoodService(session, llm=fake)
-    await svc.analyze_text("гречка")
-    await svc.analyze_dish_combined("состав", ["b64"], "блюдо", 200)
-    assert fake.calls == 2  # вызовы ушли в фейк, не в сеть
+    ext = FakeExtractor()
+    svc = FoodService(session, llm=fake, extractor=ext, resolver=PassthroughResolver())
+    await svc.analyze_text("гречка")                          # → извлекатель
+    await svc.analyze_dish_combined("состав", ["b64"], "блюдо", 200)  # → LLM
+    assert ext.calls == 1 and fake.calls == 1  # каждый шов вызван своим путём
 
 
 # ── A6 / read-модуль: КБЖУ по дням для Analytics (visibility-фильтр) ──────────
