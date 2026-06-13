@@ -217,6 +217,19 @@
 
   .lists-srch-kind { font-size:11px; padding:1px 6px; border-radius:5px; background: var(--tg-surface-hi);
     color: var(--tg-text-2); margin-left:6px; }
+
+  /* Фильтр по типу — горизонтально-скроллящийся ряд чипов (категорий больше, чем влезает
+     в равноширокий Segmented; .tabbar их обрезал). */
+  .lists-typebar { display:flex; gap:8px; overflow-x:auto; padding: 2px 16px 8px;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .lists-typebar::-webkit-scrollbar { display:none; }
+  .lists-typechip { flex:0 0 auto; display:inline-flex; align-items:center; gap:6px;
+    padding: 7px 13px; border-radius:999px; font-size:13px; font-weight:500;
+    white-space:nowrap; background: var(--tg-surface); color: var(--tg-text-2);
+    border:1px solid var(--tg-separator-strong); }
+  .lists-typechip--on { background: var(--tg-surface-hi); color: var(--tg-text);
+    border-color: var(--tg-accent); }
+  .lists-typechip__e { font-size:15px; line-height:1; }
   `;
   if (!document.getElementById('lists-styles')) {
     const st = document.createElement('style');
@@ -235,7 +248,7 @@
   }
 
   // ─── Шит создания/редактирования списка ──────────────────────────────────────
-  function ListEditSheet({ open, initial, onClose, onSubmit, onDelete }) {
+  function ListEditSheet({ open, initial, defaultType, onClose, onSubmit, onDelete }) {
     const editing = !!(initial && initial.id);
     const [type, setType] = useState('task');
     const [name, setName] = useState('');
@@ -245,7 +258,9 @@
 
     useEffect(() => {
       if (!open) return;
-      setType(initial && initial.type ? initial.type : 'task');
+      // При создании предвыбираем тип активного фильтра категории (defaultType);
+      // при редактировании — тип самого списка.
+      setType(initial && initial.type ? initial.type : (defaultType || 'task'));
       setName(initial && initial.name ? initial.name : '');
       setEmoji(initial && initial.emoji ? initial.emoji : '');
       setScope(initial && initial.scope ? initial.scope : 'family');
@@ -879,14 +894,24 @@
     }
 
     const lists = data || [];
-    const typeTabs = [{ value: '', label: 'Все' }].concat(TYPES.map((t) => ({ value: t.v, label: t.label })));
 
     return (
       <div className="app">
         <TgHeader title="Списки" onBack={onExit}
           right={<button className="tg-header__action" onClick={() => setSearching(true)} aria-label="Поиск">
             <SearchIcon /></button>} />
-        <Segmented value={typeFilter} onChange={setTypeFilter} tabs={typeTabs} />
+        <div className="lists-typebar">
+          <button type="button"
+            className={'lists-typechip ' + (typeFilter === '' ? 'lists-typechip--on' : '')}
+            onClick={() => setTypeFilter('')}>Все</button>
+          {TYPES.map((t) => (
+            <button key={t.v} type="button"
+              className={'lists-typechip ' + (typeFilter === t.v ? 'lists-typechip--on' : '')}
+              onClick={() => setTypeFilter(t.v)}>
+              <span className="lists-typechip__e">{t.emoji}</span>{t.label}
+            </button>
+          ))}
+        </div>
         <div className="scroll">
           <div className="page-enter">
             {loading ? <Loader label="Загрузка списков…" />
@@ -927,7 +952,7 @@
           <Fab onClick={() => setCreateOpen(true)}><IconPlus size={20} /> Новый список</Fab>
         )}
 
-        <ListEditSheet open={createOpen} initial={null}
+        <ListEditSheet open={createOpen} initial={null} defaultType={typeFilter || null}
           onClose={() => setCreateOpen(false)} onSubmit={submitCreate} />
 
         <Toast show={!!toast}>{toast}</Toast>

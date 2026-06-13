@@ -430,14 +430,20 @@
 
     return (
       <React.Fragment>
-        <div className="rem-chips">
-          {STATUS_TABS.map((t) => (
-            <Chip key={t.value} active={status === t.value} onClick={() => setStatus(t.value)}>
-              {t.label}
-            </Chip>
-          ))}
+        {/* .scroll — отдельный слой; Fab/шиты ниже = прямые сёстры, вне .page-enter
+            (иначе transform .page-enter делает их containing block и Fab всплывает по центру). */}
+        <div className="scroll">
+          <div className="page-enter">
+            <div className="rem-chips">
+              {STATUS_TABS.map((t) => (
+                <Chip key={t.value} active={status === t.value} onClick={() => setStatus(t.value)}>
+                  {t.label}
+                </Chip>
+              ))}
+            </div>
+            {body}
+          </div>
         </div>
-        {body}
 
         <Fab onClick={openCreate}><IconPlus size={20} /> Добавить</Fab>
 
@@ -475,31 +481,33 @@
     }
 
     return (
-      <React.Fragment>
-        <div className="rem-range">
-          <Field label="С">
-            <TextInput type="date" value={from} max={to}
-              onChange={(e) => setFrom(e.target.value)} />
-          </Field>
-          <Field label="По">
-            <TextInput type="date" value={to} max={todayIso()}
-              onChange={(e) => setTo(e.target.value)} />
-          </Field>
-          <button className="rem-range__go" onClick={applyRange} title="Применить">
-            <IconRetry size={18} />
-          </button>
-        </div>
+      <div className="scroll">
+        <div className="page-enter">
+          <div className="rem-range">
+            <Field label="С">
+              <TextInput type="date" value={from} max={to}
+                onChange={(e) => setFrom(e.target.value)} />
+            </Field>
+            <Field label="По">
+              <TextInput type="date" value={to} max={todayIso()}
+                onChange={(e) => setTo(e.target.value)} />
+            </Field>
+            <button className="rem-range__go" onClick={applyRange} title="Применить">
+              <IconRetry size={18} />
+            </button>
+          </div>
 
-        {loading ? (
-          <div className="rem-center"><Spinner size={26} /></div>
-        ) : error ? (
-          <ErrorState error={error} onRetry={reload} />
-        ) : data ? (
-          <OverviewBody data={data} />
-        ) : (
-          <EmptyState icon="📊" title="Нет данных" hint="Попробуй другой период." />
-        )}
-      </React.Fragment>
+          {loading ? (
+            <div className="rem-center"><Spinner size={26} /></div>
+          ) : error ? (
+            <ErrorState error={error} onRetry={reload} />
+          ) : data ? (
+            <OverviewBody data={data} />
+          ) : (
+            <EmptyState icon="📊" title="Нет данных" hint="Попробуй другой период." />
+          )}
+        </div>
+      </div>
     );
   }
 
@@ -625,24 +633,26 @@
     const sched = useAsyncData(() => AnAPI.schedules(), []);
 
     return (
-      <div>
-        <SectionTitle>Предпросмотр</SectionTitle>
-        {preview.loading ? (
-          <div className="rem-center"><Spinner size={24} /></div>
-        ) : preview.error ? (
-          <ErrorState error={preview.error} onRetry={preview.reload} />
-        ) : (
-          <DigestPreview dto={preview.data} />
-        )}
+      <div className="scroll">
+        <div className="page-enter">
+          <SectionTitle>Предпросмотр</SectionTitle>
+          {preview.loading ? (
+            <div className="rem-center"><Spinner size={24} /></div>
+          ) : preview.error ? (
+            <ErrorState error={preview.error} onRetry={preview.reload} />
+          ) : (
+            <DigestPreview dto={preview.data} />
+          )}
 
-        <SectionTitle>Расписание рассылки</SectionTitle>
-        {sched.loading ? (
-          <div className="rem-center"><Spinner size={24} /></div>
-        ) : sched.error ? (
-          <ErrorState error={sched.error} onRetry={sched.reload} />
-        ) : (
-          <SchedulesEditor schedules={sched.data || []} reload={sched.reload} showToast={showToast} />
-        )}
+          <SectionTitle>Расписание рассылки</SectionTitle>
+          {sched.loading ? (
+            <div className="rem-center"><Spinner size={24} /></div>
+          ) : sched.error ? (
+            <ErrorState error={sched.error} onRetry={sched.reload} />
+          ) : (
+            <SchedulesEditor schedules={sched.data || []} reload={sched.reload} showToast={showToast} />
+          )}
+        </div>
       </div>
     );
   }
@@ -854,13 +864,11 @@
 
         <Segmented tabs={TABS} value={tab} onChange={setTab} />
 
-        <div className="scroll" key={tab}>
-          <div className="page-enter">
-            {tab === 'reminders' && <RemindersTab showToast={showToast} />}
-            {tab === 'overview' && <OverviewTab showToast={showToast} />}
-            {tab === 'digest' && <DigestTab showToast={showToast} />}
-          </div>
-        </div>
+        {/* Каждая вкладка владеет своим .scroll; Fab/шиты вкладки — её прямые сёстры,
+            вне .page-enter, чтобы position:absolute якорился к .app, а не к контенту. */}
+        {tab === 'reminders' && <RemindersTab key="reminders" showToast={showToast} />}
+        {tab === 'overview' && <OverviewTab key="overview" showToast={showToast} />}
+        {tab === 'digest' && <DigestTab key="digest" showToast={showToast} />}
 
         <Toast show={!!toast}>{toast}</Toast>
       </div>

@@ -8,8 +8,9 @@ pytest-aiohttp — он не в зависимостях; аутентифика
 """
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
 from aiohttp import web
@@ -46,7 +47,18 @@ def _read(resp: web.Response):
     return resp.status, json.loads(resp.text)
 
 
+# Дайджест-превью считает окно от РЕАЛЬНОГО now (period_bounds(daily, utcnow)),
+# а не от фикс-даты — поэтому данные сеем на «сегодня» в зоне семьи (Europe/Amsterdam),
+# чтобы тест не зависел от настенных часов. Возвращаем этот anchor наружу.
+_TZ = "Europe/Amsterdam"
+
+
+def _today_local() -> date:
+    return datetime.now(ZoneInfo(_TZ)).date()
+
+
 async def _setup(session):
+    anchor = _today_local()
     u1 = User(telegram_user_id=301, first_name="Катя", timezone="Europe/Amsterdam")
     u2 = User(telegram_user_id=302, first_name="Сережа", timezone="Europe/Amsterdam")
     session.add_all([u1, u2])
@@ -69,16 +81,19 @@ async def _setup(session):
                      status=CategoryStatus.ACTIVE)
     session.add(child)
     await session.flush()
-    session.add(ActualAmount(category_id=child.id, date=date(2026, 6, 10),
+    # Сеем на «сегодня» (зона семьи): попадает и в дневное окно дайджеста [today, today],
+    # и в обзорный период тестов. Полдень UTC → та же локальная дата (далеко от полуночи).
+    session.add(ActualAmount(category_id=child.id, date=anchor,
                              amount=Decimal("1500.00")))
-    session.add(FoodEntry(user_id=u1.id, created_at=datetime(2026, 6, 10, 12, 0),
+    session.add(FoodEntry(user_id=u1.id,
+                          created_at=datetime.combine(anchor, time(12, 0)),
                           description="meal", kcal=600, protein=10, fat=10, carbs=10))
     await session.commit()
-    return fam, Viewer(id=u1.id, family_id=fam.id)
+    return fam, Viewer(id=u1.id, family_id=fam.id), anchor
 
 
 async def test_get_schedules_returns_defaults(session):
-    fam, viewer = await _setup(session)
+    fam, viewer, _ = await _setup(session)
     status, body = _read(await api_routes.get_schedules(FakeRequest(session, viewer)))
     assert status == 200
     cadences = {s["cadence"] for s in body}
@@ -90,7 +105,7 @@ async def test_get_schedules_returns_defaults(session):
 
 
 async def test_put_schedule_updates_time_and_enabled(session):
-    fam, viewer = await _setup(session)
+    fam, viewer, _ = await _setup(session)
     req = FakeRequest(session, viewer, match_info={"cadence": "daily"},
                       body={"enabled": False, "time_of_day": "08:30"})
     status, body = _read(await api_routes.put_schedule(req))
@@ -107,7 +122,7 @@ async def test_put_schedule_updates_time_and_enabled(session):
 
 
 async def test_put_weekly_weekday(session):
-    fam, viewer = await _setup(session)
+    fam, viewer, _ = await _setup(session)
     req = FakeRequest(session, viewer, match_info={"cadence": "weekly"},
                       body={"weekday": 0, "time_of_day": "20:00"})
     status, body = _read(await api_routes.put_schedule(req))
@@ -117,7 +132,7 @@ async def test_put_weekly_weekday(session):
 
 
 async def test_put_bad_cadence_422(session):
-    fam, viewer = await _setup(session)
+    fam, viewer, _ = await _setup(session)
     req = FakeRequest(session, viewer, match_info={"cadence": "monthly"},
                       body={"time_of_day": "08:30"})
     with pytest.raises(web.HTTPUnprocessableEntity):
@@ -125,7 +140,7 @@ async def test_put_bad_cadence_422(session):
 
 
 async def test_put_bad_time_422(session):
-    fam, viewer = await _setup(session)
+    fam, viewer, _ = await _setup(session)
     req = FakeRequest(session, viewer, match_info={"cadence": "daily"},
                       body={"time_of_day": "25:99"})
     with pytest.raises(web.HTTPUnprocessableEntity):
@@ -133,18 +148,20 @@ async def test_put_bad_time_422(session):
 
 
 async def test_get_overview(session):
-    fam, viewer = await _setup(session)
-    req = FakeRequest(session, viewer, query={"from": "2026-06-01", "to": "2026-06-30"})
+    fam, viewer, anchor = await _setup(session)
+    date_from = anchor.replace(day=1)  # с начала месяца до сегодня — включает anchor-данные
+    req = FakeRequest(session, viewer,
+                      query={"from": date_from.isoformat(), "to": anchor.isoformat()})
     status, body = _read(await api_routes.get_overview(req))
     assert status == 200
-    assert body["range"]["from"] == "2026-06-01"
+    assert body["range"]["from"] == date_from.isoformat()
     assert body["finance"]["fact"] == 1500.0
     assert body["nutrition"]["kcal"] == 600.0
     assert "by_type" in body["lists"]
 
 
 async def test_get_digest_preview(session):
-    fam, viewer = await _setup(session)
+    fam, viewer, _ = await _setup(session)
     status, body = _read(await api_routes.get_digest_preview(FakeRequest(session, viewer)))
     assert status == 200
     assert "sections" in body

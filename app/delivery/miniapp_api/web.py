@@ -116,6 +116,15 @@ async def index(request: web.Request) -> web.Response:
     return web.FileResponse(STATIC_DIR / "index.html")
 
 
+async def _frontend_no_cache(request: web.Request, response: web.StreamResponse) -> None:
+    """Cache-Control: no-cache на index.html и /static/* — WebView Telegram обязан
+    ревалидировать ассеты после деплоя. С ETag/Last-Modified (их ставит aiohttp) это даёт
+    304 на неизменённых файлах — дёшево, но всегда свежий фронт. Иначе правки .jsx не видны
+    из-за агрессивного кэша WebView. На /api/ не вешаем — там свои ответы."""
+    if request.path == "/" or request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+
+
 def create_app() -> web.Application:
     app = web.Application(middlewares=[error_middleware, auth_middleware])
     register_kernel_routes(app)
@@ -128,6 +137,7 @@ def create_app() -> web.Application:
     # их пропускает (ассеты должны грузиться до initData-авторизации REST).
     app.router.add_get("/", index)
     app.router.add_static("/static/", STATIC_DIR, show_index=False)
+    app.on_response_prepare.append(_frontend_no_cache)
     return app
 
 

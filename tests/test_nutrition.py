@@ -11,6 +11,7 @@ LLM в тестах — ТОЛЬКО фейк за интерфейсом Nutrit
 """
 
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -29,6 +30,13 @@ from app.contexts.nutrition.services import (
 )
 
 TZ = "Europe/Amsterdam"
+
+
+def _today() -> date:
+    """Сегодня В ЗОНЕ ТЕСТА (TZ), а не машины. save_entries без created_at кладёт
+    запись на utcnow и бакетит сутки в TZ; запрашивать день нужно той же зоной,
+    иначе у машины не-UTC (напр. UTC+3) дата разъезжается с бакетом → 0 (флак)."""
+    return datetime.now(ZoneInfo(TZ)).date()
 
 
 # ── Фейковые LLM за интерфейсом NutritionLLM (I7, GAP-6) ──────────────────────
@@ -139,7 +147,7 @@ async def test_text_input_analyze_then_save(session):
         meal_type="lunch", timezone_name=TZ,
     )
     assert len(saved) == 2
-    day = await svc.get_day(v1, date.today(), timezone_name=TZ)
+    day = await svc.get_day(v1, _today(), timezone_name=TZ)
     # I1: сумма за день = SUM абсолютов за порцию
     assert round(day.totals.kcal, 1) == 920.0
     assert round(day.totals.protein, 1) == 70.0
@@ -187,7 +195,7 @@ async def test_goals_roundtrip_and_progress(session):
         source="manual", meal_type="breakfast", timezone_name=TZ,
     )
     assert saved
-    day = await svc.get_day(v1, date.today(), timezone_name=TZ)
+    day = await svc.get_day(v1, _today(), timezone_name=TZ)
     prog = day.progress()
     assert prog["kcal"].target == 2000
     assert prog["kcal"].consumed == 300
@@ -207,7 +215,7 @@ async def test_export_markdown_dump(session):
         [NutritionItem(description="гречка", weight_g=200, kcal=680, protein=25, fat=6, carbs=140)],
         source="manual", meal_type="lunch", timezone_name=TZ,
     )
-    today = date.today()
+    today = _today()
     md = await svc.export_period(v1, today, today, timezone_name=TZ)
     assert "# Дневник питания" in md
     assert "гречка" in md and "Итог за период" in md
@@ -225,10 +233,10 @@ async def test_diary_personal_invisible_to_partner(session):
         source="manual", meal_type="dinner", timezone_name=TZ,
     )
     # владелец видит свой день
-    own = await svc.get_day(v1, date.today(), timezone_name=TZ)
+    own = await svc.get_day(v1, _today(), timezone_name=TZ)
     assert len(own.entries) == 1
     # партнёр своего дня — пусто (чужой дневник не виден)
-    other = await svc.get_day(v2, date.today(), timezone_name=TZ)
+    other = await svc.get_day(v2, _today(), timezone_name=TZ)
     assert other.entries == []
 
 
@@ -306,7 +314,7 @@ async def test_analyze_does_not_write(session):
     await svc.analyze_text("гречка 200")
     await svc.analyze_photo(b"\xff\xd8x", caption="")
     # дневник пуст — analyze не сохраняет
-    day = await svc.get_day(v1, date.today(), timezone_name=TZ)
+    day = await svc.get_day(v1, _today(), timezone_name=TZ)
     assert day.entries == []
 
 
@@ -364,7 +372,7 @@ async def test_read_macros_by_day_owner_only(session):
         [NutritionItem(description="завтрак", weight_g=200, kcal=400, protein=20, fat=10, carbs=50)],
         source="manual", meal_type="breakfast", timezone_name=TZ,
     )
-    today = date.today()
+    today = _today()
     days = await macros_by_day(session, v1, today, today, timezone_name=TZ)
     assert len(days) == 1 and days[0]["kcal"] == 400.0
 
@@ -385,7 +393,7 @@ async def test_read_macros_total_sums_period(session):
         ],
         source="manual", meal_type="lunch", timezone_name=TZ,
     )
-    today = date.today()
+    today = _today()
     total = await macros_total(session, v1, today, today, timezone_name=TZ)
     assert total["kcal"] == 350.0 and total["days_with_data"] == 1
 
