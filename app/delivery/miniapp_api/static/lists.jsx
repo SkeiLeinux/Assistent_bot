@@ -191,6 +191,10 @@
   .lists-switch--on .lists-switch__knob { left:21px; }
 
   .lists-attrgrid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  /* min-width:0 — иначе grid-ячейка раздувается под min-content нативного
+     input[type=date] (его не сжать) и наезжает на соседний столбец «Приоритет». */
+  .lists-attrgrid > * { min-width: 0; }
+  .lists-attrgrid .sk-input { width: 100%; min-width: 0; }
   .lists-attrgrid .sk-field { margin: 6px 0; }
   .lists-attrgrid--full { grid-column: 1 / -1; }
 
