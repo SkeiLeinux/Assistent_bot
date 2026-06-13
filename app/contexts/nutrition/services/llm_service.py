@@ -68,7 +68,7 @@ class NutritionLLM(Protocol):
     async def parse_text(self, text: str) -> NutritionResult: ...
 
     async def analyze_photo(
-        self, image_bytes: bytes, caption: str = "", mime_type: str = "image/jpeg"
+        self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
     ) -> NutritionResult: ...
 
     async def analyze_dish_text(
@@ -215,20 +215,27 @@ class LLMService:
         return await self._complete(text)
 
     async def analyze_photo(
-        self, image_bytes: bytes, caption: str = "", mime_type: str = "image/jpeg"
+        self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
     ) -> NutritionResult:
-        """Фото блюда/упаковки (+ опц. описание) -> позиции с КБЖУ."""
-        b64 = base64.b64encode(image_bytes).decode()
-        parts = [
+        """Одно или несколько фото блюда/упаковки (+ опц. описание) -> позиции с КБЖУ.
+
+        Все снимки уходят ОДНИМ вызовом (лимит Groq ≤ 5 изображений). Промпт —
+        прежний _SYSTEM_PROMPT: несколько продуктов на фото → несколько позиций.
+        """
+        parts: list[dict] = [
             {
                 "type": "text",
                 "text": caption.strip() or "Определи продукты на фото и оцени их КБЖУ.",
-            },
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime_type};base64,{b64}"},
-            },
+            }
         ]
+        for image_bytes in images[:5]:  # лимит Groq: ≤ 5 изображений (I6)
+            b64 = base64.b64encode(image_bytes).decode()
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{b64}"},
+                }
+            )
         return await self._complete(parts)
 
     async def analyze_dish_text(

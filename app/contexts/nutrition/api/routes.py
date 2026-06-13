@@ -227,16 +227,28 @@ async def analyze(request: web.Request) -> web.Response:
             raise InvalidInput("Пустой запрос")
         result = await svc.analyze_text(text)
     elif kind == "photo":
-        image_b64 = body.get("image") or ""
-        if image_b64.startswith("data:"):
-            image_b64 = image_b64.split(",", 1)[-1]
-        try:
-            image_bytes = base64.b64decode(image_b64)
-        except (ValueError, TypeError):
-            raise InvalidInput("Не удалось прочитать фото")
-        if not image_bytes:
+        # До 5 снимков (паритет с каталогом). Поддерживаем и одиночное поле `image`
+        # (обратная совместимость), и список `images` (dataURL или «голый» base64).
+        raw_images = body.get("images")
+        if raw_images is None:
+            single = body.get("image")
+            raw_images = [single] if single else []
+        images: list[bytes] = []
+        for img in (raw_images or [])[:5]:
+            if not isinstance(img, str):
+                continue
+            b64 = img.split(",", 1)[-1] if img.startswith("data:") else img
+            if not b64:
+                continue
+            try:
+                decoded = base64.b64decode(b64)
+            except (ValueError, TypeError):
+                raise InvalidInput("Не удалось прочитать фото")
+            if decoded:
+                images.append(decoded)
+        if not images:
             raise InvalidInput("Пустое фото")
-        result = await svc.analyze_photo(image_bytes, caption=body.get("caption", ""))
+        result = await svc.analyze_photo(images, caption=body.get("caption", ""))
     else:
         raise InvalidInput("Неизвестный тип запроса")
 

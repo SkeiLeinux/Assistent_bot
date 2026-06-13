@@ -440,7 +440,8 @@ paths:
               properties:
                 type: { type: string, enum: [text, photo] }
                 text: { type: string }
-                image: { type: string, description: "base64 ≤ 4 МБ (I6)" }
+                images: { type: array, items: { type: string }, maxItems: 5, description: "До 5 фото (dataURL/base64), один вызов LLM (I6)" }
+                image: { type: string, deprecated: true, description: "Одиночное фото (base64); обратная совместимость — предпочитать images[]" }
                 caption: { type: string }
       responses:
         "200":

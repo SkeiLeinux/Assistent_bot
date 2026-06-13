@@ -52,7 +52,7 @@ function NutritionApp({ onExit }) {
   const [addOpen, setAddOpen] = useState(false);
   const [mode, setMode] = useState('text');
   const [text, setText] = useState('');
-  const [photo, setPhoto] = useState(null);       // dataURL | null
+  const [photos, setPhotos] = useState([]);       // dataURL[] (до 5, паритет с каталогом)
   const [caption, setCaption] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState(null);
@@ -177,7 +177,7 @@ function NutritionApp({ onExit }) {
     try {
       let payload;
       if (mode === 'text') payload = { type: 'text', text };
-      else payload = { type: 'photo', image: photo, caption };
+      else payload = { type: 'photo', images: photos, caption };
       const resp = await API.analyze(payload);
       if (!resp.items || resp.items.length === 0) {
         setAnalyzeError('Продукты не распознаны, попробуйте уточнить.');
@@ -206,7 +206,7 @@ function NutritionApp({ onExit }) {
         items, meal_type: mealType, source: confirmSource, date,
       });
       setConfirmItems(null);
-      setText(''); setPhoto(null); setCaption('');
+      setText(''); setPhotos([]); setCaption('');
       showToast('Сохранено · ' + resp.count + ' поз.');
       await loadDay(date);
     } catch (e) {
@@ -471,7 +471,10 @@ function NutritionApp({ onExit }) {
       <AddSheet open={addOpen}
         onClose={() => { setAddOpen(false); setAnalyzeError(null); setPickedFood(null); handleOpenCreateDish(false); }}
         mode={mode} setMode={setMode} text={text} setText={setText}
-        photo={photo} setPhoto={setPhoto} caption={caption} setCaption={setCaption}
+        photos={photos}
+        onAddPhoto={url => setPhotos(p => (p.length < 5 ? [...p, url] : p))}
+        onRemovePhoto={idx => setPhotos(p => p.filter((_, i) => i !== idx))}
+        caption={caption} setCaption={setCaption}
         analyzing={analyzing} error={analyzeError} onAnalyze={handleAnalyze}
         foodResults={foodResults} foodLoading={foodLoading}
         pickedFood={pickedFood} pickWeight={pickWeight} setPickWeight={setPickWeight}

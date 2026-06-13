@@ -58,13 +58,15 @@ class FakeLLM:
             ]
         )
         self.calls = 0
+        self.last_images = None
 
     async def parse_text(self, text):
         self.calls += 1
         return self.result
 
-    async def analyze_photo(self, image_bytes, caption="", mime_type="image/jpeg"):
+    async def analyze_photo(self, images, caption="", mime_type="image/jpeg"):
         self.calls += 1
+        self.last_images = images
         return self.result
 
     async def analyze_dish_text(self, description, name, weight_g):
@@ -89,7 +91,7 @@ class RaisingLLM:
     async def parse_text(self, text):
         raise self.exc
 
-    async def analyze_photo(self, image_bytes, caption="", mime_type="image/jpeg"):
+    async def analyze_photo(self, images, caption="", mime_type="image/jpeg"):
         raise self.exc
 
     async def analyze_dish_text(self, description, name, weight_g):
@@ -157,7 +159,7 @@ async def test_photo_input_analyze(session):
     """A1: ввод по фото — vision-фейк возвращает позиции (без записи на analyze, I5)."""
     _, _, _, v1, _ = await _family(session)
     svc = _svc(session)
-    result = await svc.analyze_photo(b"\xff\xd8jpegbytes", caption="тарелка")
+    result = await svc.analyze_photo([b"\xff\xd8jpegbytes"], caption="тарелка")
     assert result.items and result.items[0].kcal > 0
 
 
@@ -312,7 +314,7 @@ async def test_analyze_does_not_write(session):
     _, _, _, v1, _ = await _family(session)
     svc = _svc(session)
     await svc.analyze_text("гречка 200")
-    await svc.analyze_photo(b"\xff\xd8x", caption="")
+    await svc.analyze_photo([b"\xff\xd8x"], caption="")
     # дневник пуст — analyze не сохраняет
     day = await svc.get_day(v1, _today(), timezone_name=TZ)
     assert day.entries == []
@@ -348,7 +350,7 @@ async def test_llm_rate_limit_propagates(session):
     _, _, _, v1, _ = await _family(session)
     svc = _svc(session, llm=RaisingLLM(LLMRateLimitError("Лимит исчерпан")))
     with pytest.raises(LLMError):
-        await svc.analyze_photo(b"\xff\xd8x")
+        await svc.analyze_photo([b"\xff\xd8x"])
 
 
 async def test_llm_is_injectable_provider_agnostic(session):

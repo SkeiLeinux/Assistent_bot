@@ -193,14 +193,10 @@ function ExportScreen({ period, setPeriod, customFrom, setCustomFrom, customTo, 
   );
 }
 
-// ─── Create dish (text + photos combined) ────────────────────────
-function CreateDishView({
-  dishName, setDishName, dishWeight, setDishWeight,
-  dishText, setDishText,
-  dishPhotos, onAddPhoto, onRemovePhoto,
-  dishAnalyzing, dishResult, setDishResult,
-  dishSaving, dishError, onAnalyze, onSave, onBack,
-}) {
+// ─── Сетка фото (миниатюры + «×» + «+»), до `max` снимков ─────────
+// Общий компонент для каталога («Создать блюдо») и дневника (режим «Фото»).
+// Сам читает файл и сжимает в dataURL; наружу — массив dataURL + add/remove.
+function PhotoGrid({ photos, onAdd, onRemove, max = 5 }) {
   const fileRef = React.useRef(null);
   const [reading, setReading] = React.useState(false);
 
@@ -209,11 +205,42 @@ function CreateDishView({
     e.target.value = '';
     if (!f) return;
     setReading(true);
-    try { onAddPhoto(await fileToCompressedDataUrl(f)); }
+    try { onAdd(await fileToCompressedDataUrl(f)); }
     catch (_) {}
     finally { setReading(false); }
   }
 
+  return (
+    <React.Fragment>
+      <div className="dish-photos">
+        {photos.map((url, i) => (
+          <div key={i} className="dish-photo">
+            <img src={url} alt="" className="dish-photo__img" />
+            <button className="dish-photo__remove" onClick={() => onRemove(i)}>×</button>
+          </div>
+        ))}
+        {photos.length < max && (
+          <div className={'dish-photo dish-photo--add ' + (reading ? 'dish-photo--loading' : '')}
+            onClick={() => !reading && fileRef.current && fileRef.current.click()}>
+            {reading
+              ? <div className="loading-state__spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+              : <span style={{ fontSize: 24, color: 'var(--tg-text-3)' }}>+</span>}
+          </div>
+        )}
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFile} />
+    </React.Fragment>
+  );
+}
+
+// ─── Create dish (text + photos combined) ────────────────────────
+function CreateDishView({
+  dishName, setDishName, dishWeight, setDishWeight,
+  dishText, setDishText,
+  dishPhotos, onAddPhoto, onRemovePhoto,
+  dishAnalyzing, dishResult, setDishResult,
+  dishSaving, dishError, onAnalyze, onSave, onBack,
+}) {
   const baseReady = dishName.trim() && parseFloat(dishWeight) > 0;
   const canAnalyze = baseReady && (dishText.trim().length > 0 || dishPhotos.length > 0);
   const canSave = dishResult && baseReady;
@@ -254,26 +281,10 @@ function CreateDishView({
       <div className="field__label" style={{ padding: '0 16px 6px' }}>
         Фото этикеток <span style={{ color: 'var(--tg-text-3)', fontWeight: 400 }}>(необязательно)</span>
       </div>
-      <div className="dish-photos">
-        {dishPhotos.map((url, i) => (
-          <div key={i} className="dish-photo">
-            <img src={url} alt="" className="dish-photo__img" />
-            <button className="dish-photo__remove" onClick={() => onRemovePhoto(i)}>×</button>
-          </div>
-        ))}
-        {dishPhotos.length < 5 && (
-          <div className={'dish-photo dish-photo--add ' + (reading ? 'dish-photo--loading' : '')}
-            onClick={() => !reading && fileRef.current && fileRef.current.click()}>
-            {reading
-              ? <div className="loading-state__spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
-              : <span style={{ fontSize: 24, color: 'var(--tg-text-3)' }}>+</span>}
-          </div>
-        )}
-      </div>
+      <PhotoGrid photos={dishPhotos} onAdd={onAddPhoto} onRemove={onRemovePhoto} />
       <div className="dropzone__hint" style={{ padding: '4px 16px 10px' }}>
         С фото этикеток точнее — модель читает реальные значения с упаковки
       </div>
-      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFile} />
 
       {dishError && (
         <div className="error" style={{ marginTop: 4 }}>
@@ -468,7 +479,7 @@ function FoodPickerMode({
 
 // ─── Add sheet ─────────────────────────────────────────────────
 function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
-                    photo, setPhoto, caption, setCaption, analyzing, error,
+                    photos, onAddPhoto, onRemovePhoto, caption, setCaption, analyzing, error,
                     foodResults, foodLoading, pickedFood, pickWeight, setPickWeight,
                     pickMeal, setPickMeal, pickSaving,
                     onFoodSearch, onPickFood, onPickBack, onPickConfirm,
@@ -477,24 +488,6 @@ function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
                     dishPhotos, onAddDishPhoto, onRemoveDishPhoto,
                     dishAnalyzing, dishResult, setDishResult, dishSaving, dishError,
                     onOpenCreateDish, onDishAnalyze, onDishSave }) {
-  const fileRef = React.useRef(null);
-  const [reading, setReading] = React.useState(false);
-
-  async function onFile(e) {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!f) return;
-    setReading(true);
-    try {
-      const url = await fileToCompressedDataUrl(f);
-      setPhoto(url);
-    } catch (err) {
-      setPhoto(null);
-    } finally {
-      setReading(false);
-    }
-  }
-
   return (
     <React.Fragment>
       <div className={'sheet-backdrop ' + (open ? 'sheet-backdrop--open' : '')} onClick={onClose} />
@@ -573,26 +566,12 @@ function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
           </React.Fragment>
         ) : (
           <React.Fragment>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFile} />
-            <div className={'dropzone ' + (photo ? 'dropzone--filled' : '')}
-              onClick={() => { if (!photo && !reading) fileRef.current && fileRef.current.click(); }}>
-              {reading ? (
-                <div className="loading-state__spinner" />
-              ) : photo ? (
-                <React.Fragment>
-                  <img className="dropzone__img" src={photo} alt="" />
-                  <button className="dropzone__retake"
-                    onClick={(e) => { e.stopPropagation(); fileRef.current && fileRef.current.click(); }}>
-                    Заменить
-                  </button>
-                </React.Fragment>
-              ) : (
-                <React.Fragment>
-                  <IconCamera size={32} stroke="var(--tg-text-3)" />
-                  <div>Сделать фото или выбрать из галереи</div>
-                  <div className="dropzone__hint">Этикетка → точно, домашнее блюдо → грубо</div>
-                </React.Fragment>
-              )}
+            <div className="field__label" style={{ padding: '8px 16px 6px' }}>
+              Фото <span style={{ color: 'var(--tg-text-3)', fontWeight: 400 }}>(до 5)</span>
+            </div>
+            <PhotoGrid photos={photos} onAdd={onAddPhoto} onRemove={onRemovePhoto} />
+            <div className="dropzone__hint" style={{ padding: '4px 16px 8px' }}>
+              Этикетка → точно, домашнее блюдо → грубо. Можно несколько снимков.
             </div>
             <div className="field">
               <div className="field__label">Подпись (необязательно)</div>
@@ -616,7 +595,7 @@ function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
             ) : (
               <div className="mainbutton-wrap">
                 <button className="mainbutton mainbutton--warm" onClick={onAnalyze}
-                  disabled={!photo}>
+                  disabled={photos.length === 0}>
                   Посчитать
                 </button>
               </div>

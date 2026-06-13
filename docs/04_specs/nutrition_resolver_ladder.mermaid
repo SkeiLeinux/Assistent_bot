@@ -1,0 +1,31 @@
+flowchart TD
+    A["Вход: текст или фото + порция"] --> B["Извлечение — LLM Scout → ExtractedProduct"]
+    B --> C{"label_complete и per100g есть?"}
+    C -->|да| L["source = label"]
+    C -->|нет| D{"barcode есть? — fast-follow"}
+    D -->|да| E["OFF по штрихкоду"]
+    D -->|нет| F["OFF полнотекст: brand + name + fat"]
+    E --> G{"нашли и КБЖУ полны?"}
+    F --> G
+    G -->|да| O["source = off"]
+    G -->|нет| H{"web-ступень включена?"}
+    H -->|да| I["Groq Compound — веб-поиск"]
+    H -->|нет| K["Оценка моделью — source = estimate"]
+    I --> J{"нашли?"}
+    J -->|да| W["source = web + цитата"]
+    J -->|нет| K
+    L --> S["Масштаб на порцию ×g/100"]
+    O --> S
+    W --> S
+    K --> S
+    S --> CF["confirm-экран: цифры + источник, правка"]
+    CF --> SV["save → FoodEntry с полем source"]
+    SV --> CA{"source ≠ estimate и есть семья?"}
+    CA -->|да| SF["upsert SharedFood — кэш и дедуп"]
+    CA -->|нет| END["готово"]
+    SF --> END
+
+    classDef src fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+    classDef est fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
+    class L,O,W src;
+    class K est;

@@ -208,9 +208,10 @@ class FoodService:
         return await self.llm.parse_text(text)
 
     async def analyze_photo(
-        self, image_bytes: bytes, caption: str = "", mime_type: str = "image/jpeg"
+        self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
     ) -> NutritionResult:
-        return await self.llm.analyze_photo(image_bytes, caption, mime_type)
+        """До 5 снимков дневника одним вызовом → позиции с КБЖУ (паритет с каталогом)."""
+        return await self.llm.analyze_photo(images, caption, mime_type)
 
     async def analyze_dish_text(
         self, description: str, name: str, weight_g: float
@@ -243,7 +244,11 @@ class FoodService:
         created_at: datetime | None = None,
         save_to_db: list[bool] | None = None,
     ) -> list[FoodEntry]:
-        """Сохранить подтверждённые позиции. save_to_db[i]=True → также в каталог."""
+        """Сохранить подтверждённые позиции. save_to_db[i]=True → также в каталог.
+
+        source — канал ввода: 'text' | 'photo' | 'db' (вокабуляр UI; иного рантайм
+        не порождает). 'manual' остаётся лишь защитным дефолтом роута/модели.
+        """
         if meal_type is None:
             local_now = datetime.now(self._tz(timezone_name))
             meal_type = _meal_type_by_hour(local_now.hour)
@@ -362,29 +367,6 @@ class FoodService:
         await self.shared_repo.increment_use_count(food_id)
         await self.session.commit()
         return entry
-
-    async def add_explicit(
-        self,
-        viewer: Viewer,
-        description: str,
-        kcal: float,
-        protein: float,
-        fat: float,
-        carbs: float,
-        weight_g: float | None = None,
-        meal_type: str | None = None,
-        timezone_name: str | None = None,
-    ) -> FoodEntry:
-        """Прямой ввод чисел без LLM (fallback / точные данные с этикетки)."""
-        item = NutritionItem(
-            description=description, weight_g=weight_g,
-            kcal=kcal, protein=protein, fat=fat, carbs=carbs,
-        )
-        saved = await self.save_entries(
-            viewer, [item], source="manual",
-            meal_type=meal_type, timezone_name=timezone_name,
-        )
-        return saved[0]
 
     # ── Цели КБЖУ (NutritionGoals, PERSONAL) ─────────────────────────────────
 

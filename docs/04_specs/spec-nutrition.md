@@ -165,7 +165,7 @@ stateDiagram-v2
 
 ## 8. Прикладные сценарии
 - **S1. Текст.** «гречка 200, курица 150» → `analyze_text` → позиции → подтверждение → `save_entries`.
-- **S2. Фото.** Фото+подпись → `analyze_photo` (vision) → правка порций → сохранение.
+- **S2. Фото.** До 5 фото + подпись → `analyze_photo` (vision, один вызов) → правка порций → сохранение. Несколько снимков = несколько позиций (паритет с каталогом).
 - **S3. База.** Поиск/quick-pick `SharedFood` → порция в граммах → `create_entry_from_shared`.
 - **S4. День.** `GET /day` → totals + 4 прогресс-бара (съедено/цель) + группы по приёмам с подитогами.
 - **S5. Цели.** `PUT /goals {kcal?,protein?,fat?,carbs?}` (null = снять) → `NutritionGoals`.
@@ -182,7 +182,7 @@ stateDiagram-v2
 | GET | `/api/day?date=` | Итоги дня + goals + progress(4 бара) + meals[] (группы с подитогами) |
 | GET | `/api/goals` | Текущие цели |
 | PUT | `/api/goals` | `{kcal?,protein?,fat?,carbs?}` (null = снять) |
-| POST | `/api/analyze` | `{type:text\|photo, text?, image?, caption?}` → items[] (без записи) |
+| POST | `/api/analyze` | `{type:text\|photo, text?, images?[≤5], caption?}` → items[] (без записи). Для `photo` — список `images` (dataURL/base64, до 5, один вызов LLM); одиночное `image` принимается для обратной совместимости |
 | POST | `/api/entries` | `{items[], meal_type?, source}` → сохранённые |
 | POST | `/api/entries/from-food` | Запись из `SharedFood` (порция в граммах) |
 | PATCH | `/api/entries/{id}` | Правка записи |
@@ -256,5 +256,6 @@ app/contexts/nutrition/
 ---
 
 ## 15. История изменений
+- **0.2.1 (2026-06-13, фиксы партии 1):** фото-режим дневника принимает **до 5 снимков** одним вызовом LLM (паритет с каталогом) — контракт `/analyze` `photo`: `image` → `images[≤5]` (одиночное `image` совместимо). Удалён мёртвый `FoodService.add_explicit` (YAGNI); вокабуляр `source` зафиксирован как `text|photo|db` (`manual` — лишь защитный дефолт). Промпт/домен/видимость не менялись; миграций нет.
 - **0.2 (2026-06-07):** закрыты OQ-N2/N3 — `SharedFood.family_id` (FAMILY-scope); API сразу под `/api/v1/nutrition/*`. `CLAUDE.md` §9 поправлен (модель Groq). Зафиксирован North Star: 2-стадийный разбор фото (vision→поиск). Статус → принято.
 - **0.1 (2026-06-07):** первый черновик ТЗ Nutrition. Зафиксировано существующее (`FoodEntry`/`SharedFood`, 3 способа ввода + LLM Groq llama-4-scout, цели, история, выгрузка, 13 REST-эндпоинтов) и дельта под kernel: цели КБЖУ → `NutritionGoals` по `user_id` (OQ-4); `scope` (`PERSONAL` дневник / `FAMILY` каталог); `current_viewer`/`timezone` из kernel. ERD, инварианты I1–I7, флоу analyze→confirm→save, структура пакета. 2 OQ + док-синк (CLAUDE §9 модель).

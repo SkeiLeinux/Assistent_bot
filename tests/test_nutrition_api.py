@@ -1,0 +1,163 @@
+"""FIX-2 (партия 1) — мультифото в фото-режиме дневника (REST /api/v1/nutrition/analyze).
+
+Два уровня:
+  - LLMService.analyze_photo собирает N image-частей в ОДИН вызов (cap 5) — промпт
+    не меняется (монкипатчим _complete, сети нет).
+  - роут analyze (type=photo) читает список images (dataURL/raw), режет до 5,
+    обратно совместим с одиночным `image`, пустой ввод → 422 (InvalidInput).
+
+Хендлер драйвим напрямую через лёгкий FakeRequest (как в test_analytics_api) —
+аутентификация/сессия снаружи; LLM подменяем фейком за контрактом NutritionLLM.
+"""
+
+import base64
+import json
+
+import pytest
+
+from app.kernel import Viewer
+
+from app.contexts.nutrition.api import routes as nutri_routes
+from app.contexts.nutrition.services import (
+    FoodService,
+    InvalidInput,
+    NutritionItem,
+    NutritionResult,
+)
+from app.contexts.nutrition.services.llm_service import LLMService
+
+
+def _b64(raw: bytes) -> str:
+    return base64.b64encode(raw).decode()
+
+
+# ── Уровень LLMService: один вызов, N image-частей, cap 5 ─────────────────────
+
+async def test_llm_analyze_photo_one_call_n_image_parts(monkeypatch):
+    svc = LLMService()
+    cap: dict = {"calls": 0, "content": None, "system": "sentinel"}
+
+    async def fake_complete(user_content, system_prompt=None):
+        cap["calls"] += 1
+        cap["content"] = user_content
+        cap["system"] = system_prompt
+        return NutritionResult(
+            items=[NutritionItem(description="x", weight_g=100, kcal=1, protein=1, fat=1, carbs=1)]
+        )
+
+    monkeypatch.setattr(svc, "_complete", fake_complete)
+
+    await svc.analyze_photo([b"a", b"b", b"c"], caption="тарелка")
+
+    assert cap["calls"] == 1  # все снимки — одним вызовом
+    text_parts = [p for p in cap["content"] if p["type"] == "text"]
+    image_parts = [p for p in cap["content"] if p["type"] == "image_url"]
+    assert len(text_parts) == 1 and len(image_parts) == 3
+    assert text_parts[0]["text"] == "тарелка"
+    # промпт дневника не меняется → системный остаётся дефолтным (_SYSTEM_PROMPT)
+    assert cap["system"] is None
+
+
+async def test_llm_analyze_photo_caps_at_five(monkeypatch):
+    svc = LLMService()
+    cap: dict = {"content": None}
+
+    async def fake_complete(user_content, system_prompt=None):
+        cap["content"] = user_content
+        return NutritionResult(
+            items=[NutritionItem(description="x", weight_g=100, kcal=1, protein=1, fat=1, carbs=1)]
+        )
+
+    monkeypatch.setattr(svc, "_complete", fake_complete)
+
+    await svc.analyze_photo([bytes([i]) for i in range(6)])
+
+    image_parts = [p for p in cap["content"] if p["type"] == "image_url"]
+    assert len(image_parts) == 5  # > 5 → берутся первые 5
+
+
+# ── Уровень роута: парсинг images, cap, обратная совместимость, 0 → 422 ───────
+
+class RecordingLLM:
+    """Фейк за контрактом NutritionLLM — фиксирует, что пришло в analyze_photo."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.last_images = None
+
+    async def analyze_photo(self, images, caption="", mime_type="image/jpeg"):
+        self.calls += 1
+        self.last_images = images
+        return NutritionResult(
+            items=[NutritionItem(description="блюдо", weight_g=100, kcal=1, protein=1, fat=1, carbs=1)]
+        )
+
+
+class FakeRequest(dict):
+    """Минимальный stand-in web.Request: dict-доступ + json()."""
+
+    def __init__(self, session, viewer, *, body=None):
+        super().__init__()
+        self["session"] = session
+        self["viewer"] = viewer
+        self.query = {}
+        self.match_info = {}
+        self._body = body
+
+    async def json(self):
+        if self._body is None:
+            raise json.JSONDecodeError("no body", "", 0)
+        return self._body
+
+
+def _inject(monkeypatch, session, rec: RecordingLLM):
+    monkeypatch.setattr(nutri_routes, "_service", lambda req: FoodService(req["session"], llm=rec))
+
+
+async def test_route_analyze_photo_multi_single_call(session, monkeypatch):
+    rec = RecordingLLM()
+    _inject(monkeypatch, session, rec)
+    images = ["data:image/jpeg;base64," + _b64(b"a"), _b64(b"b"), _b64(b"c")]
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "photo", "images": images, "caption": "тарелка"})
+
+    resp = await nutri_routes.analyze(req)
+
+    assert resp.status == 200
+    assert rec.calls == 1  # один вызов LLM
+    assert len(rec.last_images) == 3 and all(isinstance(b, bytes) for b in rec.last_images)
+
+
+async def test_route_analyze_photo_caps_at_five(session, monkeypatch):
+    rec = RecordingLLM()
+    _inject(monkeypatch, session, rec)
+    images = [_b64(bytes([i])) for i in range(6)]
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "photo", "images": images})
+
+    await nutri_routes.analyze(req)
+
+    assert len(rec.last_images) == 5  # бэкенд режет до 5
+
+
+async def test_route_analyze_photo_empty_is_422(session, monkeypatch):
+    rec = RecordingLLM()
+    _inject(monkeypatch, session, rec)
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "photo", "images": []})
+
+    with pytest.raises(InvalidInput):  # маппится в 422 общим middleware миниапы
+        await nutri_routes.analyze(req)
+    assert rec.calls == 0  # до LLM не дошли
+
+
+async def test_route_analyze_photo_single_image_backward_compat(session, monkeypatch):
+    rec = RecordingLLM()
+    _inject(monkeypatch, session, rec)
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "photo", "image": "data:image/jpeg;base64," + _b64(b"x")})
+
+    resp = await nutri_routes.analyze(req)
+
+    assert resp.status == 200
+    assert rec.calls == 1 and len(rec.last_images) == 1  # одиночное поле image работает
