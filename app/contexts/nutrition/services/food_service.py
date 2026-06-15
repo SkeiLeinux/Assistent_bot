@@ -30,11 +30,12 @@ from app.kernel import Viewer
 
 from app.contexts.nutrition.models import FoodEntry, NutritionGoals, SharedFood
 from app.contexts.nutrition.repositories import (
+    DishIngredientRepository,
     FoodRepository,
     GoalsRepository,
     SharedFoodRepository,
 )
-from app.contexts.nutrition.services.errors import FamilyRequired
+from app.contexts.nutrition.services.errors import FamilyRequired, InvalidInput
 from app.contexts.nutrition.services.llm_service import (
     LLMService,
     NutritionItem,
@@ -184,6 +185,7 @@ class FoodService:
         self.food_repo = FoodRepository(session)
         self.shared_repo = SharedFoodRepository(session)
         self.goals_repo = GoalsRepository(session)
+        self.dish_repo = DishIngredientRepository(session)
         # I7: зависимость только от контракта NutritionLLM. Дефолт — Groq;
         # тесты инжектят фейк, живых вызовов из pytest нет (GAP-6).
         # llm используется только каталогом (/foods/analyze, расчётный путь).
@@ -377,6 +379,95 @@ class FoodService:
             saved.append(entry)
         await self.session.commit()
         return saved
+
+    # ── Составное блюдо: одна запись + состав-снимок (фича 2026-06-14) ─────────
+
+    async def save_composite_dish(
+        self,
+        viewer: Viewer,
+        *,
+        name: str,
+        ingredients: list[dict],
+        source: str,
+        timezone_name: str | None = None,
+        meal_type: str | None = None,
+        created_at: datetime | None = None,
+        save_to_catalog: bool = False,
+    ) -> FoodEntry:
+        """Свернуть N ингредиентов в ОДНО блюдо: запись дневника + состав-снимок.
+
+        ingredients — список dict с уже типизированными числами (вес/КБЖУ/провенанс),
+        парсинг делает роут. Запись дневника создаётся всегда (агрегат = сумма строк),
+        состав вешается на неё (food_entry_id). При save_to_catalog=True дополнительно
+        создаётся блюдо каталога (per-100g из агрегата) со своим составом и линкуется
+        к записи через shared_food_id. Каталог требует семьи (как явный тумблер «в базу»).
+        """
+        name = (name or "").strip()
+        if not name:
+            raise InvalidInput("Не задано название блюда")
+        if not ingredients:
+            raise InvalidInput("Пустой состав блюда")
+
+        if meal_type is None:
+            meal_type = _meal_type_by_hour(
+                datetime.now(self._tz(timezone_name)).hour
+            )
+
+        # Агрегат блюда = сумма строк состава (абсолют за порцию, I1).
+        total_w = 0.0
+        agg = Totals()
+        for ing in ingredients:
+            total_w += ing.get("weight_g") or 0.0
+            agg.kcal += ing.get("kcal") or 0.0
+            agg.protein += ing.get("protein") or 0.0
+            agg.fat += ing.get("fat") or 0.0
+            agg.carbs += ing.get("carbs") or 0.0
+        weight_g = total_w if total_w > 0 else None
+
+        # Сначала каталог (если просили) — чтобы записать shared_food_id в запись.
+        shared_food_id = None
+        if save_to_catalog:
+            if weight_g is None or weight_g <= 0:
+                raise InvalidInput(
+                    "Для сохранения блюда в каталог нужен суммарный вес > 0"
+                )
+            sf = await self.save_shared_food(
+                viewer,
+                name=name,
+                weight_g=weight_g,
+                kcal=agg.kcal,
+                protein=agg.protein,
+                fat=agg.fat,
+                carbs=agg.carbs,
+            )
+            await self.dish_repo.add_for_food(sf.id, ingredients)
+            shared_food_id = sf.id
+
+        entry = await self.food_repo.create(
+            user_id=viewer.id,
+            description=name,
+            kcal=round(agg.kcal, 1),
+            protein=round(agg.protein, 1),
+            fat=round(agg.fat, 1),
+            carbs=round(agg.carbs, 1),
+            weight_g=weight_g,
+            meal_type=meal_type,
+            source=source,
+            source_ref=None,
+            created_at=created_at,
+            shared_food_id=shared_food_id,
+        )
+        await self.dish_repo.add_for_entry(entry.id, ingredients)
+        await self.session.commit()
+        return entry
+
+    async def ingredients_for_entries(self, entry_ids: list[int]) -> dict:
+        """Состав записей дневника батчем (без N+1): {entry_id: [DishIngredient]}."""
+        return await self.dish_repo.for_entries(entry_ids)
+
+    async def ingredients_for_foods(self, food_ids: list[int]) -> dict:
+        """Состав блюд каталога батчем: {shared_food_id: [DishIngredient]}."""
+        return await self.dish_repo.for_foods(food_ids)
 
     # ── Кэш найденного в каталоге (синергия со SharedFood, §11) ───────────────
 

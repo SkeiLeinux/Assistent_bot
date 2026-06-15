@@ -1,0 +1,32 @@
+%% Контекст системы — акторы и внешние системы
+%% Derived from: CLAUDE.md §6/§9, DOMAIN_MODEL.md §2/§7. SSOT — docs/04_specs.
+flowchart LR
+  P1["👤 Партнёр 1<br/>(Сергей)"]
+  P2["👤 Партнёр 2<br/>(Катя)"]
+  ADM["🛡️ Админ<br/>(is_admin)"]
+  SCH["⏰ Планировщик<br/>(время, poll-loop)"]
+
+  SYS{{"Семейный ассистент<br/>Telegram-бот + Mini App<br/>(модульный монолит)"}}
+
+  TG["✈️ Telegram<br/>auth initData · push"]
+  GROQ["🧠 Groq LLM<br/>разбор питания (текст/фото)"]
+  OFF["🍎 OpenFoodFacts<br/>КБЖУ-база"]
+  GS["📊 Google-таблица<br/>бюджет (xlsx-выгрузка)"]
+
+  P1 -->|"списки · финансы · питание · напоминания"| SYS
+  P2 -->|"списки · финансы · питание · напоминания"| SYS
+  ADM -.->|"получает алерты об ошибках"| SYS
+  SCH -->|"тики: напоминания, дайджест"| SYS
+  SYS <-->|"initData · sendMessage"| TG
+  SYS -->|"текст/фото блюда"| GROQ
+  SYS -->|"поиск продукта"| OFF
+  GS -->|"импорт бюджета"| SYS
+  TG -.->|"бот · Mini App"| P1
+  TG -.->|"бот · Mini App"| P2
+
+  classDef sys fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef ext fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  class SYS sys;
+  class TG,GROQ,OFF,GS ext;
+  class P1,P2,ADM,SCH actor;

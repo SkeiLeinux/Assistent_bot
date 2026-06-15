@@ -1,0 +1,21 @@
+%% Программный roadmap E1→E5 — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/program-roadmap.md §1/§2/§4. SSOT — docs/06_program.
+flowchart LR
+  E1["E1 · MVP<br/>списки · финансы (импорт) · питание ·<br/>напоминания · дайджест<br/>✅ готово"]
+  E3["E3 · Здоровье<br/>тренировки · вес · Huawei ·<br/>медблок · цикл · витамины"]
+  E2["E2 · Финансы-автоматизация<br/>чек / QR / фото / ручной → транзакции,<br/>таблица отмирает"]
+  E4["E4 · Ассистентский слой<br/>план дня · вечерний сценарий ·<br/>вопросы к данным (поверх *.read)"]
+  E5["E5 · Standalone<br/>PWA · своя auth · web-push · Postgres"]
+  NOTE["Порядок E2 / E3 — продуктовое решение.<br/>Голос С.: E3 первым (переезд через 5–6 мес).<br/>Финал — Q2-В1 (Катя). E5 может идти параллельно E4."]
+
+  E1 -->|"гейт: Q3 · Huawei zip-тест · ADR 0008/0009"| E3
+  E3 -->|"гейт: Q2 · чек gate-тест · ADR 0006/0007/0011"| E2
+  E2 -->|"гейт: Q4 · ≥1 мес данных E2+E3 · ADR 0012"| E4
+  E4 -->|"гейт: триггер ADR-0005 · ADR 0010"| E5
+
+  classDef done fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef future fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef note fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class E1 done;
+  class E2,E3,E4,E5 future;
+  class NOTE note;

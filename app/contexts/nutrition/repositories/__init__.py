@@ -1,7 +1,13 @@
 """Репозитории контекста Nutrition (CRUD + visibility-фильтр PERSONAL/FAMILY)."""
 
+from .dish_ingredient_repository import DishIngredientRepository
 from .food_repository import FoodRepository
 from .goals_repository import GoalsRepository
 from .shared_food_repository import SharedFoodRepository
 
-__all__ = ["FoodRepository", "SharedFoodRepository", "GoalsRepository"]
+__all__ = [
+    "FoodRepository",
+    "SharedFoodRepository",
+    "GoalsRepository",
+    "DishIngredientRepository",
+]

@@ -16,6 +16,7 @@ import json
 import pytest
 
 from app.kernel import Viewer
+from app.kernel.models import Family, Membership, User
 
 from app.contexts.nutrition.api import routes as nutri_routes
 from app.contexts.nutrition.resolve.ports import ExtractedItem, Macros, ResolvedNutrition
@@ -178,6 +179,76 @@ async def test_route_analyze_photo_single_image_backward_compat(session, monkeyp
 
     assert resp.status == 200
     assert rec.calls == 1 and len(rec.last_images) == 1  # одиночное поле image работает
+
+
+# ── Составное блюдо: /entries/composite + состав в /day ───────────────────────
+
+async def _seed_viewer(session) -> Viewer:
+    u = User(telegram_user_id=77, first_name="C", timezone="Europe/Amsterdam")
+    session.add(u)
+    await session.flush()
+    fam = Family(created_by=u.id)
+    session.add(fam)
+    await session.flush()
+    session.add(Membership(user_id=u.id, family_id=fam.id))
+    await session.flush()
+    return Viewer(id=u.id, family_id=fam.id)
+
+
+def _inject_real(monkeypatch, session) -> None:
+    """Composite/day не зовут извлекатель/резолвер — инжектим обычный FoodService."""
+    monkeypatch.setattr(nutri_routes, "_service", lambda req: FoodService(req["session"]))
+
+
+async def test_route_composite_returns_entry_with_ingredients(session, monkeypatch):
+    _inject_real(monkeypatch, session)
+    viewer = await _seed_viewer(session)
+    req = FakeRequest(session, viewer, body={
+        "name": "Паста болоньезе",
+        "ingredients": [
+            {"name": "паста", "w": 120, "kcal": 180, "p": 6, "f": 2, "c": 35, "source": "off"},
+            {"name": "соус", "w": 90, "kcal": 210, "p": 9, "f": 14, "c": 8, "source": "estimate"},
+        ],
+        "meal_type": "lunch",
+    })
+
+    resp = await nutri_routes.post_entry_composite(req)
+
+    assert resp.status == 200
+    entry = json.loads(resp.body.decode())["entry"]
+    assert entry["name"] == "Паста болоньезе"
+    assert entry["w"] == 210 and entry["kcal"] == 390  # сумма строк
+    assert [g["name"] for g in entry["ingredients"]] == ["паста", "соус"]
+    assert entry["ingredients"][0]["source"] == "off"  # провенанс per-ingredient
+
+
+async def test_route_composite_empty_is_422(session, monkeypatch):
+    _inject_real(monkeypatch, session)
+    viewer = await _seed_viewer(session)
+    req = FakeRequest(session, viewer, body={"name": "X", "ingredients": []})
+
+    with pytest.raises(InvalidInput):  # пустой состав → 422 общим middleware
+        await nutri_routes.post_entry_composite(req)
+
+
+async def test_route_composite_appears_in_day_with_composition(session, monkeypatch):
+    _inject_real(monkeypatch, session)
+    viewer = await _seed_viewer(session)
+    await nutri_routes.post_entry_composite(FakeRequest(session, viewer, body={
+        "name": "Боул",
+        "ingredients": [
+            {"name": "рис", "w": 150, "kcal": 200, "p": 4, "f": 1, "c": 45, "source": "off"},
+            {"name": "курица", "w": 100, "kcal": 165, "p": 31, "f": 4, "c": 0, "source": "estimate"},
+        ],
+        "meal_type": "dinner",
+    }))
+
+    resp = await nutri_routes.get_day(FakeRequest(session, viewer))
+
+    entries = json.loads(resp.body.decode())["entries"]
+    composite = [e for e in entries if e.get("ingredients")]
+    assert len(composite) == 1
+    assert [g["name"] for g in composite[0]["ingredients"]] == ["рис", "курица"]
 
 
 async def test_route_analyze_photo_returns_provenance(session, monkeypatch):

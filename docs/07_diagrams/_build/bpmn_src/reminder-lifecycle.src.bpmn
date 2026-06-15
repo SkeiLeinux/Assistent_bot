@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_reminder-lifecycle" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_reminder-lifecycle" name="Жизненный цикл напоминания" isExecutable="false">
+<bpmn:startEvent id="s" name="Партнёр создаёт напоминание (ACTIVE)"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:serviceTask id="tick" name="Планировщик: тик — выбрать созревшие"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g1" name="Есть созревшие?"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing><bpmn:outgoing>f4</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="eWait" name="Нет — ждать след. тик"><bpmn:incoming>f3</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="claim" name="Система: транзакционный claim (один push)"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g2" name="В окне misfire-грейса (3 ч)?"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing><bpmn:outgoing>f7</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="deliver" name="Система: last_fired_at=now; доставка через Notifications (push ✅/⏰)"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="grec" name="recurrence?"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing><bpmn:outgoing>f10</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="eDone" name="DONE (next_fire_at=NULL)"><bpmn:incoming>f9</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="adv" name="Система: advance next_fire_at; статус ACTIVE"><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eReque" name="Снова в пуле (ACTIVE)"><bpmn:incoming>f11</bpmn:incoming></bpmn:endEvent>
+<bpmn:exclusiveGateway id="gmiss" name="recurrence? (просрочено сверх грейса)"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f12</bpmn:outgoing><bpmn:outgoing>f13</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="missF" name="Система: продвинуть к ближайшему будущему слоту; ACTIVE"><bpmn:incoming>f13</bpmn:incoming><bpmn:outgoing>f14</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eReque2" name="Снова в пуле (ACTIVE)"><bpmn:incoming>f14</bpmn:incoming></bpmn:endEvent>
+<bpmn:endEvent id="eMissed" name="MISSED (одноразовое)"><bpmn:incoming>f12</bpmn:incoming></bpmn:endEvent>
+<bpmn:startEvent id="s2" name="Партнёр нажал кнопку в push"><bpmn:outgoing>f15</bpmn:outgoing></bpmn:startEvent>
+<bpmn:exclusiveGateway id="greact" name="Реакция?"><bpmn:incoming>f15</bpmn:incoming><bpmn:outgoing>f16</bpmn:outgoing><bpmn:outgoing>f17</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="ack" name="Система: ack — одноразовое→DONE / повтор→подтвердить (расписание не трогает)"><bpmn:incoming>f16</bpmn:incoming><bpmn:outgoing>f18</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eAck" name="Подтверждено"><bpmn:incoming>f18</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="snooze" name="Система: snooze — next_fire_at=now+N, ACTIVE"><bpmn:incoming>f17</bpmn:incoming><bpmn:outgoing>f19</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eSnooze" name="Отложено (ACTIVE)"><bpmn:incoming>f19</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="tick"/>
+<bpmn:sequenceFlow id="f2" sourceRef="tick" targetRef="g1"/>
+<bpmn:sequenceFlow id="f3" name="нет" sourceRef="g1" targetRef="eWait"/>
+<bpmn:sequenceFlow id="f4" name="да" sourceRef="g1" targetRef="claim"/>
+<bpmn:sequenceFlow id="f5" sourceRef="claim" targetRef="g2"/>
+<bpmn:sequenceFlow id="f6" name="в окне" sourceRef="g2" targetRef="deliver"/>
+<bpmn:sequenceFlow id="f7" name="сверх грейса" sourceRef="g2" targetRef="gmiss"/>
+<bpmn:sequenceFlow id="f8" sourceRef="deliver" targetRef="grec"/>
+<bpmn:sequenceFlow id="f9" name="none" sourceRef="grec" targetRef="eDone"/>
+<bpmn:sequenceFlow id="f10" name="daily/weekly/interval" sourceRef="grec" targetRef="adv"/>
+<bpmn:sequenceFlow id="f11" sourceRef="adv" targetRef="eReque"/>
+<bpmn:sequenceFlow id="f12" name="none" sourceRef="gmiss" targetRef="eMissed"/>
+<bpmn:sequenceFlow id="f13" name="daily/weekly/interval" sourceRef="gmiss" targetRef="missF"/>
+<bpmn:sequenceFlow id="f14" sourceRef="missF" targetRef="eReque2"/>
+<bpmn:sequenceFlow id="f15" sourceRef="s2" targetRef="greact"/>
+<bpmn:sequenceFlow id="f16" name="✅ ack" sourceRef="greact" targetRef="ack"/>
+<bpmn:sequenceFlow id="f17" name="⏰ snooze" sourceRef="greact" targetRef="snooze"/>
+<bpmn:sequenceFlow id="f18" sourceRef="ack" targetRef="eAck"/>
+<bpmn:sequenceFlow id="f19" sourceRef="snooze" targetRef="eSnooze"/>
+</bpmn:process>
+</bpmn:definitions>

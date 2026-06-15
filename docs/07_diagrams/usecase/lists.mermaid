@@ -1,0 +1,32 @@
+%% Use Case — Lists
+%% Derived from: spec-lists §9 (S1–S6) + §10 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P(["👤 Партнёр"])
+
+  subgraph SYS["Lists (scope: PERSONAL / FAMILY)"]
+    direction TB
+    UC1(["Создать / изменить список<br/>(дела·покупки·идеи·фильмы·подарки·ссылки)"])
+    UC2(["Добавить элемент"])
+    UC3(["Строить иерархию (папки)"])
+    UC4(["Отметить выполненным / снять"])
+    UC5(["Скрыть подарок от партнёра<br/>(hidden_from)"])
+    UC6(["Искать по спискам и элементам"])
+    UC7(["Аналитика по типу"])
+    UC8(["Смотреть историю элемента"])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  P --- UC6
+  P --- UC7
+  P --- UC8
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef gift fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P actor;
+  class UC1,UC2,UC3,UC4,UC6,UC7,UC8 uc;
+  class UC5 gift;

@@ -122,6 +122,9 @@ function MealGroup({ meal, entries, onEntryClick }) {
               <div className="entry__meta">
                 <span>{e.time}</span>
                 {e.w != null && <React.Fragment><span>·</span><span>{fmtNum(e.w)} г</span></React.Fragment>}
+                {e.ingredients && e.ingredients.length > 0 && (
+                  <React.Fragment><span>·</span><span title="составное блюдо">🍲 {e.ingredients.length}</span></React.Fragment>
+                )}
                 <span>·</span>
                 <span style={{ color: 'var(--protein)' }}>Б{fmtNum(e.p)}</span>
                 <span style={{ color: 'var(--fat)' }}>Ж{fmtNum(e.f)}</span>

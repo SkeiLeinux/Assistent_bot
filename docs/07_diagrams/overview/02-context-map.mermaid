@@ -1,0 +1,42 @@
+%% Карта bounded contexts и граф зависимостей
+%% Derived from: DOMAIN_MODEL.md §2. SSOT — docs/02_domain, docs/04_specs.
+flowchart TB
+  subgraph DELIVERY["Слой доставки / интерфейс"]
+    Mini["Mini App — весь UI (React)"]
+    Bot["Telegram-бот — вход + push"]
+  end
+
+  subgraph DOMAINS["Доменные контексты (write-side)"]
+    Lists["Lists"]
+    Fin["Finance"]
+    Nut["Nutrition"]
+    Rem["Reminders"]
+  end
+
+  An["Analytics & Digest<br/>(read-side, проекция)"]
+  Notif["Notifications / Delivery<br/>(supporting)"]
+  ACL["Import ACL<br/>(таблица → модель Finance)"]
+  ID["⭐ Identity & Sharing<br/>shared kernel"]
+
+  Mini --> Lists
+  Mini --> Fin
+  Mini --> Nut
+  Mini --> Rem
+  Mini --> An
+  Lists --> ID
+  Fin --> ID
+  Nut --> ID
+  Rem --> ID
+  An -.->|reads| Lists
+  An -.->|reads| Fin
+  An -.->|reads| Nut
+  Rem --> Notif
+  An --> Notif
+  Notif --> Bot
+  ACL --> Fin
+  Bot --> ID
+
+  classDef kernel fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef read fill:#F3E8FD,stroke:#9334E6,color:#1a1a1a;
+  class ID kernel;
+  class An read;

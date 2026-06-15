@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_stage-pipeline" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_stage-pipeline" name="Конвейер открытия этапа (E2–E5)" isExecutable="false">
+<bpmn:startEvent id="s" name="Гейт-триггер этапа"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:userTask id="q" name="Опросник Q заполнен (С. + Катя)"><bpmn:incoming>f1</bpmn:incoming><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:userTask>
+<bpmn:userTask id="gt" name="Gate-тест feasibility (руками, без кода)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:userTask>
+<bpmn:exclusiveGateway id="g" name="Путь жив?"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing><bpmn:outgoing>f5</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:userTask id="rev" name="Ревизия stage-doc: смена канала / объёма"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:userTask>
+<bpmn:userTask id="adr" name="ADR этапа (варианты → решение С./Кати)"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="spec" name="spec-writer-agent: черновик ТЗ из stage-doc + Q + ADR"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:userTask id="accept" name="Ревью и принятие ТЗ (С./Катя)"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="waves" name="Волны агентов по build-contract (агенты → integrator → reviewer)"><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="exit" name="Выход-гейт + ретро + ревизия следующего stage-doc"><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eDone" name="Этап закрыт"><bpmn:incoming>f11</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="q"/>
+<bpmn:sequenceFlow id="f2" sourceRef="q" targetRef="gt"/>
+<bpmn:sequenceFlow id="f3" sourceRef="gt" targetRef="g"/>
+<bpmn:sequenceFlow id="f4" name="нет" sourceRef="g" targetRef="rev"/>
+<bpmn:sequenceFlow id="f5" name="да" sourceRef="g" targetRef="adr"/>
+<bpmn:sequenceFlow id="f6" sourceRef="rev" targetRef="q"/>
+<bpmn:sequenceFlow id="f7" sourceRef="adr" targetRef="spec"/>
+<bpmn:sequenceFlow id="f8" sourceRef="spec" targetRef="accept"/>
+<bpmn:sequenceFlow id="f9" sourceRef="accept" targetRef="waves"/>
+<bpmn:sequenceFlow id="f10" sourceRef="waves" targetRef="exit"/>
+<bpmn:sequenceFlow id="f11" sourceRef="exit" targetRef="eDone"/>
+</bpmn:process>
+</bpmn:definitions>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_e3-huawei-import" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_e3-huawei-import" name="E3 · Huawei-импорт здоровья (кандидат)" isExecutable="false">
+<bpmn:startEvent id="s" name="Напоминание-пресет: «запроси экспорт» (раз в 1–2 нед)"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:userTask id="h2" name="Партнёр: Huawei Health → Privacy center → Request data → Health"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:userTask>
+<bpmn:userTask id="h3" name="Партнёр: получает zip на почту, скачивает"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:userTask>
+<bpmn:userTask id="h4" name="Партнёр: грузит zip в Mini App (+ пароль архива)"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="b1" name="Health ACL: распаковка → парс JSON-папок (Health detail / Sport / Sleep…)"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="b2" name="Система: нормализация → Measurement / Workout"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g" name="Пересечение с ручными записями?"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing><bpmn:outgoing>f8</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="dedup" name="Система: дедупликация по ADR-0008 (источник-приоритет)"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="up" name="Система: идемпотентный upsert по периодам"><bpmn:incoming>f8</bpmn:incoming><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="destroy" name="Система: zip уничтожается (медданные не храним сырьём)"><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:userTask id="h7" name="Партнёр: смотрит отчёт импорта (новые периоды, конфликты)"><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f12</bpmn:outgoing></bpmn:userTask>
+<bpmn:endEvent id="eDone" name="Готово"><bpmn:incoming>f12</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="h2"/>
+<bpmn:sequenceFlow id="f2" sourceRef="h2" targetRef="h3"/>
+<bpmn:sequenceFlow id="f3" sourceRef="h3" targetRef="h4"/>
+<bpmn:sequenceFlow id="f4" sourceRef="h4" targetRef="b1"/>
+<bpmn:sequenceFlow id="f5" sourceRef="b1" targetRef="b2"/>
+<bpmn:sequenceFlow id="f6" sourceRef="b2" targetRef="g"/>
+<bpmn:sequenceFlow id="f7" name="да" sourceRef="g" targetRef="dedup"/>
+<bpmn:sequenceFlow id="f8" name="нет" sourceRef="g" targetRef="up"/>
+<bpmn:sequenceFlow id="f9" sourceRef="dedup" targetRef="up"/>
+<bpmn:sequenceFlow id="f10" sourceRef="up" targetRef="destroy"/>
+<bpmn:sequenceFlow id="f11" sourceRef="destroy" targetRef="h7"/>
+<bpmn:sequenceFlow id="f12" sourceRef="h7" targetRef="eDone"/>
+</bpmn:process>
+</bpmn:definitions>

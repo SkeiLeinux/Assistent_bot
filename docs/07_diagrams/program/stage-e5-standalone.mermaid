@@ -1,0 +1,32 @@
+%% Карта возможностей E5 · Standalone — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-5-standalone.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT(("E5 · Standalone<br/>мягкая цель"))
+  F1["Своя аутентификация — must"]
+  F2["PWA-фронт вне Telegram — must"]
+  F3["Web-push — must"]
+  F4["Миграция SQLite → PostgreSQL — should"]
+  F5["Внешний доступ: HTTPS · домен · бэкапы — must"]
+  M1["Меняются только края: kernel.auth (2-й резолвер) ·<br/>notifications (TG + Web Push) · delivery (CORS/CSRF/rate-limit)"]
+  M2["Домены НЕ меняются (инвариант программы)"]
+  M3["Безопасность: впервые недоверенная сеть"]
+  M4["ADR: 0010 auth standalone · 0005 триггер Postgres"]
+  M5["Гейт: триггер ADR-0005 + web-push gate-тест"]
+
+  ROOT --> F1
+  ROOT --> F2
+  ROOT --> F3
+  ROOT --> F4
+  ROOT --> F5
+  ROOT -.-> M1
+  ROOT -.-> M2
+  ROOT -.-> M3
+  ROOT -.-> M4
+  ROOT -.-> M5
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  class F1,F2,F3,F4,F5 feat;
+  class M1,M2,M3,M4,M5 meta;

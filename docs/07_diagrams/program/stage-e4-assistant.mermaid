@@ -1,0 +1,32 @@
+%% Карта возможностей E4 · Ассистентский слой — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-4-assistant.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT(("E4 · Ассистентский слой<br/>драйвер: С."))
+  F1["Утренний план дня — push, must"]
+  F2["Вечерний сценарий «чем займёмся» — should"]
+  F3["Вопросы к данным (LLM поверх *.read) — should"]
+  F4["Календарь-вид + чтение GCal (iCal URL) — should"]
+  F5["План закупок: Lists↔Finance↔Nutrition — could"]
+  F6["Сверка чек ↔ список покупок — could"]
+  M1["Природа: LLM-композиция поверх contexts.*.read,<br/>без новой write-модели; 3-я job scheduler"]
+  M2["Первые межконтекстные рёбра — через read-проекции + import-linter"]
+  M3["ADR: 0012 бюджет проактивности (+ возможный новый для связок)"]
+  M4["Гейт: Q4 + ≥1 мес данных E2+E3"]
+
+  ROOT --> F1
+  ROOT --> F2
+  ROOT --> F3
+  ROOT --> F4
+  ROOT --> F5
+  ROOT --> F6
+  ROOT -.-> M1
+  ROOT -.-> M2
+  ROOT -.-> M3
+  ROOT -.-> M4
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  class F1,F2,F3,F4,F5,F6 feat;
+  class M1,M2,M3,M4 meta;

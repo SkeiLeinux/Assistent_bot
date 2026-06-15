@@ -4,8 +4,9 @@
 `app/db/models.py` вычищен на интеграции волны A; шим `_compat` снят как мёртвый код).
 """
 
+from .dish_ingredient import DishIngredient
 from .food_entry import FoodEntry
 from .goals import NutritionGoals
 from .shared_food import SharedFood
 
-__all__ = ["FoodEntry", "SharedFood", "NutritionGoals"]
+__all__ = ["FoodEntry", "SharedFood", "NutritionGoals", "DishIngredient"]

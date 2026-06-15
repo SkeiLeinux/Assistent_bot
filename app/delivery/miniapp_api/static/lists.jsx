@@ -194,7 +194,15 @@
   /* min-width:0 — иначе grid-ячейка раздувается под min-content нативного
      input[type=date] (его не сжать) и наезжает на соседний столбец «Приоритет». */
   .lists-attrgrid > * { min-width: 0; }
-  .lists-attrgrid .sk-input { width: 100%; min-width: 0; }
+  /* appearance:none — на iOS Safari нативный input[type=date]/number держит
+     интринзик-ширину и игнорит width:100% (без сброса appearance), вылезая за
+     50%-колонку и наезжая на соседний столбец. На Android это не проявлялось.
+     max-width страхует от любого остаточного интринзика; min-height держит
+     одинаковую высоту, чтобы пустой date не схлопнулся и строка не съехала. */
+  .lists-attrgrid .sk-input { width: 100%; min-width: 0; max-width: 100%;
+    -webkit-appearance: none; appearance: none; }
+  .lists-attrgrid input[type="date"].sk-input,
+  .lists-attrgrid input[type="number"].sk-input { min-height: 44px; }
   .lists-attrgrid .sk-field { margin: 6px 0; }
   .lists-attrgrid--full { grid-column: 1 / -1; }
 

@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_onboarding" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_onboarding" name="Онбординг и пейринг семьи" isExecutable="false">
+    <bpmn:startEvent id="Start_open" name="Открыл Mini App">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="T_auth" name="Система: валидация initData (HMAC, whitelist)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_wl" name="В whitelist?">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_403" name="403 — доступ запрещён">
+      <bpmn:incoming>f3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="T_prov" name="Система: provision User (первый вход)">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_has" name="Уже в семье?">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_home" name="Открыт домашний экран">
+      <bpmn:incoming>f6</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="GW_choice" name="Создать или вступить?">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_create" name="Система: POST /family — Family + Membership + Invite">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="T_share" name="Партнёр: передать инвайт-код партнёру">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_wait" name="В семье 1/2 — ждёт партнёра">
+      <bpmn:incoming>f10</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="T_enter" name="Партнёр: ввести инвайт-код">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="T_join" name="Система: POST /family/join — проверка I3/I4/I5">
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_valid" name="Код валиден и есть место?">
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+      <bpmn:outgoing>f16</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_member" name="Система: создать Membership; инвайт → used">
+      <bpmn:incoming>f14</bpmn:incoming>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_paired" name="Семья укомплектована 2/2">
+      <bpmn:incoming>f15</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_join_err" name="Ошибка кода (404/409/410) — повторить">
+      <bpmn:incoming>f16</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start_open" targetRef="T_auth" />
+    <bpmn:sequenceFlow id="f2" sourceRef="T_auth" targetRef="GW_wl" />
+    <bpmn:sequenceFlow id="f3" name="нет" sourceRef="GW_wl" targetRef="End_403" />
+    <bpmn:sequenceFlow id="f4" name="да" sourceRef="GW_wl" targetRef="T_prov" />
+    <bpmn:sequenceFlow id="f5" sourceRef="T_prov" targetRef="GW_has" />
+    <bpmn:sequenceFlow id="f6" name="да" sourceRef="GW_has" targetRef="End_home" />
+    <bpmn:sequenceFlow id="f7" name="нет" sourceRef="GW_has" targetRef="GW_choice" />
+    <bpmn:sequenceFlow id="f8" name="создать" sourceRef="GW_choice" targetRef="T_create" />
+    <bpmn:sequenceFlow id="f9" sourceRef="T_create" targetRef="T_share" />
+    <bpmn:sequenceFlow id="f10" sourceRef="T_share" targetRef="End_wait" />
+    <bpmn:sequenceFlow id="f11" name="вступить" sourceRef="GW_choice" targetRef="T_enter" />
+    <bpmn:sequenceFlow id="f12" sourceRef="T_enter" targetRef="T_join" />
+    <bpmn:sequenceFlow id="f13" sourceRef="T_join" targetRef="GW_valid" />
+    <bpmn:sequenceFlow id="f14" name="да" sourceRef="GW_valid" targetRef="T_member" />
+    <bpmn:sequenceFlow id="f15" sourceRef="T_member" targetRef="End_paired" />
+    <bpmn:sequenceFlow id="f16" name="нет" sourceRef="GW_valid" targetRef="End_join_err" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_onboarding">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_onboarding" bpmnElement="Proc_onboarding">
+      <bpmndi:BPMNShape id="Start_open_di" bpmnElement="Start_open">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_auth_di" bpmnElement="T_auth">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_wl_di" bpmnElement="GW_wl" isMarkerVisible="true">
+        <dc:Bounds x="350" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_403_di" bpmnElement="End_403">
+        <dc:Bounds x="507" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_prov_di" bpmnElement="T_prov">
+        <dc:Bounds x="475" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_has_di" bpmnElement="GW_has" isMarkerVisible="true">
+        <dc:Bounds x="650" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_home_di" bpmnElement="End_home">
+        <dc:Bounds x="807" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_choice_di" bpmnElement="GW_choice" isMarkerVisible="true">
+        <dc:Bounds x="950" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_create_di" bpmnElement="T_create">
+        <dc:Bounds x="1075" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_share_di" bpmnElement="T_share">
+        <dc:Bounds x="1225" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_wait_di" bpmnElement="End_wait">
+        <dc:Bounds x="1407" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_enter_di" bpmnElement="T_enter">
+        <dc:Bounds x="1075" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_join_di" bpmnElement="T_join">
+        <dc:Bounds x="1225" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_valid_di" bpmnElement="GW_valid" isMarkerVisible="true">
+        <dc:Bounds x="1400" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_member_di" bpmnElement="T_member">
+        <dc:Bounds x="1525" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_paired_di" bpmnElement="End_paired">
+        <dc:Bounds x="1707" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_join_err_di" bpmnElement="End_join_err">
+        <dc:Bounds x="1557" y="472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="350" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="400" y="70" />
+        <di:waypoint x="507" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="375" y="95" />
+        <di:waypoint x="375" y="210" />
+        <di:waypoint x="475" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="575" y="210" />
+        <di:waypoint x="650" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="700" y="210" />
+        <di:waypoint x="807" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="675" y="235" />
+        <di:waypoint x="675" y="280" />
+        <di:waypoint x="975" y="280" />
+        <di:waypoint x="975" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1000" y="210" />
+        <di:waypoint x="1075" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="975" y="235" />
+        <di:waypoint x="975" y="350" />
+        <di:waypoint x="1075" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1175" y="210" />
+        <di:waypoint x="1225" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1325" y="210" />
+        <di:waypoint x="1407" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1175" y="350" />
+        <di:waypoint x="1225" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="1325" y="350" />
+        <di:waypoint x="1400" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="1450" y="350" />
+        <di:waypoint x="1525" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f16_di" bpmnElement="f16">
+        <di:waypoint x="1425" y="375" />
+        <di:waypoint x="1425" y="490" />
+        <di:waypoint x="1557" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="1625" y="350" />
+        <di:waypoint x="1707" y="350" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

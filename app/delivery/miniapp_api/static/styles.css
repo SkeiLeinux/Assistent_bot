@@ -1180,6 +1180,55 @@ input, textarea {
   border-radius: 5px;
   font-weight: 500;
 }
+/* Бейдж составного блюда (🍲 N ингредиентов) в списке каталога */
+.db-item__dish {
+  font-size: 11px;
+  color: var(--tg-text-3);
+  white-space: nowrap;
+}
+
+/* Read-only состав составного блюда (запись дня / каталог) */
+.composition {
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  background: var(--tg-surface);
+  border: 1px solid var(--tg-separator);
+  border-radius: var(--radius-md, 12px);
+}
+.composition__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--tg-text-3);
+  margin-bottom: 6px;
+}
+.composition__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--tg-separator);
+}
+.composition__row:first-of-type { border-top: none; }
+.composition__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tg-text);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.composition__meta {
+  font-size: 11px;
+  color: var(--tg-text-2);
+  white-space: nowrap;
+}
+.composition__src {
+  flex-basis: 100%;
+  font-size: 10px;
+  font-weight: 600;
+}
 
 /* Карточка выбранного блюда с вводом веса */
 .db-back {

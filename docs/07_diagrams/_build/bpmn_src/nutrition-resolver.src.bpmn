@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_nutrition-resolver" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_nutrition-resolver" name="Логирование питания по фото (resolver-ладдер)" isExecutable="false">
+<bpmn:startEvent id="s" name="Текст / фото + порция"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:serviceTask id="ext" name="Groq Scout: извлечь позиции (1 LLM-вызов)"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g1" name="label_complete?"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing><bpmn:outgoing>f4</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="off" name="OpenFoodFacts: поиск (штрихкод / brand+name+fat)"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g3" name="КБЖУ найдены и полны?"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing><bpmn:outgoing>f7</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:exclusiveGateway id="g4" name="web-ступень включена? (R2)"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing><bpmn:outgoing>f9</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="web" name="Groq Compound: веб-поиск + цитата"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g5" name="Найдено?"><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing><bpmn:outgoing>f12</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="est" name="EstimateSource: оценка (без LLM)"><bpmn:incoming>f9</bpmn:incoming><bpmn:incoming>f12</bpmn:incoming><bpmn:outgoing>f13</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="scale" name="Система: масштаб на порцию + провенанс"><bpmn:incoming>f3</bpmn:incoming><bpmn:incoming>f6</bpmn:incoming><bpmn:incoming>f11</bpmn:incoming><bpmn:incoming>f13</bpmn:incoming><bpmn:outgoing>f14</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:userTask id="conf" name="Партнёр: confirm-экран (источник, правка)"><bpmn:incoming>f14</bpmn:incoming><bpmn:outgoing>f15</bpmn:outgoing></bpmn:userTask>
+<bpmn:exclusiveGateway id="g6" name="Подтвердить?"><bpmn:incoming>f15</bpmn:incoming><bpmn:outgoing>f16</bpmn:outgoing><bpmn:outgoing>f17</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="eCancel" name="Отменено"><bpmn:incoming>f16</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="save" name="Система: сохранить FoodEntry (+source)"><bpmn:incoming>f17</bpmn:incoming><bpmn:outgoing>f18</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g7" name="source≠estimate и есть семья?"><bpmn:incoming>f18</bpmn:incoming><bpmn:outgoing>f19</bpmn:outgoing><bpmn:outgoing>f20</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="shared" name="Система: upsert SharedFood (кэш)"><bpmn:incoming>f19</bpmn:incoming><bpmn:outgoing>f21</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eDone" name="Готово"><bpmn:incoming>f20</bpmn:incoming><bpmn:incoming>f21</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="ext"/>
+<bpmn:sequenceFlow id="f2" sourceRef="ext" targetRef="g1"/>
+<bpmn:sequenceFlow id="f3" name="да: label" sourceRef="g1" targetRef="scale"/>
+<bpmn:sequenceFlow id="f4" name="нет" sourceRef="g1" targetRef="off"/>
+<bpmn:sequenceFlow id="f5" sourceRef="off" targetRef="g3"/>
+<bpmn:sequenceFlow id="f6" name="да: off" sourceRef="g3" targetRef="scale"/>
+<bpmn:sequenceFlow id="f7" name="нет" sourceRef="g3" targetRef="g4"/>
+<bpmn:sequenceFlow id="f8" name="да (R2)" sourceRef="g4" targetRef="web"/>
+<bpmn:sequenceFlow id="f9" name="нет (R1)" sourceRef="g4" targetRef="est"/>
+<bpmn:sequenceFlow id="f10" sourceRef="web" targetRef="g5"/>
+<bpmn:sequenceFlow id="f11" name="да: web" sourceRef="g5" targetRef="scale"/>
+<bpmn:sequenceFlow id="f12" name="нет" sourceRef="g5" targetRef="est"/>
+<bpmn:sequenceFlow id="f13" sourceRef="est" targetRef="scale"/>
+<bpmn:sequenceFlow id="f14" sourceRef="scale" targetRef="conf"/>
+<bpmn:sequenceFlow id="f15" sourceRef="conf" targetRef="g6"/>
+<bpmn:sequenceFlow id="f16" name="отмена" sourceRef="g6" targetRef="eCancel"/>
+<bpmn:sequenceFlow id="f17" name="подтвердить" sourceRef="g6" targetRef="save"/>
+<bpmn:sequenceFlow id="f18" sourceRef="save" targetRef="g7"/>
+<bpmn:sequenceFlow id="f19" name="да" sourceRef="g7" targetRef="shared"/>
+<bpmn:sequenceFlow id="f20" name="нет" sourceRef="g7" targetRef="eDone"/>
+<bpmn:sequenceFlow id="f21" sourceRef="shared" targetRef="eDone"/>
+</bpmn:process>
+</bpmn:definitions>

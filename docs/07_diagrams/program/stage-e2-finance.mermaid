@@ -1,0 +1,32 @@
+%% Карта возможностей E2 · Финансы-автоматизация — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-2-finance-automation.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT(("E2 · Финансы-автоматизация<br/>драйвер: С. · ввод — Катя"))
+  F1["Ручной ввод транзакции — must (≤10 сек)"]
+  F2["Чек по фото · vision — осн. канал, must"]
+  F3["Чек по QR (ФНС) — should"]
+  F4["Категоризация позиций: правила + LLM — must"]
+  F5["Смена SSOT: транзакции = факт — must"]
+  F6["Выгрузка периода (xlsx/csv) — should"]
+  F7["История цен · PriceObservation — could"]
+  M1["Домен: Transaction · Receipt(+Items) ·<br/>Receipt ACL (каналы A/B/C/D)"]
+  M2["ADR-кандидаты: 0006 канал · 0007 SSOT · 0011 категоризация"]
+  M3["Гейт входа: Q2 + чек gate-тест"]
+
+  ROOT --> F1
+  ROOT --> F2
+  ROOT --> F3
+  ROOT --> F4
+  ROOT --> F5
+  ROOT --> F6
+  ROOT --> F7
+  ROOT -.-> M1
+  ROOT -.-> M2
+  ROOT -.-> M3
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  class F1,F2,F3,F4,F5,F6,F7 feat;
+  class M1,M2,M3 meta;

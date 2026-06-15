@@ -1,0 +1,43 @@
+%% Use Case — системный обзор (все акторы × домены)
+%% Derived from: §9 всех ТЗ docs/04_specs, DOMAIN_MODEL §2. SSOT — docs/04_specs.
+flowchart LR
+  P(["👤 Партнёр"])
+  ADM(["🛡️ Админ"])
+  SCH(["⏰ Планировщик"])
+  TG(["✈️ Telegram"])
+  GR(["🧠 Groq LLM"])
+  OFF(["🍎 OpenFoodFacts"])
+  GS(["📊 Google-таблица"])
+
+  subgraph SYS["Семейный ассистент — возможности"]
+    direction TB
+    U_ID(["Спариться в семью"])
+    U_L(["Вести типизированные списки<br/>(вкл. подарки)"])
+    U_F(["Импорт бюджета и аналитика"])
+    U_N(["Дневник питания (КБЖУ)"])
+    U_R(["Напоминания"])
+    U_A(["Аналитика и ретро-дайджест"])
+  end
+
+  P --- U_ID
+  P --- U_L
+  P --- U_F
+  P --- U_N
+  P --- U_R
+  P --- U_A
+  TG -. "initData / push" .-> U_ID
+  GS -. "xlsx" .-> U_F
+  GR -. "разбор" .-> U_N
+  OFF -. "КБЖУ" .-> U_N
+  SCH -. "срабатывание" .-> U_R
+  SCH -. "каденс" .-> U_A
+  U_R -. "push" .-> TG
+  U_A -. "push" .-> TG
+  ADM -. "алерты об ошибках" .-> SYS
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P,ADM,SCH actor;
+  class TG,GR,OFF,GS ext;
+  class U_ID,U_L,U_F,U_N,U_R,U_A uc;

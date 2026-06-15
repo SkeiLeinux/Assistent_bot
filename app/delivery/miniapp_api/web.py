@@ -126,7 +126,14 @@ async def _frontend_no_cache(request: web.Request, response: web.StreamResponse)
 
 
 def create_app() -> web.Application:
-    app = web.Application(middlewares=[error_middleware, auth_middleware])
+    # client_max_size: дефолт aiohttp = 1 MB, но фото летят base64-dataURL внутри JSON-тела
+    # (до 5 кадров одним запросом — мультифото дневника / составное блюдо), что легко пробивает
+    # 1 MB → 413 Request Entity Too Large ещё до хендлера. 16 MB = 5 сжатых кадров с запасом.
+    # Внешний слой (Cloudflare free edge) режет тело по 100 MB — он не лимитирует раньше нас.
+    app = web.Application(
+        client_max_size=16 * 1024**2,
+        middlewares=[error_middleware, auth_middleware],
+    )
     register_kernel_routes(app)
     register_list_routes(app)
     register_finance_routes(app)

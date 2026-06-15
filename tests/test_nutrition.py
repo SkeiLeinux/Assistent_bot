@@ -24,6 +24,7 @@ from app.contexts.nutrition.resolve.ports import ExtractedItem, Macros, Resolved
 from app.contexts.nutrition.services import (
     FamilyRequired,
     FoodService,
+    InvalidInput,
     LLMError,
     LLMRateLimitError,
     NutritionItem,
@@ -519,3 +520,86 @@ async def test_day_boundary_in_user_timezone(session):
     # а во 2-м — есть
     d2 = await svc.get_day(v, date(2026, 1, 2), timezone_name="Pacific/Kiritimati")
     assert len(d2.entries) == 1 and d2.totals.kcal == 120
+
+
+# ── Составное блюдо: одна запись + состав-снимок (фича 2026-06-14) ────────────
+
+def _ingredients_pair():
+    return [
+        {"name": "паста", "weight_g": 120, "kcal": 180, "protein": 6, "fat": 2,
+         "carbs": 35, "source": "off", "source_ref": "u1"},
+        {"name": "соус", "weight_g": 90, "kcal": 210, "protein": 9, "fat": 14,
+         "carbs": 8, "source": "estimate", "source_ref": None},
+    ]
+
+
+async def test_composite_dish_one_entry_with_ingredients(session):
+    """N распознанных позиций → ОДНА запись (агрегат) + состав-снимок на ней."""
+    _, _, _, v, _ = await _family(session)
+    svc = _svc(session)
+    entry = await svc.save_composite_dish(
+        v, name="Паста болоньезе", ingredients=_ingredients_pair(),
+        source="manual", meal_type="lunch", timezone_name=TZ, save_to_catalog=False,
+    )
+    # одна запись = сумма строк (абсолют за порцию, I1)
+    assert entry.description == "Паста болоньезе"
+    assert entry.weight_g == 210  # 120 + 90
+    assert (entry.kcal, entry.protein, entry.fat, entry.carbs) == (390, 15, 16, 43)
+    assert entry.shared_food_id is None  # каталог не просили
+    # состав висит на записи, провенанс per-ingredient сохранён
+    rows = (await svc.ingredients_for_entries([entry.id]))[entry.id]
+    assert [r.name for r in rows] == ["паста", "соус"]
+    assert (rows[0].source, rows[0].source_ref) == ("off", "u1")
+    assert rows[1].source == "estimate"
+    assert [r.position for r in rows] == [0, 1]
+
+
+async def test_composite_dish_to_catalog_creates_shared_food(session):
+    """save_to_catalog=True → блюдо каталога (per-100g из агрегата) + свой состав."""
+    _, _, _, v, _ = await _family(session)
+    svc = _svc(session)
+    ingredients = [
+        {"name": "рис", "weight_g": 150, "kcal": 200, "protein": 4, "fat": 1,
+         "carbs": 45, "source": "off", "source_ref": None},
+        {"name": "курица", "weight_g": 100, "kcal": 165, "protein": 31, "fat": 4,
+         "carbs": 0, "source": "estimate", "source_ref": None},
+    ]
+    entry = await svc.save_composite_dish(
+        v, name="Рис с курицей", ingredients=ingredients,
+        source="manual", meal_type="dinner", timezone_name=TZ, save_to_catalog=True,
+    )
+    assert entry.shared_food_id is not None
+    foods = await svc.search_shared_foods(v, "Рис")
+    assert len(foods) == 1
+    sf = foods[0]
+    assert sf.weight_g == 250  # 150 + 100
+    assert round(sf.kcal_per_100g, 1) == 146.0  # 365 / 250 * 100
+    # состав висит и на блюде каталога, и на записи
+    assert [r.name for r in (await svc.ingredients_for_foods([sf.id]))[sf.id]] == ["рис", "курица"]
+    assert len((await svc.ingredients_for_entries([entry.id]))[entry.id]) == 2
+
+
+async def test_composite_dish_delete_cascades_ingredients(session):
+    """Удаление записи уносит её состав (FK ON DELETE CASCADE, pragma ON в conftest)."""
+    _, _, _, v, _ = await _family(session)
+    svc = _svc(session)
+    entry = await svc.save_composite_dish(
+        v, name="Блюдо", ingredients=_ingredients_pair(),
+        source="manual", timezone_name=TZ, save_to_catalog=False,
+    )
+    assert (await svc.dish_repo.for_entries([entry.id]))  # состав есть
+    assert await svc.delete_entry(v, entry.id) is True
+    assert await svc.dish_repo.for_entries([entry.id]) == {}  # каскад унёс
+
+
+async def test_composite_dish_to_catalog_requires_weight(session):
+    """В каталог нельзя без суммарного веса (per-100g не из чего считать)."""
+    _, _, _, v, _ = await _family(session)
+    svc = _svc(session)
+    with pytest.raises(InvalidInput):
+        await svc.save_composite_dish(
+            v, name="Без веса",
+            ingredients=[{"name": "x", "weight_g": None, "kcal": 10, "protein": 0,
+                          "fat": 0, "carbs": 0, "source": None, "source_ref": None}],
+            source="manual", timezone_name=TZ, save_to_catalog=True,
+        )

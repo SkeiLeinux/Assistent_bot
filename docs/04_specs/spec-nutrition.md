@@ -91,6 +91,27 @@ Nutrition — дневник питания с расчётом КБЖУ: вво
 | `target_fat` | float | да | — |
 | `target_carbs` | float | да | — |
 
+### 4.4 DishIngredient — состав составного блюда (snapshot, 2026-06-14)
+Составное блюдо («одно блюдо из нескольких ингредиентов») хранит разбивку строкой на
+каждый ингредиент. Родитель — **ровно один** из двух (CHECK): запись дневника
+(`food_entry_id`) или блюдо каталога (`shared_food_id`); при сохранении в оба места
+состав дублируется по строке на родителя. Снимок: поштучно не редактируется, правится
+агрегат записи; `ON DELETE CASCADE` уносит состав вместе с родителем.
+
+| Поле | Тип | NULL | Описание |
+|---|---|---|---|
+| `id` | int PK | нет | — |
+| `food_entry_id` | FK→FoodEntry | да | Состав записи дневника. CASCADE. Index. |
+| `shared_food_id` | FK→SharedFood | да | Состав блюда каталога. CASCADE. Index. |
+| `position` | int | нет | Порядок ингредиента в блюде. |
+| `name` | str | нет | Название ингредиента. |
+| `weight_g` | float | да | Вес ингредиента. |
+| `kcal`/`protein`/`fat`/`carbs` | float | нет | **Абсолют за порцию ингредиента** (как FoodEntry, I1); сумма строк = КБЖУ блюда. |
+| `source` | str | да | Провенанс ингредиента (ProvenanceSource, ADR-0013). |
+| `source_ref` | str | да | Ссылка/код источника (off/web). |
+
+> CHECK: `(food_entry_id IS NULL) <> (shared_food_id IS NULL)` — ровно один родитель.
+
 ---
 
 ## 5. ERD
@@ -102,6 +123,8 @@ erDiagram
   USER ||--o{ SHAREDFOOD : "создал"
   FAMILY ||--o{ SHAREDFOOD : "общий каталог"
   SHAREDFOOD ||--o{ FOODENTRY : "источник (shared_food_id)"
+  FOODENTRY ||--o{ DISHINGREDIENT : "состав (food_entry_id)"
+  SHAREDFOOD ||--o{ DISHINGREDIENT : "состав (shared_food_id)"
 
   FOODENTRY {
     int id PK
@@ -130,6 +153,16 @@ erDiagram
     float target_protein
     float target_fat
     float target_carbs
+  }
+  DISHINGREDIENT {
+    int id PK
+    int food_entry_id FK "nullable, CASCADE"
+    int shared_food_id FK "nullable, CASCADE"
+    int position
+    string name
+    float weight_g
+    float kcal
+    string source
   }
 ```
 
@@ -179,17 +212,18 @@ stateDiagram-v2
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| GET | `/api/day?date=` | Итоги дня + goals + progress(4 бара) + meals[] (группы с подитогами) |
+| GET | `/api/day?date=` | Итоги дня + goals + progress(4 бара) + meals[] (группы с подитогами). Записи-блюда несут `ingredients[]` (состав) |
 | GET | `/api/goals` | Текущие цели |
 | PUT | `/api/goals` | `{kcal?,protein?,fat?,carbs?}` (null = снять) |
 | POST | `/api/analyze` | `{type:text\|photo, text?, images?[≤5], caption?}` → items[] (без записи). Для `photo` — список `images` (dataURL/base64, до 5, один вызов LLM); одиночное `image` принимается для обратной совместимости |
 | POST | `/api/entries` | `{items[], meal_type?, source}` → сохранённые |
+| POST | `/api/entries/composite` | `{name, ingredients[{name,w,kcal,p,f,c,source?,source_ref?}], meal_type?, date?, source?, save_to_catalog?}` → одна запись-блюдо (агрегат) + состав-снимок (`DishIngredient`); при `save_to_catalog` — ещё и блюдо каталога со своим составом |
 | POST | `/api/entries/from-food` | Запись из `SharedFood` (порция в граммах) |
 | PATCH | `/api/entries/{id}` | Правка записи |
 | DELETE | `/api/entries/{id}` | Удаление |
 | GET | `/api/period?from=&to=` | Записи по дням (+ goals на день) |
 | GET | `/api/export?from=&to=` | Markdown-дамп периода |
-| GET | `/api/foods?q=` | Каталог `SharedFood` (поиск/quick-pick) |
+| GET | `/api/foods?q=` | Каталог `SharedFood` (поиск/quick-pick). Составные блюда несут `ingredients[]` |
 | POST | `/api/foods` | Создать блюдо в каталог |
 | POST | `/api/foods/analyze` | LLM-разбор состава блюда (текст/фото/комбинированно) |
 
@@ -256,6 +290,7 @@ app/contexts/nutrition/
 ---
 
 ## 15. История изменений
+- **0.2.2 (2026-06-14, составное блюдо):** распознанные позиции можно свернуть в **одно блюдо** с видимым составом. Новая таблица `DishIngredient` (§4.4) — состав-снимок на запись дневника и/или блюдо каталога (CHECK: ровно один родитель; CASCADE), провенанс на каждый ингредиент. REST: `POST /api/entries/composite` (одна запись-блюдо + состав; `save_to_catalog` — ещё и в каталог); `GET /api/day` и `/api/foods` отдают `ingredients[]` на составных. Фронт: на confirm-экране сегмент «Отдельные продукты / Одно блюдо», read-only состав в записи дня и каталоге. Миграция `f4c2a9d7b1e3` (1 таблица, single head). Домен видимости/КБЖУ не менялся.
 - **0.2.1 (2026-06-13, фиксы партии 1):** фото-режим дневника принимает **до 5 снимков** одним вызовом LLM (паритет с каталогом) — контракт `/analyze` `photo`: `image` → `images[≤5]` (одиночное `image` совместимо). Удалён мёртвый `FoodService.add_explicit` (YAGNI); вокабуляр `source` зафиксирован как `text|photo|db` (`manual` — лишь защитный дефолт). Промпт/домен/видимость не менялись; миграций нет.
 - **0.2 (2026-06-07):** закрыты OQ-N2/N3 — `SharedFood.family_id` (FAMILY-scope); API сразу под `/api/v1/nutrition/*`. `CLAUDE.md` §9 поправлен (модель Groq). Зафиксирован North Star: 2-стадийный разбор фото (vision→поиск). Статус → принято.
 - **0.1 (2026-06-07):** первый черновик ТЗ Nutrition. Зафиксировано существующее (`FoodEntry`/`SharedFood`, 3 способа ввода + LLM Groq llama-4-scout, цели, история, выгрузка, 13 REST-эндпоинтов) и дельта под kernel: цели КБЖУ → `NutritionGoals` по `user_id` (OQ-4); `scope` (`PERSONAL` дневник / `FAMILY` каталог); `current_viewer`/`timezone` из kernel. ERD, инварианты I1–I7, флоу analyze→confirm→save, структура пакета. 2 OQ + док-синк (CLAUDE §9 модель).

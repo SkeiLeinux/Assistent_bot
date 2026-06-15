@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_finance-import" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_finance-import" name="Импорт финансов" isExecutable="false">
+    <bpmn:startEvent id="s" name="Готов импортировать">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="t1" name="Партнёр: загрузить xlsx (+ год)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="p1" name="Import ACL: структурный парсинг (шапка, заливка)">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g1" name="Структура узнана?">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="fb" name="Import ACL: fallback — родитель = Σ детей">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="p2" name="Import ACL: MonthParse + валидация (|Δ|≤1₽)">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g2" name="Валидно?">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="eFail" name="Fail-loud — ничего не импортировано">
+      <bpmn:incoming>f8</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="norm" name="Import ACL: нормализация + алиасы">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g3" name="Категория известна?">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="rev" name="Система: категория NEEDS_REVIEW">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="up" name="Система: идемпотентный upsert месяца">
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eOk" name="Импортировано — аналитика доступна">
+      <bpmn:incoming>f14</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="t1" />
+    <bpmn:sequenceFlow id="f2" sourceRef="t1" targetRef="p1" />
+    <bpmn:sequenceFlow id="f3" sourceRef="p1" targetRef="g1" />
+    <bpmn:sequenceFlow id="f4" name="нет" sourceRef="g1" targetRef="fb" />
+    <bpmn:sequenceFlow id="f5" name="да" sourceRef="g1" targetRef="p2" />
+    <bpmn:sequenceFlow id="f6" sourceRef="fb" targetRef="p2" />
+    <bpmn:sequenceFlow id="f7" sourceRef="p2" targetRef="g2" />
+    <bpmn:sequenceFlow id="f8" name="расхождение" sourceRef="g2" targetRef="eFail" />
+    <bpmn:sequenceFlow id="f9" name="ок" sourceRef="g2" targetRef="norm" />
+    <bpmn:sequenceFlow id="f10" sourceRef="norm" targetRef="g3" />
+    <bpmn:sequenceFlow id="f11" name="невиданная" sourceRef="g3" targetRef="rev" />
+    <bpmn:sequenceFlow id="f12" name="известная" sourceRef="g3" targetRef="up" />
+    <bpmn:sequenceFlow id="f13" sourceRef="rev" targetRef="up" />
+    <bpmn:sequenceFlow id="f14" sourceRef="up" targetRef="eOk" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_finance-import">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_finance-import" bpmnElement="Proc_finance-import">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="t1_di" bpmnElement="t1">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="p1_di" bpmnElement="p1">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="fb_di" bpmnElement="fb">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="p2_di" bpmnElement="p2">
+        <dc:Bounds x="775" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g2_di" bpmnElement="g2" isMarkerVisible="true">
+        <dc:Bounds x="950" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eFail_di" bpmnElement="eFail">
+        <dc:Bounds x="1107" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="norm_di" bpmnElement="norm">
+        <dc:Bounds x="1075" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g3_di" bpmnElement="g3" isMarkerVisible="true">
+        <dc:Bounds x="1250" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="rev_di" bpmnElement="rev">
+        <dc:Bounds x="1375" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="up_di" bpmnElement="up">
+        <dc:Bounds x="1525" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eOk_di" bpmnElement="eOk">
+        <dc:Bounds x="1707" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="140" />
+        <di:waypoint x="825" y="140" />
+        <di:waypoint x="825" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="775" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="875" y="70" />
+        <di:waypoint x="950" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1000" y="70" />
+        <di:waypoint x="1107" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="975" y="95" />
+        <di:waypoint x="975" y="210" />
+        <di:waypoint x="1075" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1175" y="210" />
+        <di:waypoint x="1250" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="1300" y="210" />
+        <di:waypoint x="1375" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1275" y="235" />
+        <di:waypoint x="1275" y="280" />
+        <di:waypoint x="1575" y="280" />
+        <di:waypoint x="1575" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="1475" y="210" />
+        <di:waypoint x="1525" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="1625" y="210" />
+        <di:waypoint x="1707" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

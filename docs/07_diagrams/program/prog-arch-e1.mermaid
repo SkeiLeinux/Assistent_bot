@@ -1,0 +1,42 @@
+%% Эволюция архитектуры — E1 (MVP) target. SSOT — 06_program/architecture-evolution.md §1.
+flowchart TB
+  subgraph TG["Telegram"]
+    User1["С. / Катя"]
+    MiniApp["Mini App (React UMD)"]
+    BotAPI["Bot API"]
+  end
+
+  subgraph VPS["VPS · один процесс · один event-loop (aiogram polling + aiohttp)"]
+    subgraph Delivery["delivery/"]
+      Web["miniapp_api (REST /api/v1/*, статика)"]
+      Bot["bot/ (вход /start, callback-диспетчер)"]
+    end
+    subgraph Domains["contexts/"]
+      L["lists"]
+      F["finance (+importing ACL)"]
+      N["nutrition (+llm_service)"]
+      R["reminders"]
+    end
+    K["kernel (User/Family/Invite · Shareable/visible_to · auth initData)"]
+    A["analytics (read-side + DigestSchedule)"]
+    No["notifications (deliver/alert)"]
+    S["scheduler (generic тик + job-реестр)"]
+    DB[("SQLite + alembic")]
+  end
+
+  Groq["Groq LLM (llama-4-scout, vision)"]
+  XLSX["Google-таблица бюджета (xlsx, ручная выгрузка)"]
+
+  User1 --> MiniApp --> Web
+  User1 --> BotAPI --> Bot
+  No --> BotAPI
+  Web --> Domains & K & A
+  Bot --> Domains & No
+  Domains --> K --> DB
+  A -.->|"*.read"| Domains
+  A --> No
+  S -->|"job: reminder_poll"| R
+  S -->|"job: digest"| A
+  R --> No
+  N --> Groq
+  XLSX -->|"upload"| F

@@ -1,0 +1,33 @@
+%% Карта осуществимости интеграций — ПРОЕКТНОЕ
+%% Derived from: 06_program/feasibility.md (веб-проверка 2026-06-10). SSOT — docs/06_program.
+flowchart TB
+  subgraph OK["✅ Путь подтверждён"]
+    direction TB
+    A1["Huawei privacy-zip (E3) — осн."]
+    A2["Чек по фото · vision (E2) — осн."]
+    A3["QR-скан Mini App (showScanQrPopup)"]
+    A4["Анализы / InBody → vision"]
+    A5["Цикл — ручной ввод + календарь"]
+    A6["Google Calendar — чтение (iCal URL)"]
+  end
+  subgraph WARN["⚠️ Возможно — нужен gate-тест"]
+    direction TB
+    B1["proverkacheka API (E2, ~15/сут)"]
+    B2["Офиц. API ФНС — отдаёт ли позиции?"]
+    B3["lkdr «Мои чеки» — хрупко"]
+    B4["Huawei Health Kit API — бюрократия"]
+    B5["Web-push вне Telegram (E5, iOS капризен)"]
+  end
+  subgraph NO["❌ Не путь"]
+    direction TB
+    C1["Health Connect — нужен свой Android-app"]
+    C2["Google Fit — отключение к концу 2026"]
+    C3["GCal запись / синк — OAuth, конфликты"]
+  end
+
+  classDef ok fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef warn fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  classDef no fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
+  class A1,A2,A3,A4,A5,A6 ok;
+  class B1,B2,B3,B4,B5 warn;
+  class C1,C2,C3 no;

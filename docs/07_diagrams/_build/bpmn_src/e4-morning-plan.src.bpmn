@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_e4-morning-plan" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_e4-morning-plan" name="E4 · Утренний план дня (кандидат)" isExecutable="false">
+<bpmn:startEvent id="s" name="job: morning_plan (per-user время, таймзона kernel)"><bpmn:outgoing>f1</bpmn:outgoing><bpmn:timerEventDefinition/></bpmn:startEvent>
+<bpmn:serviceTask id="a1" name="assistant: сбор — reminders сегодня · TASK-OPEN с близкими датами · тренировка (E3, если расшарена) · идея ужина"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="a2" name="assistant: LLM-композиция в текст (границы — ADR-0012)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g" name="План пуст?"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing><bpmn:outgoing>f5</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="skip" name="Не шлём"><bpmn:incoming>f4</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="n1" name="notifications: deliver(user, план, kind=morning_plan)"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:userTask id="u" name="Партнёр: читает план, тапает в Mini App"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:userTask>
+<bpmn:endEvent id="eDone" name="Готово"><bpmn:incoming>f7</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="a1"/>
+<bpmn:sequenceFlow id="f2" sourceRef="a1" targetRef="a2"/>
+<bpmn:sequenceFlow id="f3" sourceRef="a2" targetRef="g"/>
+<bpmn:sequenceFlow id="f4" name="да" sourceRef="g" targetRef="skip"/>
+<bpmn:sequenceFlow id="f5" name="нет" sourceRef="g" targetRef="n1"/>
+<bpmn:sequenceFlow id="f6" sourceRef="n1" targetRef="u"/>
+<bpmn:sequenceFlow id="f7" sourceRef="u" targetRef="eDone"/>
+</bpmn:process>
+</bpmn:definitions>

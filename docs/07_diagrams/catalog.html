@@ -1,0 +1,3090 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Семейный ассистент — каталог диаграмм</title>
+<style>
+:root{--bg:#fff;--ink:#1a1a1a;--mut:#5f6368;--line:#e0e0e0;--accent:#4285F4;--side:#f7f8fa}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{display:flex;min-height:100vh}
+aside{width:300px;flex:0 0 300px;background:var(--side);border-right:1px solid var(--line);padding:18px 14px;position:sticky;top:0;height:100vh;overflow:auto}
+aside h1{font-size:15px;margin:0 0 4px}
+aside .meta{font-size:12px;color:var(--mut);margin-bottom:14px;line-height:1.5}
+.navsec{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:14px 0 6px;font-weight:700}
+aside a{display:block;font-size:13px;color:var(--ink);text-decoration:none;padding:5px 8px;border-radius:6px;line-height:1.35}
+aside a:hover{background:#eceff3}
+main{flex:1;padding:28px 36px;max-width:1120px}
+h2.sec{font-size:20px;border-bottom:2px solid var(--accent);padding-bottom:6px;margin:34px 0 18px}
+h2.sec:first-child{margin-top:0}
+.card{border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:0 0 22px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card h3{margin:0 0 4px;font-size:16px}
+.card h4{margin:14px 0 6px;font-size:14px;color:#202124}
+.cap{font-size:12px;color:var(--mut);margin-bottom:14px;font-family:ui-monospace,Menlo,Consolas,monospace}
+pre.mermaid{margin:0;text-align:center;background:#fff;overflow:auto}
+.bpmn-box{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.bpmn-canvas{height:500px}
+.card table{border-collapse:collapse;font-size:13px;margin:8px 0;width:100%}
+.card th,.card td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.card th{background:#f1f3f4}
+.card ul{font-size:14px;line-height:1.65;margin:6px 0 6px 0;padding-left:20px}
+.card code{background:#f1f3f4;padding:1px 5px;border-radius:4px;font-size:12px}
+.banner{background:#fff;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--mut);margin-bottom:22px;line-height:1.6}
+.prognote{background:#FEF7E0;border:1px solid #F9AB00;border-radius:8px;padding:12px 16px;font-size:13px;color:#5f4b00;margin:0 0 18px;line-height:1.55}
+.legend{font-size:12px;color:var(--mut);margin-top:6px}
+.err{color:#c5221f;padding:12px}
+@media(max-width:820px){.wrap{flex-direction:column}aside{width:auto;height:auto;position:static}}
+</style></head><body><div class="wrap"><aside><h1>Семейный ассистент</h1><div class="meta">Каталог диаграмм · MVP + программа E2–E5<br>Дата: 2026-06-14<br>Диаграммы — производные от ТЗ/каркасов.<br>SSOT: docs/04_specs, docs/03_architecture, docs/06_program</div><div class="navsec">1 · Обзор системы</div>
+<a href="#overview-01-context">Контекст системы (акторы и внешние системы)</a>
+<a href="#overview-02-context-map">Карта bounded contexts и зависимости</a>
+<a href="#overview-03-visibility">Модель видимости (scope / hidden_from / подарки)</a>
+<a href="#overview-04-containers">Контейнеры и компоненты (модульный монолит)</a>
+<a href="#overview-05-feature-map">Карта фич MVP</a>
+<div class="navsec">2 · Use Case</div>
+<a href="#usecase-00-system">Системный обзор (все акторы × домены)</a>
+<a href="#usecase-identity">Identity &amp; Sharing</a>
+<a href="#usecase-lists">Lists</a>
+<a href="#usecase-finance">Finance</a>
+<a href="#usecase-nutrition">Nutrition</a>
+<a href="#usecase-reminders">Reminders</a>
+<a href="#usecase-analytics">Analytics &amp; Digest</a>
+<div class="navsec">3 · Процессы (BPMN)</div>
+<a href="#bpmn-onboarding">Онбординг и пейринг семьи</a>
+<a href="#bpmn-lists-item-lifecycle">Жизненный цикл элемента списка</a>
+<a href="#bpmn-finance-import">Импорт финансов</a>
+<a href="#bpmn-nutrition-resolver">Логирование питания по фото (resolver-ладдер)</a>
+<a href="#bpmn-reminder-lifecycle">Жизненный цикл напоминания</a>
+<a href="#bpmn-notification-delivery">Доставка уведомления</a>
+<a href="#bpmn-digest">Формирование и доставка дайджеста</a>
+<div class="navsec">4 · Программа E2–E5 (проектное)</div>
+<a href="#program-prog-roadmap">Программный roadmap E1→E5</a>
+<a href="#program-prog-arch-e1">Архитектура E1 (MVP)</a>
+<a href="#program-prog-arch-e2e3">Архитектура — дельта E2–E3</a>
+<a href="#program-prog-arch-e4e5">Архитектура — дельта E4–E5</a>
+<a href="#program-prog-feasibility">Карта осуществимости интеграций</a>
+<a href="#program-stage-e2-finance">E2 · Финансы-автоматизация — возможности</a>
+<a href="#program-e2-receipt">BPMN E2 · Чек → транзакции (кандидат)</a>
+<a href="#program-e2-ssot-transition">BPMN E2 · Переход SSOT (кандидат)</a>
+<a href="#program-stage-e3-health">E3 · Здоровье — возможности</a>
+<a href="#program-e3-huawei-import">BPMN E3 · Huawei-импорт (кандидат)</a>
+<a href="#program-stage-e4-assistant">E4 · Ассистентский слой — возможности</a>
+<a href="#program-e4-morning-plan">BPMN E4 · Утренний план дня (кандидат)</a>
+<a href="#program-stage-e5-standalone">E5 · Standalone — возможности</a>
+<a href="#program-stage-pipeline">BPMN · Конвейер открытия этапа</a>
+<div class="navsec">5 · Справочное</div>
+<a href="#reference-glossary">Глоссарий</a>
+<a href="#reference-traceability">Матрица трассировки</a></aside><main><div class="banner"><b>Как читать.</b> Обзор, Use Case и карты — Mermaid; процессы — BPMN 2.0 (рендер bpmn-js; зум колесом, панорама перетаскиванием). Разделы 1–3 и 5 — реализованный/принятый MVP (SSOT — <code>docs/04_specs</code>). Раздел 4 — программа E2–E5, проектное (SSOT — <code>docs/06_program</code>).<div class="legend">BPMN: иконка человека = действие Партнёра (userTask); шестерёнка = действие Системы (serviceTask); ромб = шлюз; круг = событие; круг с часами = таймер.</div></div><h2 class="sec" id="sec-overview">1 · Обзор системы</h2>
+<section class="card" id="overview-01-context"><h3>Контекст системы (акторы и внешние системы)</h3>
+<div class="cap">Derived from: CLAUDE.md §6/§9, DOMAIN_MODEL.md §2/§7. SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Контекст системы — акторы и внешние системы
+%% Derived from: CLAUDE.md §6/§9, DOMAIN_MODEL.md §2/§7. SSOT — docs/04_specs.
+flowchart LR
+  P1[&quot;👤 Партнёр 1&lt;br/&gt;(Сергей)&quot;]
+  P2[&quot;👤 Партнёр 2&lt;br/&gt;(Катя)&quot;]
+  ADM[&quot;🛡️ Админ&lt;br/&gt;(is_admin)&quot;]
+  SCH[&quot;⏰ Планировщик&lt;br/&gt;(время, poll-loop)&quot;]
+
+  SYS{{&quot;Семейный ассистент&lt;br/&gt;Telegram-бот + Mini App&lt;br/&gt;(модульный монолит)&quot;}}
+
+  TG[&quot;✈️ Telegram&lt;br/&gt;auth initData · push&quot;]
+  GROQ[&quot;🧠 Groq LLM&lt;br/&gt;разбор питания (текст/фото)&quot;]
+  OFF[&quot;🍎 OpenFoodFacts&lt;br/&gt;КБЖУ-база&quot;]
+  GS[&quot;📊 Google-таблица&lt;br/&gt;бюджет (xlsx-выгрузка)&quot;]
+
+  P1 --&gt;|&quot;списки · финансы · питание · напоминания&quot;| SYS
+  P2 --&gt;|&quot;списки · финансы · питание · напоминания&quot;| SYS
+  ADM -.-&gt;|&quot;получает алерты об ошибках&quot;| SYS
+  SCH --&gt;|&quot;тики: напоминания, дайджест&quot;| SYS
+  SYS &lt;--&gt;|&quot;initData · sendMessage&quot;| TG
+  SYS --&gt;|&quot;текст/фото блюда&quot;| GROQ
+  SYS --&gt;|&quot;поиск продукта&quot;| OFF
+  GS --&gt;|&quot;импорт бюджета&quot;| SYS
+  TG -.-&gt;|&quot;бот · Mini App&quot;| P1
+  TG -.-&gt;|&quot;бот · Mini App&quot;| P2
+
+  classDef sys fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef ext fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  class SYS sys;
+  class TG,GROQ,OFF,GS ext;
+  class P1,P2,ADM,SCH actor;
+</pre>
+</section>
+<section class="card" id="overview-02-context-map"><h3>Карта bounded contexts и зависимости</h3>
+<div class="cap">Derived from: DOMAIN_MODEL.md §2. SSOT — docs/02_domain, docs/04_specs.</div>
+<pre class="mermaid">%% Карта bounded contexts и граф зависимостей
+%% Derived from: DOMAIN_MODEL.md §2. SSOT — docs/02_domain, docs/04_specs.
+flowchart TB
+  subgraph DELIVERY[&quot;Слой доставки / интерфейс&quot;]
+    Mini[&quot;Mini App — весь UI (React)&quot;]
+    Bot[&quot;Telegram-бот — вход + push&quot;]
+  end
+
+  subgraph DOMAINS[&quot;Доменные контексты (write-side)&quot;]
+    Lists[&quot;Lists&quot;]
+    Fin[&quot;Finance&quot;]
+    Nut[&quot;Nutrition&quot;]
+    Rem[&quot;Reminders&quot;]
+  end
+
+  An[&quot;Analytics &amp; Digest&lt;br/&gt;(read-side, проекция)&quot;]
+  Notif[&quot;Notifications / Delivery&lt;br/&gt;(supporting)&quot;]
+  ACL[&quot;Import ACL&lt;br/&gt;(таблица → модель Finance)&quot;]
+  ID[&quot;⭐ Identity &amp; Sharing&lt;br/&gt;shared kernel&quot;]
+
+  Mini --&gt; Lists
+  Mini --&gt; Fin
+  Mini --&gt; Nut
+  Mini --&gt; Rem
+  Mini --&gt; An
+  Lists --&gt; ID
+  Fin --&gt; ID
+  Nut --&gt; ID
+  Rem --&gt; ID
+  An -.-&gt;|reads| Lists
+  An -.-&gt;|reads| Fin
+  An -.-&gt;|reads| Nut
+  Rem --&gt; Notif
+  An --&gt; Notif
+  Notif --&gt; Bot
+  ACL --&gt; Fin
+  Bot --&gt; ID
+
+  classDef kernel fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef read fill:#F3E8FD,stroke:#9334E6,color:#1a1a1a;
+  class ID kernel;
+  class An read;
+</pre>
+</section>
+<section class="card" id="overview-03-visibility"><h3>Модель видимости (scope / hidden_from / подарки)</h3>
+<div class="cap">Derived from: ADR-0001, spec-identity-sharing §5/§7. SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Модель видимости — три режима через один механизм visible_to(viewer)
+%% Derived from: ADR-0001, spec-identity-sharing §5/§7. SSOT — docs/04_specs.
+flowchart TD
+  Start[&quot;Shareable-сущность + Зритель v&quot;] --&gt; Q{&quot;scope?&quot;}
+  Q --&gt;|PERSONAL| P{&quot;v == owner_id?&quot;}
+  P --&gt;|да| VIS[&quot;✅ Видно&quot;]
+  P --&gt;|нет| HID[&quot;⛔ Скрыто&quot;]
+  Q --&gt;|FAMILY| F{&quot;v ∈ family&lt;br/&gt;И v ∉ hidden_from?&quot;}
+  F --&gt;|да| VIS
+  F --&gt;|нет| HID
+
+  subgraph LEGEND[&quot;Три режима = один механизм (ADR-0001)&quot;]
+    direction TB
+    L1[&quot;PERSONAL — дневник еды, личные списки&quot;]
+    L2[&quot;FAMILY — списки, бюджет, каталог блюд&quot;]
+    L3[&quot;FAMILY + hidden_from = [одаряемый] → ПОДАРОК&quot;]
+  end
+
+  classDef ok fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef no fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
+  classDef gift fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class VIS ok;
+  class HID no;
+  class L3 gift;
+</pre>
+</section>
+<section class="card" id="overview-04-containers"><h3>Контейнеры и компоненты (модульный монолит)</h3>
+<div class="cap">Derived from: CLAUDE.md §7/§9, ADR-0004, spec-identity §11. SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Контейнеры/компоненты — модульный монолит в одном процессе
+%% Derived from: CLAUDE.md §7/§9, ADR-0004, spec-identity §11. SSOT — docs/04_specs.
+flowchart TB
+  subgraph EXT[&quot;Внешние системы&quot;]
+    TG[&quot;Telegram&quot;]
+    GROQ[&quot;Groq LLM&quot;]
+    OFF[&quot;OpenFoodFacts&quot;]
+    GS[&quot;Google-таблица (xlsx)&quot;]
+  end
+
+  FE[&quot;Mini App&lt;br/&gt;React (UMD, без сборки)&quot;]
+
+  subgraph PROC[&quot;Один процесс · один event-loop · VPS (systemd)&quot;]
+    BOT[&quot;aiogram (polling)&lt;br/&gt;вход + push&quot;]
+    WEB[&quot;aiohttp&lt;br/&gt;REST /api/v1/*&quot;]
+    SCHED[&quot;Scheduler&lt;br/&gt;(poll-loop)&quot;]
+    subgraph APP[&quot;Доменное ядро — app/&quot;]
+      KERN[&quot;kernel&lt;br/&gt;Identity · Shareable · auth&quot;]
+      CTX[&quot;contexts&lt;br/&gt;lists · finance · nutrition ·&lt;br/&gt;reminders · analytics · notifications&quot;]
+    end
+    DB[(&quot;БД&lt;br/&gt;SQLite → Postgres&quot;)]
+  end
+
+  FE &lt;--&gt;|&quot;REST + initData&quot;| WEB
+  TG &lt;--&gt;|&quot;updates / sendMessage&quot;| BOT
+  BOT --&gt; KERN
+  WEB --&gt; KERN
+  WEB --&gt; CTX
+  SCHED --&gt; CTX
+  CTX --&gt; KERN
+  KERN --&gt; DB
+  CTX --&gt; DB
+  CTX --&gt;|&quot;разбор питания&quot;| GROQ
+  CTX --&gt;|&quot;поиск КБЖУ&quot;| OFF
+  GS --&gt;|&quot;импорт бюджета&quot;| CTX
+
+  classDef kernel fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef ext fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  class KERN kernel;
+  class TG,GROQ,OFF,GS ext;
+</pre>
+</section>
+<section class="card" id="overview-05-feature-map"><h3>Карта фич MVP</h3>
+<div class="cap">Derived from: MVP_Requirements §4, CLAUDE §6. SSOT — docs/01_requirements.</div>
+<pre class="mermaid">%% Карта фич MVP «в одном экране»
+%% Derived from: MVP_Requirements §4, CLAUDE §6. SSOT — docs/01_requirements.
+flowchart LR
+  ROOT((&quot;MVP&quot;))
+  ROOT --- ID[&quot;⭐ Identity &amp; Sharing&quot;]
+  ROOT --- L[&quot;Lists&quot;]
+  ROOT --- F[&quot;Finance&quot;]
+  ROOT --- N[&quot;Nutrition&quot;]
+  ROOT --- R[&quot;Reminders&quot;]
+  ROOT --- A[&quot;Analytics &amp; Digest&quot;]
+  ROOT --- NT[&quot;Notifications&quot;]
+
+  ID --&gt; ID1[&quot;Пейринг семьи (≤2)&quot;]
+  ID --&gt; ID2[&quot;Видимость: personal / family / подарки&quot;]
+  L --&gt; L1[&quot;6 типов списков&quot;]
+  L --&gt; L2[&quot;Иерархия · метаданные · поиск&quot;]
+  L --&gt; L3[&quot;Подарки (hidden_from) · аналитика по типу&quot;]
+  F --&gt; F1[&quot;Импорт xlsx (ACL)&quot;]
+  F --&gt; F2[&quot;План vs факт · иерархия&quot;]
+  F --&gt; F3[&quot;Каденс D·W·M·Q·Y · доходы + остаток&quot;]
+  N --&gt; N1[&quot;Дневник: текст / фото / база&quot;]
+  N --&gt; N2[&quot;КБЖУ + цели · история&quot;]
+  N --&gt; N3[&quot;Resolver OFF→web→estimate · SharedFood&quot;]
+  R --&gt; R1[&quot;Generic (текст + время)&quot;]
+  R --&gt; R2[&quot;Recurrence · ack / snooze · push&quot;]
+  A --&gt; A1[&quot;Аналитика по сферам&quot;]
+  A --&gt; A2[&quot;Ретро-дайджест (ежедн / еженед) push&quot;]
+  NT --&gt; NT1[&quot;Push · инлайн-кнопки · callback&quot;]
+  NT --&gt; NT2[&quot;Алерты об ошибках админу&quot;]
+
+  classDef kernel fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef dom fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  class ID kernel;
+  class L,F,N,R,A,NT dom;
+  class ID1,ID2,L1,L2,L3,F1,F2,F3,N1,N2,N3,R1,R2,A1,A2,NT1,NT2 feat;
+</pre>
+</section>
+<h2 class="sec" id="sec-usecase">2 · Use Case</h2>
+<section class="card" id="usecase-00-system"><h3>Системный обзор (все акторы × домены)</h3>
+<div class="cap">Derived from: §9 всех ТЗ docs/04_specs, DOMAIN_MODEL §2. SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Use Case — системный обзор (все акторы × домены)
+%% Derived from: §9 всех ТЗ docs/04_specs, DOMAIN_MODEL §2. SSOT — docs/04_specs.
+flowchart LR
+  P([&quot;👤 Партнёр&quot;])
+  ADM([&quot;🛡️ Админ&quot;])
+  SCH([&quot;⏰ Планировщик&quot;])
+  TG([&quot;✈️ Telegram&quot;])
+  GR([&quot;🧠 Groq LLM&quot;])
+  OFF([&quot;🍎 OpenFoodFacts&quot;])
+  GS([&quot;📊 Google-таблица&quot;])
+
+  subgraph SYS[&quot;Семейный ассистент — возможности&quot;]
+    direction TB
+    U_ID([&quot;Спариться в семью&quot;])
+    U_L([&quot;Вести типизированные списки&lt;br/&gt;(вкл. подарки)&quot;])
+    U_F([&quot;Импорт бюджета и аналитика&quot;])
+    U_N([&quot;Дневник питания (КБЖУ)&quot;])
+    U_R([&quot;Напоминания&quot;])
+    U_A([&quot;Аналитика и ретро-дайджест&quot;])
+  end
+
+  P --- U_ID
+  P --- U_L
+  P --- U_F
+  P --- U_N
+  P --- U_R
+  P --- U_A
+  TG -. &quot;initData / push&quot; .-&gt; U_ID
+  GS -. &quot;xlsx&quot; .-&gt; U_F
+  GR -. &quot;разбор&quot; .-&gt; U_N
+  OFF -. &quot;КБЖУ&quot; .-&gt; U_N
+  SCH -. &quot;срабатывание&quot; .-&gt; U_R
+  SCH -. &quot;каденс&quot; .-&gt; U_A
+  U_R -. &quot;push&quot; .-&gt; TG
+  U_A -. &quot;push&quot; .-&gt; TG
+  ADM -. &quot;алерты об ошибках&quot; .-&gt; SYS
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P,ADM,SCH actor;
+  class TG,GR,OFF,GS ext;
+  class U_ID,U_L,U_F,U_N,U_R,U_A uc;
+</pre>
+</section>
+<section class="card" id="usecase-identity"><h3>Identity &amp; Sharing</h3>
+<div class="cap">Derived from: spec-identity-sharing §9 (S1–S5) + §10 (REST). SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Use Case — Identity &amp; Sharing (эталон стиля)
+%% Derived from: spec-identity-sharing §9 (S1–S5) + §10 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P([&quot;👤 Партнёр&quot;])
+  TG([&quot;✈️ Telegram&quot;])
+
+  subgraph SYS[&quot;Identity &amp; Sharing&quot;]
+    direction TB
+    UC1([&quot;Войти в Mini App&lt;br/&gt;(валидация initData)&quot;])
+    UC2([&quot;Создать семью&quot;])
+    UC3([&quot;Выпустить / перевыпустить инвайт&quot;])
+    UC4([&quot;Вступить по коду&quot;])
+    UC5([&quot;Посмотреть семью и партнёра&quot;])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  TG -. &quot;initData / HMAC&quot; .-&gt; UC1
+  UC2 -. &quot;«include» войти&quot; .-&gt; UC1
+  UC4 -. &quot;«include» войти&quot; .-&gt; UC1
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  class P,TG actor;
+  class UC1,UC2,UC3,UC4,UC5 uc;
+</pre>
+</section>
+<section class="card" id="usecase-lists"><h3>Lists</h3>
+<div class="cap">Derived from: spec-lists §9 (S1–S6) + §10 (REST). SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Use Case — Lists
+%% Derived from: spec-lists §9 (S1–S6) + §10 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P([&quot;👤 Партнёр&quot;])
+
+  subgraph SYS[&quot;Lists (scope: PERSONAL / FAMILY)&quot;]
+    direction TB
+    UC1([&quot;Создать / изменить список&lt;br/&gt;(дела·покупки·идеи·фильмы·подарки·ссылки)&quot;])
+    UC2([&quot;Добавить элемент&quot;])
+    UC3([&quot;Строить иерархию (папки)&quot;])
+    UC4([&quot;Отметить выполненным / снять&quot;])
+    UC5([&quot;Скрыть подарок от партнёра&lt;br/&gt;(hidden_from)&quot;])
+    UC6([&quot;Искать по спискам и элементам&quot;])
+    UC7([&quot;Аналитика по типу&quot;])
+    UC8([&quot;Смотреть историю элемента&quot;])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  P --- UC6
+  P --- UC7
+  P --- UC8
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef gift fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P actor;
+  class UC1,UC2,UC3,UC4,UC6,UC7,UC8 uc;
+  class UC5 gift;
+</pre>
+</section>
+<section class="card" id="usecase-finance"><h3>Finance</h3>
+<div class="cap">Derived from: spec-finance §9 (S1–S6) + §10 (REST). SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Use Case — Finance (+ Import ACL)
+%% Derived from: spec-finance §9 (S1–S6) + §10 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P([&quot;👤 Партнёр&quot;])
+  GS([&quot;📊 Google-таблица (xlsx)&quot;])
+  ACL([&quot;⚙️ Import ACL&quot;])
+
+  subgraph SYS[&quot;Finance (scope: FAMILY)&quot;]
+    direction TB
+    UC1([&quot;Импортировать таблицу&quot;])
+    UC2([&quot;Ревьюить новые категории&quot;])
+    UC3([&quot;Смотреть план / факт&quot;])
+    UC4([&quot;Анализировать по каденсу&lt;br/&gt;D · W · M · Q · Y + период&quot;])
+    UC5([&quot;Доходы по источникам и партнёрам&lt;br/&gt;(+ переходящий остаток)&quot;])
+    UC6([&quot;Просматривать иерархию категорий&quot;])
+    UC7([&quot;Выгрузить период в xlsx&quot;])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  P --- UC6
+  P --- UC7
+  GS -. &quot;xlsx-выгрузка&quot; .-&gt; UC1
+  UC1 -. &quot;парсит → модель&quot; .-&gt; ACL
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P actor;
+  class GS,ACL ext;
+  class UC1,UC2,UC3,UC4,UC5,UC6,UC7 uc;
+</pre>
+</section>
+<section class="card" id="usecase-nutrition"><h3>Nutrition</h3>
+<div class="cap">Derived from: spec-nutrition §8 + spec-nutrition-retrieval §1. SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Use Case — Nutrition (+ retrieval КБЖУ)
+%% Derived from: spec-nutrition §8 + spec-nutrition-retrieval §1. SSOT — docs/04_specs.
+flowchart LR
+  P([&quot;👤 Партнёр&quot;])
+  GR([&quot;🧠 Groq LLM&quot;])
+  OFF([&quot;🍎 OpenFoodFacts&quot;])
+
+  subgraph SYS[&quot;Nutrition (дневник = PERSONAL · каталог = FAMILY)&quot;]
+    direction TB
+    UC1([&quot;Залогировать приём текстом&lt;br/&gt;(resolver КБЖУ)&quot;])
+    UC2([&quot;Залогировать приём по фото&lt;br/&gt;(resolver КБЖУ)&quot;])
+    UC3([&quot;Залогировать из каталога&quot;])
+    UC4([&quot;Задать / снять цели КБЖУ&quot;])
+    UC5([&quot;Смотреть день (итоги vs цели)&quot;])
+    UC6([&quot;Смотреть / выгрузить период&quot;])
+    UC7([&quot;Каталог блюд: искать · создать&lt;br/&gt;(SharedFood)&quot;])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  P --- UC6
+  P --- UC7
+  GR -. &quot;извлечение (текст/фото)&quot; .-&gt; UC1
+  GR -. &quot;извлечение&quot; .-&gt; UC2
+  OFF -. &quot;поиск КБЖУ&quot; .-&gt; UC1
+  OFF -. &quot;поиск КБЖУ&quot; .-&gt; UC2
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P actor;
+  class GR,OFF ext;
+  class UC1,UC2,UC3,UC4,UC5,UC6,UC7 uc;
+</pre>
+</section>
+<section class="card" id="usecase-reminders"><h3>Reminders</h3>
+<div class="cap">Derived from: spec-reminders §8 (S1–S5) + §9 (REST). SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Use Case — Reminders
+%% Derived from: spec-reminders §8 (S1–S5) + §9 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P([&quot;👤 Партнёр&quot;])
+  SCH([&quot;⏰ Планировщик&quot;])
+  TG([&quot;✈️ Telegram&quot;])
+
+  subgraph SYS[&quot;Reminders (scope: PERSONAL / FAMILY)&quot;]
+    direction TB
+    UC1([&quot;Создать напоминание&lt;br/&gt;(текст + время)&quot;])
+    UC2([&quot;Настроить повтор&lt;br/&gt;none · daily · weekly · interval&quot;])
+    UC3([&quot;Изменить / удалить&quot;])
+    UC4([&quot;Получить push-напоминание&quot;])
+    UC5([&quot;Отметить выполненным (ack)&quot;])
+    UC6([&quot;Отложить (snooze)&quot;])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC5
+  P --- UC6
+  P --- UC4
+  SCH -. &quot;срабатывание (poll-loop)&quot; .-&gt; UC4
+  UC4 -. &quot;push&quot; .-&gt; TG
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P,SCH actor;
+  class TG ext;
+  class UC1,UC2,UC3,UC4,UC5,UC6 uc;
+</pre>
+</section>
+<section class="card" id="usecase-analytics"><h3>Analytics &amp; Digest</h3>
+<div class="cap">Derived from: spec-analytics §8 (S1–S4) + §9 (REST). SSOT — docs/04_specs.</div>
+<pre class="mermaid">%% Use Case — Analytics &amp; Digest (read-side)
+%% Derived from: spec-analytics §8 (S1–S4) + §9 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P([&quot;👤 Партнёр&quot;])
+  SCH([&quot;⏰ Планировщик&quot;])
+  TG([&quot;✈️ Telegram&quot;])
+
+  subgraph SYS[&quot;Analytics &amp; Digest (read-side через contexts.*.read)&quot;]
+    direction TB
+    UC1([&quot;Смотреть кросс-сферный обзор&lt;br/&gt;Списки · Финансы · Питание&quot;])
+    UC2([&quot;Превью дайджеста&quot;])
+    UC3([&quot;Настроить расписание дайджеста&lt;br/&gt;ежедневный · еженедельный, per-семья&quot;])
+    UC4([&quot;Получить ретро-дайджест (push)&quot;])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  SCH -. &quot;каденс DigestSchedule&quot; .-&gt; UC4
+  UC4 -. &quot;push&quot; .-&gt; TG
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P,SCH actor;
+  class TG ext;
+  class UC1,UC2,UC3,UC4 uc;
+</pre>
+</section>
+<h2 class="sec" id="sec-bpmn">3 · Процессы (BPMN)</h2>
+<section class="card" id="bpmn-onboarding"><h3>Онбординг и пейринг семьи</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-onboarding"></div></div>
+</section>
+<section class="card" id="bpmn-lists-item-lifecycle"><h3>Жизненный цикл элемента списка</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-lists-item-lifecycle"></div></div>
+</section>
+<section class="card" id="bpmn-finance-import"><h3>Импорт финансов</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-finance-import"></div></div>
+</section>
+<section class="card" id="bpmn-nutrition-resolver"><h3>Логирование питания по фото (resolver-ладдер)</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-nutrition-resolver"></div></div>
+</section>
+<section class="card" id="bpmn-reminder-lifecycle"><h3>Жизненный цикл напоминания</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-reminder-lifecycle"></div></div>
+</section>
+<section class="card" id="bpmn-notification-delivery"><h3>Доставка уведомления</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-notification-delivery"></div></div>
+</section>
+<section class="card" id="bpmn-digest"><h3>Формирование и доставка дайджеста</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-digest"></div></div>
+</section>
+<h2 class="sec" id="sec-program">4 · Программа E2–E5 (проектное)</h2>
+<div class="prognote">⚠️ Раздел проектный/кандидатный: этапы E2–E5 — каркас-видение, детальные ТЗ пишутся на входе этапа. Опросники Q2–Q4 ещё открыты, ADR-кандидаты 0006–0012 не приняты. Источник — docs/06_program. Диаграммы отражают план, не реализованное.</div>
+<section class="card" id="program-prog-roadmap"><h3>Программный roadmap E1→E5</h3>
+<div class="cap">Derived from: 06_program/program-roadmap.md §1/§2/§4. SSOT — docs/06_program.</div>
+<pre class="mermaid">%% Программный roadmap E1→E5 — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/program-roadmap.md §1/§2/§4. SSOT — docs/06_program.
+flowchart LR
+  E1[&quot;E1 · MVP&lt;br/&gt;списки · финансы (импорт) · питание ·&lt;br/&gt;напоминания · дайджест&lt;br/&gt;✅ готово&quot;]
+  E3[&quot;E3 · Здоровье&lt;br/&gt;тренировки · вес · Huawei ·&lt;br/&gt;медблок · цикл · витамины&quot;]
+  E2[&quot;E2 · Финансы-автоматизация&lt;br/&gt;чек / QR / фото / ручной → транзакции,&lt;br/&gt;таблица отмирает&quot;]
+  E4[&quot;E4 · Ассистентский слой&lt;br/&gt;план дня · вечерний сценарий ·&lt;br/&gt;вопросы к данным (поверх *.read)&quot;]
+  E5[&quot;E5 · Standalone&lt;br/&gt;PWA · своя auth · web-push · Postgres&quot;]
+  NOTE[&quot;Порядок E2 / E3 — продуктовое решение.&lt;br/&gt;Голос С.: E3 первым (переезд через 5–6 мес).&lt;br/&gt;Финал — Q2-В1 (Катя). E5 может идти параллельно E4.&quot;]
+
+  E1 --&gt;|&quot;гейт: Q3 · Huawei zip-тест · ADR 0008/0009&quot;| E3
+  E3 --&gt;|&quot;гейт: Q2 · чек gate-тест · ADR 0006/0007/0011&quot;| E2
+  E2 --&gt;|&quot;гейт: Q4 · ≥1 мес данных E2+E3 · ADR 0012&quot;| E4
+  E4 --&gt;|&quot;гейт: триггер ADR-0005 · ADR 0010&quot;| E5
+
+  classDef done fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef future fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef note fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class E1 done;
+  class E2,E3,E4,E5 future;
+  class NOTE note;
+</pre>
+</section>
+<section class="card" id="program-prog-arch-e1"><h3>Архитектура E1 (MVP)</h3>
+<pre class="mermaid">%% Эволюция архитектуры — E1 (MVP) target. SSOT — 06_program/architecture-evolution.md §1.
+flowchart TB
+  subgraph TG[&quot;Telegram&quot;]
+    User1[&quot;С. / Катя&quot;]
+    MiniApp[&quot;Mini App (React UMD)&quot;]
+    BotAPI[&quot;Bot API&quot;]
+  end
+
+  subgraph VPS[&quot;VPS · один процесс · один event-loop (aiogram polling + aiohttp)&quot;]
+    subgraph Delivery[&quot;delivery/&quot;]
+      Web[&quot;miniapp_api (REST /api/v1/*, статика)&quot;]
+      Bot[&quot;bot/ (вход /start, callback-диспетчер)&quot;]
+    end
+    subgraph Domains[&quot;contexts/&quot;]
+      L[&quot;lists&quot;]
+      F[&quot;finance (+importing ACL)&quot;]
+      N[&quot;nutrition (+llm_service)&quot;]
+      R[&quot;reminders&quot;]
+    end
+    K[&quot;kernel (User/Family/Invite · Shareable/visible_to · auth initData)&quot;]
+    A[&quot;analytics (read-side + DigestSchedule)&quot;]
+    No[&quot;notifications (deliver/alert)&quot;]
+    S[&quot;scheduler (generic тик + job-реестр)&quot;]
+    DB[(&quot;SQLite + alembic&quot;)]
+  end
+
+  Groq[&quot;Groq LLM (llama-4-scout, vision)&quot;]
+  XLSX[&quot;Google-таблица бюджета (xlsx, ручная выгрузка)&quot;]
+
+  User1 --&gt; MiniApp --&gt; Web
+  User1 --&gt; BotAPI --&gt; Bot
+  No --&gt; BotAPI
+  Web --&gt; Domains &amp; K &amp; A
+  Bot --&gt; Domains &amp; No
+  Domains --&gt; K --&gt; DB
+  A -.-&gt;|&quot;*.read&quot;| Domains
+  A --&gt; No
+  S --&gt;|&quot;job: reminder_poll&quot;| R
+  S --&gt;|&quot;job: digest&quot;| A
+  R --&gt; No
+  N --&gt; Groq
+  XLSX --&gt;|&quot;upload&quot;| F
+</pre>
+</section>
+<section class="card" id="program-prog-arch-e2e3"><h3>Архитектура — дельта E2–E3</h3>
+<pre class="mermaid">%% Эволюция архитектуры — дельта E2–E3 (рост внутрь + новые ACL). ПРОЕКТНОЕ.
+%% SSOT — 06_program/architecture-evolution.md §2.
+flowchart TB
+  subgraph VPS[&quot;Тот же монолит&quot;]
+    F2[&quot;finance: + Transaction/Receipt + receipts-ACL + price history&quot;]
+    H[&quot;health (НОВЫЙ контекст):&lt;br/&gt;Measurement/Workout/Supplement/Lab + importing-ACL&quot;]
+    R2[&quot;reminders (+ интерфейс расписаний витаминов —&lt;br/&gt;ребро решает ADR-0008)&quot;]
+    A2[&quot;analytics: + сферы health/transactions&lt;br/&gt;в обзоре и дайджесте (состав — Катя)&quot;]
+  end
+
+  QR[&quot;QR чека (showScanQrPopup)&quot;] --&gt; CHAN
+  PHOTO[&quot;Фото чека&quot;] --&gt; CHAN
+  CHAN{{&quot;чек-канал (ADR-0006):&lt;br/&gt;proverkacheka / API ФНС / lkdr / vision&quot;}} --&gt; F2
+  HZIP[&quot;Huawei privacy-zip (раз в 1–2 нед, вручную)&quot;] --&gt; H
+  LAB[&quot;Бланк анализов (фото/PDF)&quot;] --&gt; H
+  H --&gt; R2
+
+  classDef new fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class H new;
+  class QR,PHOTO,CHAN,HZIP,LAB ext;
+</pre>
+</section>
+<section class="card" id="program-prog-arch-e4e5"><h3>Архитектура — дельта E4–E5</h3>
+<pre class="mermaid">%% Эволюция архитектуры — дельта E4–E5 (проактивный слой + второй периметр). ПРОЕКТНОЕ.
+%% SSOT — 06_program/architecture-evolution.md §3.
+flowchart TB
+  subgraph VPS[&quot;Монолит (E4: + assistant-слой; E5: + внешний периметр)&quot;]
+    AS[&quot;assistant (E4): план дня · вечерний сценарий ·&lt;br/&gt;вопросы к данным поверх *.read (LLM, read-only)&quot;]
+    K2[&quot;kernel.auth (E5): initData-резолвер +&lt;br/&gt;собственный auth (ADR-0010)&quot;]
+    No2[&quot;notifications (E5): транспорты Telegram + Web Push&quot;]
+    PG[(&quot;E5: PostgreSQL (триггер ADR-0005)&quot;)]
+  end
+  PWA[&quot;PWA (тот же SPA вне Telegram)&quot;] --&gt;|&quot;https, своя auth&quot;| K2
+  AS -.-&gt; Reads[&quot;contexts.*.read&quot;]
+  AS --&gt; No2
+  EdgeRisk{{&quot;E5: впервые недоверенная сеть →&lt;br/&gt;CORS / CSRF / rate-limit на границе&quot;}} -.-&gt; PWA
+
+  classDef new fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef risk fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
+  class AS,K2,No2,PG new;
+  class EdgeRisk risk;
+</pre>
+</section>
+<section class="card" id="program-prog-feasibility"><h3>Карта осуществимости интеграций</h3>
+<div class="cap">Derived from: 06_program/feasibility.md (веб-проверка 2026-06-10). SSOT — docs/06_program.</div>
+<pre class="mermaid">%% Карта осуществимости интеграций — ПРОЕКТНОЕ
+%% Derived from: 06_program/feasibility.md (веб-проверка 2026-06-10). SSOT — docs/06_program.
+flowchart TB
+  subgraph OK[&quot;✅ Путь подтверждён&quot;]
+    direction TB
+    A1[&quot;Huawei privacy-zip (E3) — осн.&quot;]
+    A2[&quot;Чек по фото · vision (E2) — осн.&quot;]
+    A3[&quot;QR-скан Mini App (showScanQrPopup)&quot;]
+    A4[&quot;Анализы / InBody → vision&quot;]
+    A5[&quot;Цикл — ручной ввод + календарь&quot;]
+    A6[&quot;Google Calendar — чтение (iCal URL)&quot;]
+  end
+  subgraph WARN[&quot;⚠️ Возможно — нужен gate-тест&quot;]
+    direction TB
+    B1[&quot;proverkacheka API (E2, ~15/сут)&quot;]
+    B2[&quot;Офиц. API ФНС — отдаёт ли позиции?&quot;]
+    B3[&quot;lkdr «Мои чеки» — хрупко&quot;]
+    B4[&quot;Huawei Health Kit API — бюрократия&quot;]
+    B5[&quot;Web-push вне Telegram (E5, iOS капризен)&quot;]
+  end
+  subgraph NO[&quot;❌ Не путь&quot;]
+    direction TB
+    C1[&quot;Health Connect — нужен свой Android-app&quot;]
+    C2[&quot;Google Fit — отключение к концу 2026&quot;]
+    C3[&quot;GCal запись / синк — OAuth, конфликты&quot;]
+  end
+
+  classDef ok fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef warn fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  classDef no fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
+  class A1,A2,A3,A4,A5,A6 ok;
+  class B1,B2,B3,B4,B5 warn;
+  class C1,C2,C3 no;
+</pre>
+</section>
+<section class="card" id="program-stage-e2-finance"><h3>E2 · Финансы-автоматизация — возможности</h3>
+<div class="cap">Derived from: 06_program/stage-2-finance-automation.md. SSOT — docs/06_program.</div>
+<pre class="mermaid">%% Карта возможностей E2 · Финансы-автоматизация — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-2-finance-automation.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT((&quot;E2 · Финансы-автоматизация&lt;br/&gt;драйвер: С. · ввод — Катя&quot;))
+  F1[&quot;Ручной ввод транзакции — must (≤10 сек)&quot;]
+  F2[&quot;Чек по фото · vision — осн. канал, must&quot;]
+  F3[&quot;Чек по QR (ФНС) — should&quot;]
+  F4[&quot;Категоризация позиций: правила + LLM — must&quot;]
+  F5[&quot;Смена SSOT: транзакции = факт — must&quot;]
+  F6[&quot;Выгрузка периода (xlsx/csv) — should&quot;]
+  F7[&quot;История цен · PriceObservation — could&quot;]
+  M1[&quot;Домен: Transaction · Receipt(+Items) ·&lt;br/&gt;Receipt ACL (каналы A/B/C/D)&quot;]
+  M2[&quot;ADR-кандидаты: 0006 канал · 0007 SSOT · 0011 категоризация&quot;]
+  M3[&quot;Гейт входа: Q2 + чек gate-тест&quot;]
+
+  ROOT --&gt; F1
+  ROOT --&gt; F2
+  ROOT --&gt; F3
+  ROOT --&gt; F4
+  ROOT --&gt; F5
+  ROOT --&gt; F6
+  ROOT --&gt; F7
+  ROOT -.-&gt; M1
+  ROOT -.-&gt; M2
+  ROOT -.-&gt; M3
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  class F1,F2,F3,F4,F5,F6,F7 feat;
+  class M1,M2,M3 meta;
+</pre>
+</section>
+<section class="card" id="program-e2-receipt"><h3>BPMN E2 · Чек → транзакции (кандидат)</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-e2-receipt"></div></div>
+</section>
+<section class="card" id="program-e2-ssot-transition"><h3>BPMN E2 · Переход SSOT (кандидат)</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-e2-ssot-transition"></div></div>
+</section>
+<section class="card" id="program-stage-e3-health"><h3>E3 · Здоровье — возможности</h3>
+<div class="cap">Derived from: 06_program/stage-3-health.md. SSOT — docs/06_program.</div>
+<pre class="mermaid">%% Карта возможностей E3 · Здоровье — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-3-health.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT((&quot;E3 · Здоровье&lt;br/&gt;драйвер: Катя (+С.)&quot;))
+  F1[&quot;Журнал веса / измерений — must&quot;]
+  F2[&quot;Журнал тренировок — must&quot;]
+  F3[&quot;Huawei-импорт: тренировки · сон · шаги · вес — must&quot;]
+  F4[&quot;Витамины → Reminders — must&quot;]
+  F5[&quot;Медблок: показатели + анализы (vision) — should&quot;]
+  F6[&quot;Цикл + фазовые подсказки — should&quot;]
+  F7[&quot;Состав тела: фото InBody → vision — could&quot;]
+  M1[&quot;Новый контекст Health: Measurement · Workout ·&lt;br/&gt;Supplement(+Schedule) · LabResult · CycleEntry&quot;]
+  M2[&quot;Huawei privacy-zip ACL · новое ребро health→reminders&quot;]
+  M3[&quot;ADR: 0008 канал/дедуп · 0009 модель показателей&quot;]
+  M4[&quot;Приватность: дефолт scope — настройка владельца&lt;br/&gt;(С.: FAMILY · Катя — Q3-В8); цикл — всегда PERSONAL&quot;]
+  M5[&quot;Гейт: Q3 + Huawei zip-тест + 3 бланка анализов&quot;]
+
+  ROOT --&gt; F1
+  ROOT --&gt; F2
+  ROOT --&gt; F3
+  ROOT --&gt; F4
+  ROOT --&gt; F5
+  ROOT --&gt; F6
+  ROOT --&gt; F7
+  ROOT -.-&gt; M1
+  ROOT -.-&gt; M2
+  ROOT -.-&gt; M3
+  ROOT -.-&gt; M4
+  ROOT -.-&gt; M5
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  clas</pre>
+</section>
+<section class="card" id="program-e3-huawei-import"><h3>BPMN E3 · Huawei-импорт (кандидат)</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-e3-huawei-import"></div></div>
+</section>
+<section class="card" id="program-stage-e4-assistant"><h3>E4 · Ассистентский слой — возможности</h3>
+<div class="cap">Derived from: 06_program/stage-4-assistant.md. SSOT — docs/06_program.</div>
+<pre class="mermaid">%% Карта возможностей E4 · Ассистентский слой — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-4-assistant.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT((&quot;E4 · Ассистентский слой&lt;br/&gt;драйвер: С.&quot;))
+  F1[&quot;Утренний план дня — push, must&quot;]
+  F2[&quot;Вечерний сценарий «чем займёмся» — should&quot;]
+  F3[&quot;Вопросы к данным (LLM поверх *.read) — should&quot;]
+  F4[&quot;Календарь-вид + чтение GCal (iCal URL) — should&quot;]
+  F5[&quot;План закупок: Lists↔Finance↔Nutrition — could&quot;]
+  F6[&quot;Сверка чек ↔ список покупок — could&quot;]
+  M1[&quot;Природа: LLM-композиция поверх contexts.*.read,&lt;br/&gt;без новой write-модели; 3-я job scheduler&quot;]
+  M2[&quot;Первые межконтекстные рёбра — через read-проекции + import-linter&quot;]
+  M3[&quot;ADR: 0012 бюджет проактивности (+ возможный новый для связок)&quot;]
+  M4[&quot;Гейт: Q4 + ≥1 мес данных E2+E3&quot;]
+
+  ROOT --&gt; F1
+  ROOT --&gt; F2
+  ROOT --&gt; F3
+  ROOT --&gt; F4
+  ROOT --&gt; F5
+  ROOT --&gt; F6
+  ROOT -.-&gt; M1
+  ROOT -.-&gt; M2
+  ROOT -.-&gt; M3
+  ROOT -.-&gt; M4
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  class F1,F2,F3,F4,F5,F6 feat;
+  class M1,M2,M3,M4 meta;
+</pre>
+</section>
+<section class="card" id="program-e4-morning-plan"><h3>BPMN E4 · Утренний план дня (кандидат)</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-e4-morning-plan"></div></div>
+</section>
+<section class="card" id="program-stage-e5-standalone"><h3>E5 · Standalone — возможности</h3>
+<div class="cap">Derived from: 06_program/stage-5-standalone.md. SSOT — docs/06_program.</div>
+<pre class="mermaid">%% Карта возможностей E5 · Standalone — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-5-standalone.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT((&quot;E5 · Standalone&lt;br/&gt;мягкая цель&quot;))
+  F1[&quot;Своя аутентификация — must&quot;]
+  F2[&quot;PWA-фронт вне Telegram — must&quot;]
+  F3[&quot;Web-push — must&quot;]
+  F4[&quot;Миграция SQLite → PostgreSQL — should&quot;]
+  F5[&quot;Внешний доступ: HTTPS · домен · бэкапы — must&quot;]
+  M1[&quot;Меняются только края: kernel.auth (2-й резолвер) ·&lt;br/&gt;notifications (TG + Web Push) · delivery (CORS/CSRF/rate-limit)&quot;]
+  M2[&quot;Домены НЕ меняются (инвариант программы)&quot;]
+  M3[&quot;Безопасность: впервые недоверенная сеть&quot;]
+  M4[&quot;ADR: 0010 auth standalone · 0005 триггер Postgres&quot;]
+  M5[&quot;Гейт: триггер ADR-0005 + web-push gate-тест&quot;]
+
+  ROOT --&gt; F1
+  ROOT --&gt; F2
+  ROOT --&gt; F3
+  ROOT --&gt; F4
+  ROOT --&gt; F5
+  ROOT -.-&gt; M1
+  ROOT -.-&gt; M2
+  ROOT -.-&gt; M3
+  ROOT -.-&gt; M4
+  ROOT -.-&gt; M5
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  class F1,F2,F3,F4,F5 feat;
+  class M1,M2,M3,M4,M5 meta;
+</pre>
+</section>
+<section class="card" id="program-stage-pipeline"><h3>BPMN · Конвейер открытия этапа</h3>
+<div class="cap">BPMN 2.0 · производная от ТЗ/каркаса · редактируется в Camunda Modeler</div>
+<div class="bpmn-box"><div class="bpmn-canvas" id="bpmn-stage-pipeline"></div></div>
+</section>
+<h2 class="sec" id="sec-reference">5 · Справочное</h2>
+<section class="card" id="reference-glossary"><h3>Глоссарий</h3>
+<h3>Глоссарий</h3>
+<p>Сводка ключевых терминов из ТЗ. Источник истины — <code>docs/04_specs/</code> и <code>docs/02_domain/DOMAIN_MODEL.md</code>.</p>
+<h4>Ядро (Identity &amp; Sharing)</h4>
+<ul><li><strong>Bounded context</strong> — автономный домен с собственными моделью/сервисами/API; контексты связаны слабо, общее только ядро.</li><li><strong>shared kernel</strong> — ядро <code>Identity &amp; Sharing</code>: единственный контекст, от которого зависят все остальные.</li><li><strong>Viewer (зритель)</strong> — аутентифицированный <code>User</code>, от лица которого выполняется запрос; вход любого фильтра видимости.</li><li><strong>Family / Membership</strong> — семья (пара, ≤2) и членство пользователя в ней.</li><li><strong>Invite</strong> — одноразовый инвайт-код для пейринга; FSM <code>active → used/expired/revoked</code>.</li><li><strong>Shareable</strong> — миксин видимости: <code>owner_id</code> + <code>family_id</code> + <code>scope</code> + <code>hidden_from</code>; примешивается к каждой разделяемой сущности.</li><li><strong>scope</strong> — режим видимости: <code>PERSONAL</code> (только владелец) или <code>FAMILY</code> (вся семья).</li><li><strong>hidden_from</strong> — множество исключённых пользователей при <code>FAMILY</code>; подарок = <code>FAMILY</code> + <code>hidden_from=[одаряемый]</code>.</li><li><strong>visible_to(viewer)</strong> — единый фильтр чтения; гарантирует, что зритель видит только разрешённое.</li><li><strong>initData</strong> — подписанные Telegram-данные Mini App; HMAC-валидация = аутентификация (без паролей/сессий).</li></ul>
+<h4>Lists</h4>
+<ul><li><strong>List / ListItem</strong> — типизированный список (дела/покупки/идеи/фильмы/подарки/ссылки) и его элемент.</li><li><strong>specific_attrs</strong> — JSON-поле type-специфичных атрибутов элемента (валидируется по типу списка).</li><li><strong>ListItemHistory</strong> — action-лог изменений элемента (<code>CREATED/EDITED/STATUS_CHANGED/MOVED</code>), с капом.</li></ul>
+<h4>Finance</h4>
+<ul><li><strong>Import ACL</strong> — anti-corruption layer: заменяемый адаптер <code>xlsx → доменная модель</code>; домен не зависит от формы таблицы.</li><li><strong>Category</strong> — двухуровневое дерево категорий; статус <code>ACTIVE / NEEDS_REVIEW</code>.</li><li><strong>BudgetPlan / ActualAmount</strong> — план по категории на месяц / факт с дневной гранулярностью (разрежённо).</li><li><strong>Income / IncomeSource</strong> — доход по источнику (партнёр/кэшбек/переходящий остаток) за месяц.</li><li><strong>fail-loud</strong> — при расхождении импорт не пишет ничего и возвращает отчёт об ошибках.</li></ul>
+<h4>Nutrition</h4>
+<ul><li><strong>FoodEntry</strong> — запись личного дневника (PERSONAL); КБЖУ — абсолют за порцию.</li><li><strong>SharedFood</strong> — общий каталог блюд (FAMILY); КБЖУ на 100 г; работает как самонаполняющийся кэш.</li><li><strong>NutritionGoals</strong> — личные цели КБЖУ (PERSONAL, 1:1 на пользователя).</li><li><strong>Resolver-ладдер</strong> — лестница источников КБЖУ: <code>label → OFF → web (R2) → estimate</code>.</li><li><strong>Провенанс (source / source_ref / matched_name)</strong> — откуда взяты КБЖУ позиции (этикетка/OFF/веб/оценка) + ссылка.</li></ul>
+<h4>Reminders / Notifications</h4>
+<ul><li><strong>Reminder</strong> — SSOT расписания: текст, <code>next_fire_at</code>, <code>recurrence</code>, <code>status</code>.</li><li><strong>recurrence</strong> — повтор: <code>NONE / DAILY / WEEKLY / INTERVAL</code>.</li><li><strong>misfire-грейс</strong> — окно (дефолт 3 ч), в пределах которого просроченное напоминание всё ещё доставляется; сверх — <code>MISSED</code>.</li><li><strong>ack / snooze</strong> — подтвердить выполнение / отложить (обе кнопки в push).</li><li><strong>poll-loop (Scheduler)</strong> — generic-планировщик: тик раз в N сек, выбирает созревшие (ADR-0003).</li><li><strong>DeliveryReport</strong> — результат доставки <code>{sent, blocked, failed}</code> (не персистится; Notifications stateless).</li><li><strong>политика лог→ретрай→алерт</strong> — на сбое доставки: лог, один ретрай транзиентного, затем алерт админу.</li></ul>
+<h4>Analytics &amp; Digest / общее</h4>
+<ul><li><strong>read-side</strong> — контекст без своей write-модели; читает другие домены через <code>contexts.*.read</code> и агрегирует on-the-fly.</li><li><strong>DigestSchedule</strong> — расписание дайджеста (per-семья, мульти-каденс: ежедневный + еженедельный).</li><li><strong>Mini App</strong> — весь интерактивный UI (React); говорит с backend по REST.</li><li><strong>модульный монолит</strong> — один процесс/одна БД, логически пакет-на-контекст (ADR-0004).</li><li><strong>standalone-шов</strong> — доменная логика Telegram-агностична; завязка на Telegram изолирована (kernel.auth + delivery).</li></ul>
+</section>
+<section class="card" id="reference-traceability"><h3>Матрица трассировки</h3>
+<h3>Матрица трассировки</h3>
+<p>Показывает покрытие: требование → архитектурное решение (ADR) → ТЗ → диаграммы. Источник истины — <code>docs/01_requirements</code>, <code>docs/03_architecture</code>, <code>docs/04_specs</code>.</p>
+<h4>Домены</h4>
+<table><thead><tr><th>Домен</th><th>Требования</th><th>ADR</th><th>ТЗ</th><th>Use Case</th><th>BPMN-процесс</th></tr></thead><tbody><tr><td>Identity &amp; Sharing</td><td>§1.3, §3.4, §5, §6</td><td>0001, 0004</td><td>spec-identity-sharing</td><td>usecase/identity</td><td>onboarding</td></tr><tr><td>Lists</td><td>§4 (Lists)</td><td>0001</td><td>spec-lists</td><td>usecase/lists</td><td>lists-item-lifecycle</td></tr><tr><td>Finance</td><td>§4 (Finance)</td><td>0002</td><td>spec-finance</td><td>usecase/finance</td><td>finance-import</td></tr><tr><td>Nutrition</td><td>§4 (Nutrition)</td><td>0004, 0013</td><td>spec-nutrition, spec-nutrition-retrieval</td><td>usecase/nutrition</td><td>nutrition-resolver</td></tr><tr><td>Reminders</td><td>§4 (Reminders)</td><td>0003</td><td>spec-reminders</td><td>usecase/reminders</td><td>reminder-lifecycle</td></tr><tr><td>Notifications</td><td>§5 (доставка)</td><td>0003</td><td>spec-notifications</td><td>(в системном UC + reminders)</td><td>notification-delivery</td></tr><tr><td>Analytics &amp; Digest</td><td>§4 (Analytics)</td><td>0003</td><td>spec-analytics</td><td>usecase/analytics</td><td>digest</td></tr></tbody></table>
+<h4>Сквозные представления</h4>
+<table><thead><tr><th>Тема</th><th>ADR</th><th>Диаграмма</th></tr></thead><tbody><tr><td>Контекст системы</td><td>—</td><td>overview/01-context</td></tr><tr><td>Карта bounded contexts</td><td>0004</td><td>overview/02-context-map</td></tr><tr><td>Модель видимости</td><td>0001</td><td>overview/03-visibility</td></tr><tr><td>Контейнеры / компоненты</td><td>0004, 0005</td><td>overview/04-containers</td></tr><tr><td>Карта фич MVP</td><td>—</td><td>overview/05-feature-map</td></tr><tr><td>Системный обзор Use Case</td><td>—</td><td>usecase/00-system</td></tr></tbody></table>
+<h4>Архитектурные решения (ADR)</h4>
+<table><thead><tr><th>ADR</th><th>Тема</th><th>Статус</th></tr></thead><tbody><tr><td>0001</td><td>Модель видимости (scope + hidden_from)</td><td>Принято</td></tr><tr><td>0002</td><td>Импорт финансов (anti-corruption layer)</td><td>Принято</td></tr><tr><td>0003</td><td>Планировщик напоминаний (poll-loop)</td><td>Принято</td></tr><tr><td>0004</td><td>Изоляция контекстов (пакет-на-контекст + kernel)</td><td>Принято</td></tr><tr><td>0005</td><td>Тайминг перехода на Postgres</td><td>Принято</td></tr><tr><td>0013</td><td>Nutrition retrieval (resolver-ладдер)</td><td>Принято</td></tr></tbody></table>
+<h4>Сводка покрытия</h4>
+<ul><li><strong>7 доменов</strong> — у каждого ТЗ + Use Case + BPMN-процесс.</li><li><strong>6 обзорных диаграмм</strong> — контекст, карта контекстов, видимость, контейнеры, фич-карта, системный UC.</li><li><strong>6 ADR</strong> — все отражены в диаграммах (видимость → overview/03; импорт → finance-import; планировщик → reminder/digest/notification; изоляция → overview/02,04; retrieval → nutrition-resolver).</li><li><strong>Охват:</strong> MVP / текущее состояние. Этапы программы E2–E5 (<code>docs/06_program/</code>) — следующей итерацией.</li></ul>
+</section><script type="application/bpmn" data-target="bpmn-onboarding"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_onboarding" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_onboarding" name="Онбординг и пейринг семьи" isExecutable="false">
+    <bpmn:startEvent id="Start_open" name="Открыл Mini App">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="T_auth" name="Система: валидация initData (HMAC, whitelist)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_wl" name="В whitelist?">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_403" name="403 — доступ запрещён">
+      <bpmn:incoming>f3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="T_prov" name="Система: provision User (первый вход)">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_has" name="Уже в семье?">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_home" name="Открыт домашний экран">
+      <bpmn:incoming>f6</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="GW_choice" name="Создать или вступить?">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_create" name="Система: POST /family — Family + Membership + Invite">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="T_share" name="Партнёр: передать инвайт-код партнёру">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_wait" name="В семье 1/2 — ждёт партнёра">
+      <bpmn:incoming>f10</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="T_enter" name="Партнёр: ввести инвайт-код">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="T_join" name="Система: POST /family/join — проверка I3/I4/I5">
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_valid" name="Код валиден и есть место?">
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+      <bpmn:outgoing>f16</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_member" name="Система: создать Membership; инвайт → used">
+      <bpmn:incoming>f14</bpmn:incoming>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_paired" name="Семья укомплектована 2/2">
+      <bpmn:incoming>f15</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_join_err" name="Ошибка кода (404/409/410) — повторить">
+      <bpmn:incoming>f16</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start_open" targetRef="T_auth" />
+    <bpmn:sequenceFlow id="f2" sourceRef="T_auth" targetRef="GW_wl" />
+    <bpmn:sequenceFlow id="f3" name="нет" sourceRef="GW_wl" targetRef="End_403" />
+    <bpmn:sequenceFlow id="f4" name="да" sourceRef="GW_wl" targetRef="T_prov" />
+    <bpmn:sequenceFlow id="f5" sourceRef="T_prov" targetRef="GW_has" />
+    <bpmn:sequenceFlow id="f6" name="да" sourceRef="GW_has" targetRef="End_home" />
+    <bpmn:sequenceFlow id="f7" name="нет" sourceRef="GW_has" targetRef="GW_choice" />
+    <bpmn:sequenceFlow id="f8" name="создать" sourceRef="GW_choice" targetRef="T_create" />
+    <bpmn:sequenceFlow id="f9" sourceRef="T_create" targetRef="T_share" />
+    <bpmn:sequenceFlow id="f10" sourceRef="T_share" targetRef="End_wait" />
+    <bpmn:sequenceFlow id="f11" name="вступить" sourceRef="GW_choice" targetRef="T_enter" />
+    <bpmn:sequenceFlow id="f12" sourceRef="T_enter" targetRef="T_join" />
+    <bpmn:sequenceFlow id="f13" sourceRef="T_join" targetRef="GW_valid" />
+    <bpmn:sequenceFlow id="f14" name="да" sourceRef="GW_valid" targetRef="T_member" />
+    <bpmn:sequenceFlow id="f15" sourceRef="T_member" targetRef="End_paired" />
+    <bpmn:sequenceFlow id="f16" name="нет" sourceRef="GW_valid" targetRef="End_join_err" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_onboarding">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_onboarding" bpmnElement="Proc_onboarding">
+      <bpmndi:BPMNShape id="Start_open_di" bpmnElement="Start_open">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_auth_di" bpmnElement="T_auth">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_wl_di" bpmnElement="GW_wl" isMarkerVisible="true">
+        <dc:Bounds x="350" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_403_di" bpmnElement="End_403">
+        <dc:Bounds x="507" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_prov_di" bpmnElement="T_prov">
+        <dc:Bounds x="475" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_has_di" bpmnElement="GW_has" isMarkerVisible="true">
+        <dc:Bounds x="650" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_home_di" bpmnElement="End_home">
+        <dc:Bounds x="807" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_choice_di" bpmnElement="GW_choice" isMarkerVisible="true">
+        <dc:Bounds x="950" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_create_di" bpmnElement="T_create">
+        <dc:Bounds x="1075" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_share_di" bpmnElement="T_share">
+        <dc:Bounds x="1225" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_wait_di" bpmnElement="End_wait">
+        <dc:Bounds x="1407" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_enter_di" bpmnElement="T_enter">
+        <dc:Bounds x="1075" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_join_di" bpmnElement="T_join">
+        <dc:Bounds x="1225" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_valid_di" bpmnElement="GW_valid" isMarkerVisible="true">
+        <dc:Bounds x="1400" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T_member_di" bpmnElement="T_member">
+        <dc:Bounds x="1525" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_paired_di" bpmnElement="End_paired">
+        <dc:Bounds x="1707" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_join_err_di" bpmnElement="End_join_err">
+        <dc:Bounds x="1557" y="472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="350" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="400" y="70" />
+        <di:waypoint x="507" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="375" y="95" />
+        <di:waypoint x="375" y="210" />
+        <di:waypoint x="475" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="575" y="210" />
+        <di:waypoint x="650" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="700" y="210" />
+        <di:waypoint x="807" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="675" y="235" />
+        <di:waypoint x="675" y="280" />
+        <di:waypoint x="975" y="280" />
+        <di:waypoint x="975" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1000" y="210" />
+        <di:waypoint x="1075" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="975" y="235" />
+        <di:waypoint x="975" y="350" />
+        <di:waypoint x="1075" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1175" y="210" />
+        <di:waypoint x="1225" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1325" y="210" />
+        <di:waypoint x="1407" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1175" y="350" />
+        <di:waypoint x="1225" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="1325" y="350" />
+        <di:waypoint x="1400" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="1450" y="350" />
+        <di:waypoint x="1525" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f16_di" bpmnElement="f16">
+        <di:waypoint x="1425" y="375" />
+        <di:waypoint x="1425" y="490" />
+        <di:waypoint x="1557" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="1625" y="350" />
+        <di:waypoint x="1707" y="350" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-lists-item-lifecycle"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_lists-item-lifecycle" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_lists-item-lifecycle" name="Жизненный цикл элемента списка" isExecutable="false">
+    <bpmn:startEvent id="s" name="Открыл список">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="t1" name="Партнёр: добавить элемент">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="v1" name="Система: валидировать иерархию и specific_attrs">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g1" name="Валидно?">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="e422a" name="422 — вложение/атрибут">
+      <bpmn:incoming>f4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="g2" name="hidden_from задан? (подарок)">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="v2" name="Система: проверить hidden_from (FAMILY, не owner, член семьи)">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g3" name="Корректно?">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="e422b" name="422 — нарушение видимости">
+      <bpmn:incoming>f9</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="sv" name="Система: сохранить ListItem (OPEN) + история CREATED">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="t2" name="Партнёр: отметить DONE">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="vis" name="Система: visible_to(viewer)">
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g4" name="Виден зрителю?">
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="e404" name="404 — скрыт от зрителя">
+      <bpmn:incoming>f14</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="done" name="Система: OPEN→DONE + история STATUS_CHANGED">
+      <bpmn:incoming>f15</bpmn:incoming>
+      <bpmn:outgoing>f16</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g5" name="Ещё действие?">
+      <bpmn:incoming>f16</bpmn:incoming>
+      <bpmn:outgoing>f17</bpmn:outgoing>
+      <bpmn:outgoing>f18</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="edit" name="Система: перенести/удалить (+история, каскад)">
+      <bpmn:incoming>f17</bpmn:incoming>
+      <bpmn:outgoing>f19</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eEdit" name="Элемент изменён">
+      <bpmn:incoming>f19</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="eDone" name="Готово (DONE)">
+      <bpmn:incoming>f18</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="t1" />
+    <bpmn:sequenceFlow id="f2" sourceRef="t1" targetRef="v1" />
+    <bpmn:sequenceFlow id="f3" sourceRef="v1" targetRef="g1" />
+    <bpmn:sequenceFlow id="f4" name="нет" sourceRef="g1" targetRef="e422a" />
+    <bpmn:sequenceFlow id="f5" name="да" sourceRef="g1" targetRef="g2" />
+    <bpmn:sequenceFlow id="f6" name="да" sourceRef="g2" targetRef="v2" />
+    <bpmn:sequenceFlow id="f7" name="нет" sourceRef="g2" targetRef="sv" />
+    <bpmn:sequenceFlow id="f8" sourceRef="v2" targetRef="g3" />
+    <bpmn:sequenceFlow id="f9" name="нет" sourceRef="g3" targetRef="e422b" />
+    <bpmn:sequenceFlow id="f10" name="да" sourceRef="g3" targetRef="sv" />
+    <bpmn:sequenceFlow id="f11" sourceRef="sv" targetRef="t2" />
+    <bpmn:sequenceFlow id="f12" sourceRef="t2" targetRef="vis" />
+    <bpmn:sequenceFlow id="f13" sourceRef="vis" targetRef="g4" />
+    <bpmn:sequenceFlow id="f14" name="нет" sourceRef="g4" targetRef="e404" />
+    <bpmn:sequenceFlow id="f15" name="да" sourceRef="g4" targetRef="done" />
+    <bpmn:sequenceFlow id="f16" sourceRef="done" targetRef="g5" />
+    <bpmn:sequenceFlow id="f17" name="перенести/удалить" sourceRef="g5" targetRef="edit" />
+    <bpmn:sequenceFlow id="f18" name="готово" sourceRef="g5" targetRef="eDone" />
+    <bpmn:sequenceFlow id="f19" sourceRef="edit" targetRef="eEdit" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_lists-item-lifecycle">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_lists-item-lifecycle" bpmnElement="Proc_lists-item-lifecycle">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="t1_di" bpmnElement="t1">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="v1_di" bpmnElement="v1">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="e422a_di" bpmnElement="e422a">
+        <dc:Bounds x="657" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g2_di" bpmnElement="g2" isMarkerVisible="true">
+        <dc:Bounds x="800" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="v2_di" bpmnElement="v2">
+        <dc:Bounds x="925" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g3_di" bpmnElement="g3" isMarkerVisible="true">
+        <dc:Bounds x="1100" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="e422b_di" bpmnElement="e422b">
+        <dc:Bounds x="1257" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="sv_di" bpmnElement="sv">
+        <dc:Bounds x="1225" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="t2_di" bpmnElement="t2">
+        <dc:Bounds x="1375" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="vis_di" bpmnElement="vis">
+        <dc:Bounds x="1525" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g4_di" bpmnElement="g4" isMarkerVisible="true">
+        <dc:Bounds x="1700" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="e404_di" bpmnElement="e404">
+        <dc:Bounds x="1857" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="done_di" bpmnElement="done">
+        <dc:Bounds x="1825" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g5_di" bpmnElement="g5" isMarkerVisible="true">
+        <dc:Bounds x="2000" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="edit_di" bpmnElement="edit">
+        <dc:Bounds x="2125" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eEdit_di" bpmnElement="eEdit">
+        <dc:Bounds x="2307" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="2157" y="472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="657" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="140" />
+        <di:waypoint x="825" y="140" />
+        <di:waypoint x="825" y="95" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="850" y="70" />
+        <di:waypoint x="925" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="825" y="95" />
+        <di:waypoint x="825" y="210" />
+        <di:waypoint x="1225" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1025" y="70" />
+        <di:waypoint x="1100" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1150" y="70" />
+        <di:waypoint x="1257" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1125" y="95" />
+        <di:waypoint x="1125" y="210" />
+        <di:waypoint x="1225" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="1325" y="210" />
+        <di:waypoint x="1375" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1475" y="210" />
+        <di:waypoint x="1525" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="1625" y="210" />
+        <di:waypoint x="1700" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="1750" y="210" />
+        <di:waypoint x="1857" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="1725" y="235" />
+        <di:waypoint x="1725" y="350" />
+        <di:waypoint x="1825" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f16_di" bpmnElement="f16">
+        <di:waypoint x="1925" y="350" />
+        <di:waypoint x="2000" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f17_di" bpmnElement="f17">
+        <di:waypoint x="2050" y="350" />
+        <di:waypoint x="2125" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f18_di" bpmnElement="f18">
+        <di:waypoint x="2025" y="375" />
+        <di:waypoint x="2025" y="490" />
+        <di:waypoint x="2157" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f19_di" bpmnElement="f19">
+        <di:waypoint x="2225" y="350" />
+        <di:waypoint x="2307" y="350" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-finance-import"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_finance-import" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_finance-import" name="Импорт финансов" isExecutable="false">
+    <bpmn:startEvent id="s" name="Готов импортировать">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="t1" name="Партнёр: загрузить xlsx (+ год)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="p1" name="Import ACL: структурный парсинг (шапка, заливка)">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g1" name="Структура узнана?">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="fb" name="Import ACL: fallback — родитель = Σ детей">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="p2" name="Import ACL: MonthParse + валидация (|Δ|≤1₽)">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g2" name="Валидно?">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="eFail" name="Fail-loud — ничего не импортировано">
+      <bpmn:incoming>f8</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="norm" name="Import ACL: нормализация + алиасы">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g3" name="Категория известна?">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="rev" name="Система: категория NEEDS_REVIEW">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="up" name="Система: идемпотентный upsert месяца">
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eOk" name="Импортировано — аналитика доступна">
+      <bpmn:incoming>f14</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="t1" />
+    <bpmn:sequenceFlow id="f2" sourceRef="t1" targetRef="p1" />
+    <bpmn:sequenceFlow id="f3" sourceRef="p1" targetRef="g1" />
+    <bpmn:sequenceFlow id="f4" name="нет" sourceRef="g1" targetRef="fb" />
+    <bpmn:sequenceFlow id="f5" name="да" sourceRef="g1" targetRef="p2" />
+    <bpmn:sequenceFlow id="f6" sourceRef="fb" targetRef="p2" />
+    <bpmn:sequenceFlow id="f7" sourceRef="p2" targetRef="g2" />
+    <bpmn:sequenceFlow id="f8" name="расхождение" sourceRef="g2" targetRef="eFail" />
+    <bpmn:sequenceFlow id="f9" name="ок" sourceRef="g2" targetRef="norm" />
+    <bpmn:sequenceFlow id="f10" sourceRef="norm" targetRef="g3" />
+    <bpmn:sequenceFlow id="f11" name="невиданная" sourceRef="g3" targetRef="rev" />
+    <bpmn:sequenceFlow id="f12" name="известная" sourceRef="g3" targetRef="up" />
+    <bpmn:sequenceFlow id="f13" sourceRef="rev" targetRef="up" />
+    <bpmn:sequenceFlow id="f14" sourceRef="up" targetRef="eOk" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_finance-import">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_finance-import" bpmnElement="Proc_finance-import">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="t1_di" bpmnElement="t1">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="p1_di" bpmnElement="p1">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="fb_di" bpmnElement="fb">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="p2_di" bpmnElement="p2">
+        <dc:Bounds x="775" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g2_di" bpmnElement="g2" isMarkerVisible="true">
+        <dc:Bounds x="950" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eFail_di" bpmnElement="eFail">
+        <dc:Bounds x="1107" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="norm_di" bpmnElement="norm">
+        <dc:Bounds x="1075" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g3_di" bpmnElement="g3" isMarkerVisible="true">
+        <dc:Bounds x="1250" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="rev_di" bpmnElement="rev">
+        <dc:Bounds x="1375" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="up_di" bpmnElement="up">
+        <dc:Bounds x="1525" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eOk_di" bpmnElement="eOk">
+        <dc:Bounds x="1707" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="140" />
+        <di:waypoint x="825" y="140" />
+        <di:waypoint x="825" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="775" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="875" y="70" />
+        <di:waypoint x="950" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1000" y="70" />
+        <di:waypoint x="1107" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="975" y="95" />
+        <di:waypoint x="975" y="210" />
+        <di:waypoint x="1075" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1175" y="210" />
+        <di:waypoint x="1250" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="1300" y="210" />
+        <di:waypoint x="1375" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1275" y="235" />
+        <di:waypoint x="1275" y="280" />
+        <di:waypoint x="1575" y="280" />
+        <di:waypoint x="1575" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="1475" y="210" />
+        <di:waypoint x="1525" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="1625" y="210" />
+        <di:waypoint x="1707" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-nutrition-resolver"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_nutrition-resolver" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_nutrition-resolver" name="Логирование питания по фото (resolver-ладдер)" isExecutable="false">
+    <bpmn:startEvent id="s" name="Текст / фото + порция">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="ext" name="Groq Scout: извлечь позиции (1 LLM-вызов)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g1" name="label_complete?">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="off" name="OpenFoodFacts: поиск (штрихкод / brand+name+fat)">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g3" name="КБЖУ найдены и полны?">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="g4" name="web-ступень включена? (R2)">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="web" name="Groq Compound: веб-поиск + цитата">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g5" name="Найдено?">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="est" name="EstimateSource: оценка (без LLM)">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="scale" name="Система: масштаб на порцию + провенанс">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="conf" name="Партнёр: confirm-экран (источник, правка)">
+      <bpmn:incoming>f14</bpmn:incoming>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="g6" name="Подтвердить?">
+      <bpmn:incoming>f15</bpmn:incoming>
+      <bpmn:outgoing>f16</bpmn:outgoing>
+      <bpmn:outgoing>f17</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="eCancel" name="Отменено">
+      <bpmn:incoming>f16</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="save" name="Система: сохранить FoodEntry (+source)">
+      <bpmn:incoming>f17</bpmn:incoming>
+      <bpmn:outgoing>f18</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g7" name="source≠estimate и есть семья?">
+      <bpmn:incoming>f18</bpmn:incoming>
+      <bpmn:outgoing>f19</bpmn:outgoing>
+      <bpmn:outgoing>f20</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="shared" name="Система: upsert SharedFood (кэш)">
+      <bpmn:incoming>f19</bpmn:incoming>
+      <bpmn:outgoing>f21</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eDone" name="Готово">
+      <bpmn:incoming>f20</bpmn:incoming>
+      <bpmn:incoming>f21</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="ext" />
+    <bpmn:sequenceFlow id="f2" sourceRef="ext" targetRef="g1" />
+    <bpmn:sequenceFlow id="f3" name="да: label" sourceRef="g1" targetRef="scale" />
+    <bpmn:sequenceFlow id="f4" name="нет" sourceRef="g1" targetRef="off" />
+    <bpmn:sequenceFlow id="f5" sourceRef="off" targetRef="g3" />
+    <bpmn:sequenceFlow id="f6" name="да: off" sourceRef="g3" targetRef="scale" />
+    <bpmn:sequenceFlow id="f7" name="нет" sourceRef="g3" targetRef="g4" />
+    <bpmn:sequenceFlow id="f8" name="да (R2)" sourceRef="g4" targetRef="web" />
+    <bpmn:sequenceFlow id="f9" name="нет (R1)" sourceRef="g4" targetRef="est" />
+    <bpmn:sequenceFlow id="f10" sourceRef="web" targetRef="g5" />
+    <bpmn:sequenceFlow id="f11" name="да: web" sourceRef="g5" targetRef="scale" />
+    <bpmn:sequenceFlow id="f12" name="нет" sourceRef="g5" targetRef="est" />
+    <bpmn:sequenceFlow id="f13" sourceRef="est" targetRef="scale" />
+    <bpmn:sequenceFlow id="f14" sourceRef="scale" targetRef="conf" />
+    <bpmn:sequenceFlow id="f15" sourceRef="conf" targetRef="g6" />
+    <bpmn:sequenceFlow id="f16" name="отмена" sourceRef="g6" targetRef="eCancel" />
+    <bpmn:sequenceFlow id="f17" name="подтвердить" sourceRef="g6" targetRef="save" />
+    <bpmn:sequenceFlow id="f18" sourceRef="save" targetRef="g7" />
+    <bpmn:sequenceFlow id="f19" name="да" sourceRef="g7" targetRef="shared" />
+    <bpmn:sequenceFlow id="f20" name="нет" sourceRef="g7" targetRef="eDone" />
+    <bpmn:sequenceFlow id="f21" sourceRef="shared" targetRef="eDone" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_nutrition-resolver">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_nutrition-resolver" bpmnElement="Proc_nutrition-resolver">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ext_di" bpmnElement="ext">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="350" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="scale_di" bpmnElement="scale">
+        <dc:Bounds x="475" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="conf_di" bpmnElement="conf">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g6_di" bpmnElement="g6" isMarkerVisible="true">
+        <dc:Bounds x="800" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eCancel_di" bpmnElement="eCancel">
+        <dc:Bounds x="957" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="off_di" bpmnElement="off">
+        <dc:Bounds x="475" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g3_di" bpmnElement="g3" isMarkerVisible="true">
+        <dc:Bounds x="650" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="save_di" bpmnElement="save">
+        <dc:Bounds x="1225" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g7_di" bpmnElement="g7" isMarkerVisible="true">
+        <dc:Bounds x="1400" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shared_di" bpmnElement="shared">
+        <dc:Bounds x="1525" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="1707" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g4_di" bpmnElement="g4" isMarkerVisible="true">
+        <dc:Bounds x="1850" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="web_di" bpmnElement="web">
+        <dc:Bounds x="1975" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g5_di" bpmnElement="g5" isMarkerVisible="true">
+        <dc:Bounds x="2150" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="est_di" bpmnElement="est">
+        <dc:Bounds x="2275" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="350" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="400" y="70" />
+        <di:waypoint x="475" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="375" y="95" />
+        <di:waypoint x="375" y="210" />
+        <di:waypoint x="475" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="575" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="800" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f16_di" bpmnElement="f16">
+        <di:waypoint x="850" y="70" />
+        <di:waypoint x="957" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f17_di" bpmnElement="f17">
+        <di:waypoint x="825" y="95" />
+        <di:waypoint x="825" y="210" />
+        <di:waypoint x="1225" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="575" y="210" />
+        <di:waypoint x="650" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="675" y="235" />
+        <di:waypoint x="675" y="280" />
+        <di:waypoint x="525" y="280" />
+        <di:waypoint x="525" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="675" y="235" />
+        <di:waypoint x="675" y="280" />
+        <di:waypoint x="1875" y="280" />
+        <di:waypoint x="1875" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f18_di" bpmnElement="f18">
+        <di:waypoint x="1325" y="210" />
+        <di:waypoint x="1400" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f19_di" bpmnElement="f19">
+        <di:waypoint x="1450" y="210" />
+        <di:waypoint x="1525" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f20_di" bpmnElement="f20">
+        <di:waypoint x="1425" y="235" />
+        <di:waypoint x="1425" y="280" />
+        <di:waypoint x="1725" y="280" />
+        <di:waypoint x="1725" y="228" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f21_di" bpmnElement="f21">
+        <di:waypoint x="1625" y="210" />
+        <di:waypoint x="1707" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1900" y="210" />
+        <di:waypoint x="1975" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1875" y="235" />
+        <di:waypoint x="1875" y="280" />
+        <di:waypoint x="2325" y="280" />
+        <di:waypoint x="2325" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="2075" y="210" />
+        <di:waypoint x="2150" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="2175" y="235" />
+        <di:waypoint x="2175" y="280" />
+        <di:waypoint x="525" y="280" />
+        <di:waypoint x="525" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="2200" y="210" />
+        <di:waypoint x="2275" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="2325" y="250" />
+        <di:waypoint x="2325" y="280" />
+        <di:waypoint x="525" y="280" />
+        <di:waypoint x="525" y="110" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-reminder-lifecycle"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_reminder-lifecycle" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_reminder-lifecycle" name="Жизненный цикл напоминания" isExecutable="false">
+    <bpmn:startEvent id="s" name="Партнёр создаёт напоминание (ACTIVE)">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="tick" name="Планировщик: тик — выбрать созревшие">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g1" name="Есть созревшие?">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="eWait" name="Нет — ждать след. тик">
+      <bpmn:incoming>f3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="claim" name="Система: транзакционный claim (один push)">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g2" name="В окне misfire-грейса (3 ч)?">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="deliver" name="Система: last_fired_at=now; доставка через Notifications (push ✅/⏰)">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="grec" name="recurrence?">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="eDone" name="DONE (next_fire_at=NULL)">
+      <bpmn:incoming>f9</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="adv" name="Система: advance next_fire_at; статус ACTIVE">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eReque" name="Снова в пуле (ACTIVE)">
+      <bpmn:incoming>f11</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="gmiss" name="recurrence? (просрочено сверх грейса)">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="missF" name="Система: продвинуть к ближайшему будущему слоту; ACTIVE">
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eReque2" name="Снова в пуле (ACTIVE)">
+      <bpmn:incoming>f14</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="eMissed" name="MISSED (одноразовое)">
+      <bpmn:incoming>f12</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:startEvent id="s2" name="Партнёр нажал кнопку в push">
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="greact" name="Реакция?">
+      <bpmn:incoming>f15</bpmn:incoming>
+      <bpmn:outgoing>f16</bpmn:outgoing>
+      <bpmn:outgoing>f17</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ack" name="Система: ack — одноразовое→DONE / повтор→подтвердить (расписание не трогает)">
+      <bpmn:incoming>f16</bpmn:incoming>
+      <bpmn:outgoing>f18</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eAck" name="Подтверждено">
+      <bpmn:incoming>f18</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="snooze" name="Система: snooze — next_fire_at=now+N, ACTIVE">
+      <bpmn:incoming>f17</bpmn:incoming>
+      <bpmn:outgoing>f19</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eSnooze" name="Отложено (ACTIVE)">
+      <bpmn:incoming>f19</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="tick" />
+    <bpmn:sequenceFlow id="f2" sourceRef="tick" targetRef="g1" />
+    <bpmn:sequenceFlow id="f3" name="нет" sourceRef="g1" targetRef="eWait" />
+    <bpmn:sequenceFlow id="f4" name="да" sourceRef="g1" targetRef="claim" />
+    <bpmn:sequenceFlow id="f5" sourceRef="claim" targetRef="g2" />
+    <bpmn:sequenceFlow id="f6" name="в окне" sourceRef="g2" targetRef="deliver" />
+    <bpmn:sequenceFlow id="f7" name="сверх грейса" sourceRef="g2" targetRef="gmiss" />
+    <bpmn:sequenceFlow id="f8" sourceRef="deliver" targetRef="grec" />
+    <bpmn:sequenceFlow id="f9" name="none" sourceRef="grec" targetRef="eDone" />
+    <bpmn:sequenceFlow id="f10" name="daily/weekly/interval" sourceRef="grec" targetRef="adv" />
+    <bpmn:sequenceFlow id="f11" sourceRef="adv" targetRef="eReque" />
+    <bpmn:sequenceFlow id="f12" name="none" sourceRef="gmiss" targetRef="eMissed" />
+    <bpmn:sequenceFlow id="f13" name="daily/weekly/interval" sourceRef="gmiss" targetRef="missF" />
+    <bpmn:sequenceFlow id="f14" sourceRef="missF" targetRef="eReque2" />
+    <bpmn:sequenceFlow id="f15" sourceRef="s2" targetRef="greact" />
+    <bpmn:sequenceFlow id="f16" name="✅ ack" sourceRef="greact" targetRef="ack" />
+    <bpmn:sequenceFlow id="f17" name="⏰ snooze" sourceRef="greact" targetRef="snooze" />
+    <bpmn:sequenceFlow id="f18" sourceRef="ack" targetRef="eAck" />
+    <bpmn:sequenceFlow id="f19" sourceRef="snooze" targetRef="eSnooze" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_reminder-lifecycle">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_reminder-lifecycle" bpmnElement="Proc_reminder-lifecycle">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="tick_di" bpmnElement="tick">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="350" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eWait_di" bpmnElement="eWait">
+        <dc:Bounds x="507" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="claim_di" bpmnElement="claim">
+        <dc:Bounds x="475" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g2_di" bpmnElement="g2" isMarkerVisible="true">
+        <dc:Bounds x="650" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="deliver_di" bpmnElement="deliver">
+        <dc:Bounds x="775" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="grec_di" bpmnElement="grec" isMarkerVisible="true">
+        <dc:Bounds x="950" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="1107" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gmiss_di" bpmnElement="gmiss" isMarkerVisible="true">
+        <dc:Bounds x="1250" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eMissed_di" bpmnElement="eMissed">
+        <dc:Bounds x="1407" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="s2_di" bpmnElement="s2">
+        <dc:Bounds x="57" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="greact_di" bpmnElement="greact" isMarkerVisible="true">
+        <dc:Bounds x="200" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ack_di" bpmnElement="ack">
+        <dc:Bounds x="325" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eAck_di" bpmnElement="eAck">
+        <dc:Bounds x="507" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="adv_di" bpmnElement="adv">
+        <dc:Bounds x="1075" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eReque_di" bpmnElement="eReque">
+        <dc:Bounds x="1257" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="missF_di" bpmnElement="missF">
+        <dc:Bounds x="1375" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eReque2_di" bpmnElement="eReque2">
+        <dc:Bounds x="1557" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="snooze_di" bpmnElement="snooze">
+        <dc:Bounds x="325" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eSnooze_di" bpmnElement="eSnooze">
+        <dc:Bounds x="507" y="472" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="350" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="400" y="70" />
+        <di:waypoint x="507" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="375" y="95" />
+        <di:waypoint x="375" y="210" />
+        <di:waypoint x="475" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="575" y="210" />
+        <di:waypoint x="650" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="700" y="210" />
+        <di:waypoint x="775" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="675" y="235" />
+        <di:waypoint x="675" y="280" />
+        <di:waypoint x="1275" y="280" />
+        <di:waypoint x="1275" y="235" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="875" y="210" />
+        <di:waypoint x="950" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1000" y="210" />
+        <di:waypoint x="1107" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="975" y="235" />
+        <di:waypoint x="975" y="350" />
+        <di:waypoint x="1075" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1300" y="210" />
+        <di:waypoint x="1407" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="1300" y="210" />
+        <di:waypoint x="1350" y="210" />
+        <di:waypoint x="1350" y="280" />
+        <di:waypoint x="1350" y="280" />
+        <di:waypoint x="1350" y="350" />
+        <di:waypoint x="1375" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="93" y="350" />
+        <di:waypoint x="200" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f16_di" bpmnElement="f16">
+        <di:waypoint x="250" y="350" />
+        <di:waypoint x="325" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f17_di" bpmnElement="f17">
+        <di:waypoint x="225" y="375" />
+        <di:waypoint x="225" y="490" />
+        <di:waypoint x="325" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f18_di" bpmnElement="f18">
+        <di:waypoint x="425" y="350" />
+        <di:waypoint x="507" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="1175" y="350" />
+        <di:waypoint x="1257" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="1475" y="350" />
+        <di:waypoint x="1557" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f19_di" bpmnElement="f19">
+        <di:waypoint x="425" y="490" />
+        <di:waypoint x="507" y="490" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-notification-delivery"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_notification-delivery" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_notification-delivery" name="Доставка уведомления" isExecutable="false">
+    <bpmn:startEvent id="s" name="Источник: уведомление + получатели (visible_to)">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="deliver" name="Notifications: deliver(recipients, text, buttons?)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="send" name="Отправить в Telegram (best-effort)">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g1" name="Исход отправки?">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ok" name="Учесть в sent">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="blocked" name="Заблокирован/bad request: лог, без ретрая">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="retry" name="Транзиентный: один ретрай">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g2" name="После ретрая — ок?">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="alert" name="alert_admin → админ">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g3" name="Есть callback?">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="route" name="delivery/bot: callback → источник (ack/snooze)">
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eEnd" name="DeliveryReport {sent, blocked, failed}">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:incoming>f14</bpmn:incoming>
+      <bpmn:incoming>f15</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="deliver" />
+    <bpmn:sequenceFlow id="f2" sourceRef="deliver" targetRef="send" />
+    <bpmn:sequenceFlow id="f3" sourceRef="send" targetRef="g1" />
+    <bpmn:sequenceFlow id="f4" name="успех" sourceRef="g1" targetRef="ok" />
+    <bpmn:sequenceFlow id="f5" name="блокировка" sourceRef="g1" targetRef="blocked" />
+    <bpmn:sequenceFlow id="f6" name="транзиентный" sourceRef="g1" targetRef="retry" />
+    <bpmn:sequenceFlow id="f7" sourceRef="retry" targetRef="g2" />
+    <bpmn:sequenceFlow id="f8" name="успех" sourceRef="g2" targetRef="ok" />
+    <bpmn:sequenceFlow id="f9" name="снова фейл" sourceRef="g2" targetRef="alert" />
+    <bpmn:sequenceFlow id="f10" sourceRef="ok" targetRef="g3" />
+    <bpmn:sequenceFlow id="f11" sourceRef="blocked" targetRef="eEnd" />
+    <bpmn:sequenceFlow id="f12" sourceRef="alert" targetRef="eEnd" />
+    <bpmn:sequenceFlow id="f13" name="да" sourceRef="g3" targetRef="route" />
+    <bpmn:sequenceFlow id="f14" name="нет" sourceRef="g3" targetRef="eEnd" />
+    <bpmn:sequenceFlow id="f15" sourceRef="route" targetRef="eEnd" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_notification-delivery">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_notification-delivery" bpmnElement="Proc_notification-delivery">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="deliver_di" bpmnElement="deliver">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="send_di" bpmnElement="send">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ok_di" bpmnElement="ok">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g3_di" bpmnElement="g3" isMarkerVisible="true">
+        <dc:Bounds x="800" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="route_di" bpmnElement="route">
+        <dc:Bounds x="925" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eEnd_di" bpmnElement="eEnd">
+        <dc:Bounds x="1407" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="blocked_di" bpmnElement="blocked">
+        <dc:Bounds x="625" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="retry_di" bpmnElement="retry">
+        <dc:Bounds x="625" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g2_di" bpmnElement="g2" isMarkerVisible="true">
+        <dc:Bounds x="1100" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="alert_di" bpmnElement="alert">
+        <dc:Bounds x="1225" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="350" />
+        <di:waypoint x="625" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="800" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="850" y="70" />
+        <di:waypoint x="925" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="825" y="95" />
+        <di:waypoint x="825" y="140" />
+        <di:waypoint x="1425" y="140" />
+        <di:waypoint x="1425" y="88" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="1025" y="70" />
+        <di:waypoint x="1407" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="725" y="210" />
+        <di:waypoint x="1425" y="210" />
+        <di:waypoint x="1425" y="88" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="725" y="350" />
+        <di:waypoint x="1100" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1125" y="375" />
+        <di:waypoint x="1125" y="420" />
+        <di:waypoint x="675" y="420" />
+        <di:waypoint x="675" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1150" y="350" />
+        <di:waypoint x="1225" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1325" y="350" />
+        <di:waypoint x="1425" y="350" />
+        <di:waypoint x="1425" y="88" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-digest"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_digest" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_digest" name="Формирование и доставка дайджеста" isExecutable="false">
+    <bpmn:startEvent id="s" name="Тик по каденсу DigestSchedule">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+      <bpmn:timerEventDefinition />
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="g1" name="Расписание созрело?">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="eNo" name="Не шлётся (обзор в Mini App)">
+      <bpmn:incoming>f2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="read" name="Система: читать изменения (lists/finance/nutrition .read)">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="vis" name="Система: фильтр visible_to per-recipient">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="compose" name="Система: композиция дайджеста">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g2" name="Непустой дайджест?">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="eEmpty" name="Пусто — не отправляется">
+      <bpmn:incoming>f7</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="push" name="Notifications → push каждому в семье">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="upd" name="Система: last_sent_at = now">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eDone" name="Дайджест доставлен">
+      <bpmn:incoming>f10</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="g1" />
+    <bpmn:sequenceFlow id="f2" name="нет/disabled" sourceRef="g1" targetRef="eNo" />
+    <bpmn:sequenceFlow id="f3" name="созрело" sourceRef="g1" targetRef="read" />
+    <bpmn:sequenceFlow id="f4" sourceRef="read" targetRef="vis" />
+    <bpmn:sequenceFlow id="f5" sourceRef="vis" targetRef="compose" />
+    <bpmn:sequenceFlow id="f6" sourceRef="compose" targetRef="g2" />
+    <bpmn:sequenceFlow id="f7" name="пусто" sourceRef="g2" targetRef="eEmpty" />
+    <bpmn:sequenceFlow id="f8" name="есть контент" sourceRef="g2" targetRef="push" />
+    <bpmn:sequenceFlow id="f9" sourceRef="push" targetRef="upd" />
+    <bpmn:sequenceFlow id="f10" sourceRef="upd" targetRef="eDone" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_digest">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_digest" bpmnElement="Proc_digest">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="200" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eNo_di" bpmnElement="eNo">
+        <dc:Bounds x="357" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="read_di" bpmnElement="read">
+        <dc:Bounds x="325" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="vis_di" bpmnElement="vis">
+        <dc:Bounds x="475" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="compose_di" bpmnElement="compose">
+        <dc:Bounds x="625" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g2_di" bpmnElement="g2" isMarkerVisible="true">
+        <dc:Bounds x="800" y="185" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eEmpty_di" bpmnElement="eEmpty">
+        <dc:Bounds x="957" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="push_di" bpmnElement="push">
+        <dc:Bounds x="925" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="upd_di" bpmnElement="upd">
+        <dc:Bounds x="1075" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="1257" y="332" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="200" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="250" y="70" />
+        <di:waypoint x="357" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="225" y="95" />
+        <di:waypoint x="225" y="210" />
+        <di:waypoint x="325" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="425" y="210" />
+        <di:waypoint x="475" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="575" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="725" y="210" />
+        <di:waypoint x="800" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="850" y="210" />
+        <di:waypoint x="957" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="825" y="235" />
+        <di:waypoint x="825" y="350" />
+        <di:waypoint x="925" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1025" y="350" />
+        <di:waypoint x="1075" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1175" y="350" />
+        <di:waypoint x="1257" y="350" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-e2-receipt"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_e2-receipt" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_e2-receipt" name="E2 · Чек: от кассы до транзакций (кандидат)" isExecutable="false">
+    <bpmn:startEvent id="s" name="Купил, чек на руках">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="gway" name="Способ?">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="u3" name="Партнёр: сканирует QR (showScanQrPopup)">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="u4" name="Партнёр: фотографирует чек">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="u5" name="Партнёр: ручной ввод — сумма + категория">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="acl" name="Receipt ACL: канал A/B (qrraw) / D (vision) → proverkacheka / API ФНС / Groq vision">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="gchan" name="Канал ответил?">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="raw" name="Система: сохранить сырьё (Receipt.raw_ref), статус «к разбору»">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eLater" name="Отложено — сырьё сохранено (разбор позже)">
+      <bpmn:incoming>f10</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="draft" name="Система: ParsedReceipt → черновик позиций">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="cat" name="Система: категоризация (ADR-0011) — правила + LLM-подсказка">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="u9" name="Партнёр: правит позиции/категории, подтверждает">
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="save" name="Система: сохранить Receipt + ReceiptItems + Transactions">
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:incoming>f14</bpmn:incoming>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="an" name="Система: аналитика E1 видит факт сразу (агрегат от Transaction)">
+      <bpmn:incoming>f15</bpmn:incoming>
+      <bpmn:outgoing>f16</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eDone" name="Готово">
+      <bpmn:incoming>f16</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="gway" />
+    <bpmn:sequenceFlow id="f2" name="QR" sourceRef="gway" targetRef="u3" />
+    <bpmn:sequenceFlow id="f3" name="нет QR / не РФ" sourceRef="gway" targetRef="u4" />
+    <bpmn:sequenceFlow id="f4" name="чека нет" sourceRef="gway" targetRef="u5" />
+    <bpmn:sequenceFlow id="f5" sourceRef="u3" targetRef="acl" />
+    <bpmn:sequenceFlow id="f6" sourceRef="u4" targetRef="acl" />
+    <bpmn:sequenceFlow id="f7" sourceRef="acl" targetRef="gchan" />
+    <bpmn:sequenceFlow id="f8" name="нет" sourceRef="gchan" targetRef="raw" />
+    <bpmn:sequenceFlow id="f9" name="да" sourceRef="gchan" targetRef="draft" />
+    <bpmn:sequenceFlow id="f10" sourceRef="raw" targetRef="eLater" />
+    <bpmn:sequenceFlow id="f11" sourceRef="draft" targetRef="cat" />
+    <bpmn:sequenceFlow id="f12" sourceRef="cat" targetRef="u9" />
+    <bpmn:sequenceFlow id="f13" sourceRef="u9" targetRef="save" />
+    <bpmn:sequenceFlow id="f14" sourceRef="u5" targetRef="save" />
+    <bpmn:sequenceFlow id="f15" sourceRef="save" targetRef="an" />
+    <bpmn:sequenceFlow id="f16" sourceRef="an" targetRef="eDone" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_e2-receipt">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_e2-receipt" bpmnElement="Proc_e2-receipt">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gway_di" bpmnElement="gway" isMarkerVisible="true">
+        <dc:Bounds x="200" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="u3_di" bpmnElement="u3">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="acl_di" bpmnElement="acl">
+        <dc:Bounds x="475" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gchan_di" bpmnElement="gchan" isMarkerVisible="true">
+        <dc:Bounds x="650" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="raw_di" bpmnElement="raw">
+        <dc:Bounds x="775" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eLater_di" bpmnElement="eLater">
+        <dc:Bounds x="957" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="u4_di" bpmnElement="u4">
+        <dc:Bounds x="325" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="draft_di" bpmnElement="draft">
+        <dc:Bounds x="775" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="cat_di" bpmnElement="cat">
+        <dc:Bounds x="925" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="u9_di" bpmnElement="u9">
+        <dc:Bounds x="1075" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="save_di" bpmnElement="save">
+        <dc:Bounds x="1225" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="an_di" bpmnElement="an">
+        <dc:Bounds x="1375" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="1557" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="u5_di" bpmnElement="u5">
+        <dc:Bounds x="325" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="200" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="250" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="225" y="95" />
+        <di:waypoint x="225" y="210" />
+        <di:waypoint x="325" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="225" y="95" />
+        <di:waypoint x="225" y="350" />
+        <di:waypoint x="325" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="475" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="575" y="70" />
+        <di:waypoint x="650" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="700" y="70" />
+        <di:waypoint x="775" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="675" y="95" />
+        <di:waypoint x="675" y="210" />
+        <di:waypoint x="775" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="875" y="70" />
+        <di:waypoint x="957" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="425" y="210" />
+        <di:waypoint x="525" y="210" />
+        <di:waypoint x="525" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="875" y="210" />
+        <di:waypoint x="925" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1025" y="210" />
+        <di:waypoint x="1075" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="1175" y="210" />
+        <di:waypoint x="1225" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="1325" y="210" />
+        <di:waypoint x="1375" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f16_di" bpmnElement="f16">
+        <di:waypoint x="1475" y="210" />
+        <di:waypoint x="1557" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="425" y="350" />
+        <di:waypoint x="1275" y="350" />
+        <di:waypoint x="1275" y="250" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-e2-ssot-transition"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_e2-ssot-transition" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_e2-ssot-transition" name="E2 · Переход SSOT: таблица → транзакции (кандидат, ADR-0007)" isExecutable="false">
+    <bpmn:startEvent id="s" name="Старт E2">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="par" name="Параллельный период: транзакции в боте + таблица как раньше">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g" name="Сверка месяца: Σ транзакций ≈ таблица?">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="fix" name="Партнёр: разбор причин (забытые траты? канал?) → правки привычек/категорий">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="arch" name="Система: таблица → архив; Import ACL → консервация (код остаётся, не зовётся)">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="ritual" name="Партнёр (Катя): экспорт периода (xlsx) из бота (F2.6)">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="eGate" name="Выход-гейт E2">
+      <bpmn:incoming>f7</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="par" />
+    <bpmn:sequenceFlow id="f2" sourceRef="par" targetRef="g" />
+    <bpmn:sequenceFlow id="f3" name="расхождения" sourceRef="g" targetRef="fix" />
+    <bpmn:sequenceFlow id="f4" name="сходится N месяцев" sourceRef="g" targetRef="arch" />
+    <bpmn:sequenceFlow id="f5" sourceRef="fix" targetRef="par" />
+    <bpmn:sequenceFlow id="f6" sourceRef="arch" targetRef="ritual" />
+    <bpmn:sequenceFlow id="f7" sourceRef="ritual" targetRef="eGate" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_e2-ssot-transition">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_e2-ssot-transition" bpmnElement="Proc_e2-ssot-transition">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="par_di" bpmnElement="par">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g_di" bpmnElement="g" isMarkerVisible="true">
+        <dc:Bounds x="350" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="fix_di" bpmnElement="fix">
+        <dc:Bounds x="475" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="arch_di" bpmnElement="arch">
+        <dc:Bounds x="475" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ritual_di" bpmnElement="ritual">
+        <dc:Bounds x="625" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eGate_di" bpmnElement="eGate">
+        <dc:Bounds x="807" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="350" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="400" y="70" />
+        <di:waypoint x="475" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="375" y="95" />
+        <di:waypoint x="375" y="210" />
+        <di:waypoint x="475" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="110" />
+        <di:waypoint x="525" y="140" />
+        <di:waypoint x="225" y="140" />
+        <di:waypoint x="225" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="575" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="725" y="210" />
+        <di:waypoint x="807" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-e3-huawei-import"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_e3-huawei-import" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_e3-huawei-import" name="E3 · Huawei-импорт здоровья (кандидат)" isExecutable="false">
+    <bpmn:startEvent id="s" name="Напоминание-пресет: «запроси экспорт» (раз в 1–2 нед)">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="h2" name="Партнёр: Huawei Health → Privacy center → Request data → Health">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="h3" name="Партнёр: получает zip на почту, скачивает">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="h4" name="Партнёр: грузит zip в Mini App (+ пароль архива)">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="b1" name="Health ACL: распаковка → парс JSON-папок (Health detail / Sport / Sleep…)">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="b2" name="Система: нормализация → Measurement / Workout">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g" name="Пересечение с ручными записями?">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="dedup" name="Система: дедупликация по ADR-0008 (источник-приоритет)">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="up" name="Система: идемпотентный upsert по периодам">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="destroy" name="Система: zip уничтожается (медданные не храним сырьём)">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="h7" name="Партнёр: смотрит отчёт импорта (новые периоды, конфликты)">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="eDone" name="Готово">
+      <bpmn:incoming>f12</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="h2" />
+    <bpmn:sequenceFlow id="f2" sourceRef="h2" targetRef="h3" />
+    <bpmn:sequenceFlow id="f3" sourceRef="h3" targetRef="h4" />
+    <bpmn:sequenceFlow id="f4" sourceRef="h4" targetRef="b1" />
+    <bpmn:sequenceFlow id="f5" sourceRef="b1" targetRef="b2" />
+    <bpmn:sequenceFlow id="f6" sourceRef="b2" targetRef="g" />
+    <bpmn:sequenceFlow id="f7" name="да" sourceRef="g" targetRef="dedup" />
+    <bpmn:sequenceFlow id="f8" name="нет" sourceRef="g" targetRef="up" />
+    <bpmn:sequenceFlow id="f9" sourceRef="dedup" targetRef="up" />
+    <bpmn:sequenceFlow id="f10" sourceRef="up" targetRef="destroy" />
+    <bpmn:sequenceFlow id="f11" sourceRef="destroy" targetRef="h7" />
+    <bpmn:sequenceFlow id="f12" sourceRef="h7" targetRef="eDone" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_e3-huawei-import">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_e3-huawei-import" bpmnElement="Proc_e3-huawei-import">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="h2_di" bpmnElement="h2">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="h3_di" bpmnElement="h3">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="h4_di" bpmnElement="h4">
+        <dc:Bounds x="475" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="b1_di" bpmnElement="b1">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="b2_di" bpmnElement="b2">
+        <dc:Bounds x="775" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g_di" bpmnElement="g" isMarkerVisible="true">
+        <dc:Bounds x="950" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="dedup_di" bpmnElement="dedup">
+        <dc:Bounds x="1075" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="up_di" bpmnElement="up">
+        <dc:Bounds x="1225" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="destroy_di" bpmnElement="destroy">
+        <dc:Bounds x="1375" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="h7_di" bpmnElement="h7">
+        <dc:Bounds x="1525" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="1707" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="475" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="575" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="775" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="875" y="70" />
+        <di:waypoint x="950" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="1000" y="70" />
+        <di:waypoint x="1075" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="975" y="95" />
+        <di:waypoint x="975" y="140" />
+        <di:waypoint x="1275" y="140" />
+        <di:waypoint x="1275" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1175" y="70" />
+        <di:waypoint x="1225" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1325" y="70" />
+        <di:waypoint x="1375" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="1475" y="70" />
+        <di:waypoint x="1525" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1625" y="70" />
+        <di:waypoint x="1707" y="70" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-e4-morning-plan"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_e4-morning-plan" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_e4-morning-plan" name="E4 · Утренний план дня (кандидат)" isExecutable="false">
+    <bpmn:startEvent id="s" name="job: morning_plan (per-user время, таймзона kernel)">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+      <bpmn:timerEventDefinition />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="a1" name="assistant: сбор — reminders сегодня · TASK-OPEN с близкими датами · тренировка (E3, если расшарена) · идея ужина">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="a2" name="assistant: LLM-композиция в текст (границы — ADR-0012)">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g" name="План пуст?">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="skip" name="Не шлём">
+      <bpmn:incoming>f4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="n1" name="notifications: deliver(user, план, kind=morning_plan)">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="u" name="Партнёр: читает план, тапает в Mini App">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="eDone" name="Готово">
+      <bpmn:incoming>f7</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="a1" />
+    <bpmn:sequenceFlow id="f2" sourceRef="a1" targetRef="a2" />
+    <bpmn:sequenceFlow id="f3" sourceRef="a2" targetRef="g" />
+    <bpmn:sequenceFlow id="f4" name="да" sourceRef="g" targetRef="skip" />
+    <bpmn:sequenceFlow id="f5" name="нет" sourceRef="g" targetRef="n1" />
+    <bpmn:sequenceFlow id="f6" sourceRef="n1" targetRef="u" />
+    <bpmn:sequenceFlow id="f7" sourceRef="u" targetRef="eDone" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_e4-morning-plan">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_e4-morning-plan" bpmnElement="Proc_e4-morning-plan">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="a1_di" bpmnElement="a1">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="a2_di" bpmnElement="a2">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g_di" bpmnElement="g" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="skip_di" bpmnElement="skip">
+        <dc:Bounds x="657" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="n1_di" bpmnElement="n1">
+        <dc:Bounds x="625" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="u_di" bpmnElement="u">
+        <dc:Bounds x="775" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="957" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="657" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="725" y="210" />
+        <di:waypoint x="775" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="875" y="210" />
+        <di:waypoint x="957" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script>
+<script type="application/bpmn" data-target="bpmn-stage-pipeline"><?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_stage-pipeline" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_stage-pipeline" name="Конвейер открытия этапа (E2–E5)" isExecutable="false">
+    <bpmn:startEvent id="s" name="Гейт-триггер этапа">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="q" name="Опросник Q заполнен (С. + Катя)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="gt" name="Gate-тест feasibility (руками, без кода)">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="g" name="Путь жив?">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="rev" name="Ревизия stage-doc: смена канала / объёма">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="adr" name="ADR этапа (варианты → решение С./Кати)">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="spec" name="spec-writer-agent: черновик ТЗ из stage-doc + Q + ADR">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="accept" name="Ревью и принятие ТЗ (С./Катя)">
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="waves" name="Волны агентов по build-contract (агенты → integrator → reviewer)">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="exit" name="Выход-гейт + ретро + ревизия следующего stage-doc">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eDone" name="Этап закрыт">
+      <bpmn:incoming>f11</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="q" />
+    <bpmn:sequenceFlow id="f2" sourceRef="q" targetRef="gt" />
+    <bpmn:sequenceFlow id="f3" sourceRef="gt" targetRef="g" />
+    <bpmn:sequenceFlow id="f4" name="нет" sourceRef="g" targetRef="rev" />
+    <bpmn:sequenceFlow id="f5" name="да" sourceRef="g" targetRef="adr" />
+    <bpmn:sequenceFlow id="f6" sourceRef="rev" targetRef="q" />
+    <bpmn:sequenceFlow id="f7" sourceRef="adr" targetRef="spec" />
+    <bpmn:sequenceFlow id="f8" sourceRef="spec" targetRef="accept" />
+    <bpmn:sequenceFlow id="f9" sourceRef="accept" targetRef="waves" />
+    <bpmn:sequenceFlow id="f10" sourceRef="waves" targetRef="exit" />
+    <bpmn:sequenceFlow id="f11" sourceRef="exit" targetRef="eDone" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_stage-pipeline">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_stage-pipeline" bpmnElement="Proc_stage-pipeline">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="q_di" bpmnElement="q">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="gt_di" bpmnElement="gt">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g_di" bpmnElement="g" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="rev_di" bpmnElement="rev">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="adr_di" bpmnElement="adr">
+        <dc:Bounds x="625" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="spec_di" bpmnElement="spec">
+        <dc:Bounds x="775" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="accept_di" bpmnElement="accept">
+        <dc:Bounds x="925" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="waves_di" bpmnElement="waves">
+        <dc:Bounds x="1075" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="exit_di" bpmnElement="exit">
+        <dc:Bounds x="1225" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eDone_di" bpmnElement="eDone">
+        <dc:Bounds x="1407" y="192" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="675" y="110" />
+        <di:waypoint x="675" y="140" />
+        <di:waypoint x="225" y="140" />
+        <di:waypoint x="225" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="725" y="210" />
+        <di:waypoint x="775" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="875" y="210" />
+        <di:waypoint x="925" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1025" y="210" />
+        <di:waypoint x="1075" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="1175" y="210" />
+        <di:waypoint x="1225" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="1325" y="210" />
+        <di:waypoint x="1407" y="210" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
+</script></main></div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://unpkg.com/bpmn-js@17.11.1/dist/bpmn-navigated-viewer.production.min.js"></script>
+<script>
+mermaid.initialize({startOnLoad:true,securityLevel:'loose',theme:'default',flowchart:{htmlLabels:true,useMaxWidth:true}});
+window.addEventListener('load',function(){
+  document.querySelectorAll('script[type="application/bpmn"]').forEach(function(s){
+    var box=document.getElementById(s.dataset.target);
+    try{ var v=new BpmnJS({container:box});
+      v.importXML(s.textContent).then(function(){ v.get('canvas').zoom('fit-viewport','auto'); })
+       .catch(function(e){box.innerHTML='<p class=err>BPMN error: '+e.message+'</p>';});
+    }catch(e){box.innerHTML='<p class=err>BPMN init error: '+e.message+'</p>';}
+  });
+});
+</script></body></html>

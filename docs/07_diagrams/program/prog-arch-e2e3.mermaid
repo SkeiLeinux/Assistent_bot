@@ -1,0 +1,21 @@
+%% Эволюция архитектуры — дельта E2–E3 (рост внутрь + новые ACL). ПРОЕКТНОЕ.
+%% SSOT — 06_program/architecture-evolution.md §2.
+flowchart TB
+  subgraph VPS["Тот же монолит"]
+    F2["finance: + Transaction/Receipt + receipts-ACL + price history"]
+    H["health (НОВЫЙ контекст):<br/>Measurement/Workout/Supplement/Lab + importing-ACL"]
+    R2["reminders (+ интерфейс расписаний витаминов —<br/>ребро решает ADR-0008)"]
+    A2["analytics: + сферы health/transactions<br/>в обзоре и дайджесте (состав — Катя)"]
+  end
+
+  QR["QR чека (showScanQrPopup)"] --> CHAN
+  PHOTO["Фото чека"] --> CHAN
+  CHAN{{"чек-канал (ADR-0006):<br/>proverkacheka / API ФНС / lkdr / vision"}} --> F2
+  HZIP["Huawei privacy-zip (раз в 1–2 нед, вручную)"] --> H
+  LAB["Бланк анализов (фото/PDF)"] --> H
+  H --> R2
+
+  classDef new fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class H new;
+  class QR,PHOTO,CHAN,HZIP,LAB ext;

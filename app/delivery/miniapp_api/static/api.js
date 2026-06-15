@@ -88,6 +88,7 @@
     setGoals: function (goals) { return nutri('/goals', { method: 'PUT', body: goals }); },
     analyze: function (payload) { return nutri('/analyze', { method: 'POST', body: payload }); },
     saveEntries: function (payload) { return nutri('/entries', { method: 'POST', body: payload }); },
+    saveComposite: function (payload) { return nutri('/entries/composite', { method: 'POST', body: payload }); },
     updateEntry: function (id, fields) { return nutri('/entries/' + id, { method: 'PATCH', body: fields }); },
     deleteEntry: function (id) { return nutri('/entries/' + id, { method: 'DELETE' }); },
     getPeriod: function (from, to) { return nutri('/period', { query: { from: from, to: to } }); },

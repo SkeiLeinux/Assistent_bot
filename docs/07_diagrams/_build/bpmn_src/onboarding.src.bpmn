@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Defs_onboarding" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_onboarding" name="Онбординг и пейринг семьи" isExecutable="false">
+    <bpmn:startEvent id="Start_open" name="Открыл Mini App"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:serviceTask id="T_auth" name="Система: валидация initData (HMAC, whitelist)"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_wl" name="В whitelist?"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing><bpmn:outgoing>f4</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_403" name="403 — доступ запрещён"><bpmn:incoming>f3</bpmn:incoming></bpmn:endEvent>
+    <bpmn:serviceTask id="T_prov" name="Система: provision User (первый вход)"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_has" name="Уже в семье?"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing><bpmn:outgoing>f7</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_home" name="Открыт домашний экран"><bpmn:incoming>f6</bpmn:incoming></bpmn:endEvent>
+    <bpmn:exclusiveGateway id="GW_choice" name="Создать или вступить?"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing><bpmn:outgoing>f11</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_create" name="Система: POST /family — Family + Membership + Invite"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:userTask id="T_share" name="Партнёр: передать инвайт-код партнёру"><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:userTask>
+    <bpmn:endEvent id="End_wait" name="В семье 1/2 — ждёт партнёра"><bpmn:incoming>f10</bpmn:incoming></bpmn:endEvent>
+    <bpmn:userTask id="T_enter" name="Партнёр: ввести инвайт-код"><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f12</bpmn:outgoing></bpmn:userTask>
+    <bpmn:serviceTask id="T_join" name="Система: POST /family/join — проверка I3/I4/I5"><bpmn:incoming>f12</bpmn:incoming><bpmn:outgoing>f13</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_valid" name="Код валиден и есть место?"><bpmn:incoming>f13</bpmn:incoming><bpmn:outgoing>f14</bpmn:outgoing><bpmn:outgoing>f16</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="T_member" name="Система: создать Membership; инвайт → used"><bpmn:incoming>f14</bpmn:incoming><bpmn:outgoing>f15</bpmn:outgoing></bpmn:serviceTask>
+    <bpmn:endEvent id="End_paired" name="Семья укомплектована 2/2"><bpmn:incoming>f15</bpmn:incoming></bpmn:endEvent>
+    <bpmn:endEvent id="End_join_err" name="Ошибка кода (404/409/410) — повторить"><bpmn:incoming>f16</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start_open" targetRef="T_auth"/>
+    <bpmn:sequenceFlow id="f2" sourceRef="T_auth" targetRef="GW_wl"/>
+    <bpmn:sequenceFlow id="f3" name="нет" sourceRef="GW_wl" targetRef="End_403"/>
+    <bpmn:sequenceFlow id="f4" name="да" sourceRef="GW_wl" targetRef="T_prov"/>
+    <bpmn:sequenceFlow id="f5" sourceRef="T_prov" targetRef="GW_has"/>
+    <bpmn:sequenceFlow id="f6" name="да" sourceRef="GW_has" targetRef="End_home"/>
+    <bpmn:sequenceFlow id="f7" name="нет" sourceRef="GW_has" targetRef="GW_choice"/>
+    <bpmn:sequenceFlow id="f8" name="создать" sourceRef="GW_choice" targetRef="T_create"/>
+    <bpmn:sequenceFlow id="f9" sourceRef="T_create" targetRef="T_share"/>
+    <bpmn:sequenceFlow id="f10" sourceRef="T_share" targetRef="End_wait"/>
+    <bpmn:sequenceFlow id="f11" name="вступить" sourceRef="GW_choice" targetRef="T_enter"/>
+    <bpmn:sequenceFlow id="f12" sourceRef="T_enter" targetRef="T_join"/>
+    <bpmn:sequenceFlow id="f13" sourceRef="T_join" targetRef="GW_valid"/>
+    <bpmn:sequenceFlow id="f14" name="да" sourceRef="GW_valid" targetRef="T_member"/>
+    <bpmn:sequenceFlow id="f15" sourceRef="T_member" targetRef="End_paired"/>
+    <bpmn:sequenceFlow id="f16" name="нет" sourceRef="GW_valid" targetRef="End_join_err"/>
+  </bpmn:process>
+</bpmn:definitions>

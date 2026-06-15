@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_e2-receipt" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_e2-receipt" name="E2 · Чек: от кассы до транзакций (кандидат)" isExecutable="false">
+<bpmn:startEvent id="s" name="Купил, чек на руках"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:exclusiveGateway id="gway" name="Способ?"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing><bpmn:outgoing>f3</bpmn:outgoing><bpmn:outgoing>f4</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:userTask id="u3" name="Партнёр: сканирует QR (showScanQrPopup)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:userTask>
+<bpmn:userTask id="u4" name="Партнёр: фотографирует чек"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:userTask>
+<bpmn:userTask id="u5" name="Партнёр: ручной ввод — сумма + категория"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f14</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="acl" name="Receipt ACL: канал A/B (qrraw) / D (vision) → proverkacheka / API ФНС / Groq vision"><bpmn:incoming>f5</bpmn:incoming><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="gchan" name="Канал ответил?"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing><bpmn:outgoing>f9</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="raw" name="Система: сохранить сырьё (Receipt.raw_ref), статус «к разбору»"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eLater" name="Отложено — сырьё сохранено (разбор позже)"><bpmn:incoming>f10</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="draft" name="Система: ParsedReceipt → черновик позиций"><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="cat" name="Система: категоризация (ADR-0011) — правила + LLM-подсказка"><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f12</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:userTask id="u9" name="Партнёр: правит позиции/категории, подтверждает"><bpmn:incoming>f12</bpmn:incoming><bpmn:outgoing>f13</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="save" name="Система: сохранить Receipt + ReceiptItems + Transactions"><bpmn:incoming>f13</bpmn:incoming><bpmn:incoming>f14</bpmn:incoming><bpmn:outgoing>f15</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="an" name="Система: аналитика E1 видит факт сразу (агрегат от Transaction)"><bpmn:incoming>f15</bpmn:incoming><bpmn:outgoing>f16</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eDone" name="Готово"><bpmn:incoming>f16</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="gway"/>
+<bpmn:sequenceFlow id="f2" name="QR" sourceRef="gway" targetRef="u3"/>
+<bpmn:sequenceFlow id="f3" name="нет QR / не РФ" sourceRef="gway" targetRef="u4"/>
+<bpmn:sequenceFlow id="f4" name="чека нет" sourceRef="gway" targetRef="u5"/>
+<bpmn:sequenceFlow id="f5" sourceRef="u3" targetRef="acl"/>
+<bpmn:sequenceFlow id="f6" sourceRef="u4" targetRef="acl"/>
+<bpmn:sequenceFlow id="f7" sourceRef="acl" targetRef="gchan"/>
+<bpmn:sequenceFlow id="f8" name="нет" sourceRef="gchan" targetRef="raw"/>
+<bpmn:sequenceFlow id="f9" name="да" sourceRef="gchan" targetRef="draft"/>
+<bpmn:sequenceFlow id="f10" sourceRef="raw" targetRef="eLater"/>
+<bpmn:sequenceFlow id="f11" sourceRef="draft" targetRef="cat"/>
+<bpmn:sequenceFlow id="f12" sourceRef="cat" targetRef="u9"/>
+<bpmn:sequenceFlow id="f13" sourceRef="u9" targetRef="save"/>
+<bpmn:sequenceFlow id="f14" sourceRef="u5" targetRef="save"/>
+<bpmn:sequenceFlow id="f15" sourceRef="save" targetRef="an"/>
+<bpmn:sequenceFlow id="f16" sourceRef="an" targetRef="eDone"/>
+</bpmn:process>
+</bpmn:definitions>

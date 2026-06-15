@@ -1,0 +1,32 @@
+%% Use Case — Reminders
+%% Derived from: spec-reminders §8 (S1–S5) + §9 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P(["👤 Партнёр"])
+  SCH(["⏰ Планировщик"])
+  TG(["✈️ Telegram"])
+
+  subgraph SYS["Reminders (scope: PERSONAL / FAMILY)"]
+    direction TB
+    UC1(["Создать напоминание<br/>(текст + время)"])
+    UC2(["Настроить повтор<br/>none · daily · weekly · interval"])
+    UC3(["Изменить / удалить"])
+    UC4(["Получить push-напоминание"])
+    UC5(["Отметить выполненным (ack)"])
+    UC6(["Отложить (snooze)"])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC5
+  P --- UC6
+  P --- UC4
+  SCH -. "срабатывание (poll-loop)" .-> UC4
+  UC4 -. "push" .-> TG
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P,SCH actor;
+  class TG ext;
+  class UC1,UC2,UC3,UC4,UC5,UC6 uc;

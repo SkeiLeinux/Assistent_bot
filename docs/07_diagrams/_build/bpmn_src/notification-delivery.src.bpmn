@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_notification-delivery" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_notification-delivery" name="Доставка уведомления" isExecutable="false">
+<bpmn:startEvent id="s" name="Источник: уведомление + получатели (visible_to)"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:serviceTask id="deliver" name="Notifications: deliver(recipients, text, buttons?)"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="send" name="Отправить в Telegram (best-effort)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g1" name="Исход отправки?"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing><bpmn:outgoing>f5</bpmn:outgoing><bpmn:outgoing>f6</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="ok" name="Учесть в sent"><bpmn:incoming>f4</bpmn:incoming><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="blocked" name="Заблокирован/bad request: лог, без ретрая"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="retry" name="Транзиентный: один ретрай"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g2" name="После ретрая — ок?"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing><bpmn:outgoing>f9</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="alert" name="alert_admin → админ"><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f12</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g3" name="Есть callback?"><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f13</bpmn:outgoing><bpmn:outgoing>f14</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="route" name="delivery/bot: callback → источник (ack/snooze)"><bpmn:incoming>f13</bpmn:incoming><bpmn:outgoing>f15</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eEnd" name="DeliveryReport {sent, blocked, failed}"><bpmn:incoming>f11</bpmn:incoming><bpmn:incoming>f12</bpmn:incoming><bpmn:incoming>f14</bpmn:incoming><bpmn:incoming>f15</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="deliver"/>
+<bpmn:sequenceFlow id="f2" sourceRef="deliver" targetRef="send"/>
+<bpmn:sequenceFlow id="f3" sourceRef="send" targetRef="g1"/>
+<bpmn:sequenceFlow id="f4" name="успех" sourceRef="g1" targetRef="ok"/>
+<bpmn:sequenceFlow id="f5" name="блокировка" sourceRef="g1" targetRef="blocked"/>
+<bpmn:sequenceFlow id="f6" name="транзиентный" sourceRef="g1" targetRef="retry"/>
+<bpmn:sequenceFlow id="f7" sourceRef="retry" targetRef="g2"/>
+<bpmn:sequenceFlow id="f8" name="успех" sourceRef="g2" targetRef="ok"/>
+<bpmn:sequenceFlow id="f9" name="снова фейл" sourceRef="g2" targetRef="alert"/>
+<bpmn:sequenceFlow id="f10" sourceRef="ok" targetRef="g3"/>
+<bpmn:sequenceFlow id="f11" sourceRef="blocked" targetRef="eEnd"/>
+<bpmn:sequenceFlow id="f12" sourceRef="alert" targetRef="eEnd"/>
+<bpmn:sequenceFlow id="f13" name="да" sourceRef="g3" targetRef="route"/>
+<bpmn:sequenceFlow id="f14" name="нет" sourceRef="g3" targetRef="eEnd"/>
+<bpmn:sequenceFlow id="f15" sourceRef="route" targetRef="eEnd"/>
+</bpmn:process>
+</bpmn:definitions>

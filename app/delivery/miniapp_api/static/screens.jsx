@@ -407,6 +407,9 @@ function FoodPickerMode({
           )}
         </div>
 
+        <Composition ingredients={pickedFood.ingredients}
+          title={'Состав (на ' + pickedFood.weight_g + ' г)'} />
+
         <div className="card-title">Приём пищи</div>
         <div className="pills">
           {MEAL_ORDER.map(m => (
@@ -460,6 +463,9 @@ function FoodPickerMode({
                 <div className="db-item__name">{f.name}</div>
                 <div className="db-item__meta">
                   {f.weight_g} г · <span style={{ color: 'var(--kcal)' }}>{kcal} ккал</span>
+                  {f.ingredients && f.ingredients.length > 0 && (
+                    <span className="db-item__dish">🍲 {f.ingredients.length}</span>
+                  )}
                   {f.by_me && <span className="db-item__mine">мои</span>}
                 </div>
               </div>
@@ -616,6 +622,34 @@ const SRC_META = {
   estimate: { label: 'оценка модели',   color: '#9AA0A6', icon: '≈' },
 };
 
+// Read-only состав составного блюда (из чего состоит) — для записи дня и каталога.
+// ingredients: [{name, w, kcal, p, f, c, source}]. Каждая строка несёт провенанс.
+function Composition({ ingredients, title = 'Состав' }) {
+  if (!ingredients || ingredients.length === 0) return null;
+  return (
+    <div className="composition">
+      <div className="composition__title">{title} · {ingredients.length}</div>
+      {ingredients.map((g, i) => (
+        <div key={i} className="composition__row">
+          <span className="composition__name">{g.name}</span>
+          <span className="composition__meta">
+            {g.w != null && g.w !== '' ? fmtNum(g.w) + ' г · ' : ''}
+            <b style={{ color: 'var(--kcal)' }}>{fmtNum(g.kcal)}</b> ккал
+            <span style={{ color: 'var(--protein)', marginLeft: 6 }}>Б{fmtNum(g.p)}</span>
+            <span style={{ color: 'var(--fat)', marginLeft: 4 }}>Ж{fmtNum(g.f)}</span>
+            <span style={{ color: 'var(--carbs)', marginLeft: 4 }}>У{fmtNum(g.c)}</span>
+          </span>
+          {SRC_META[g.source] && (
+            <span className="composition__src" style={{ color: SRC_META[g.source].color }}>
+              {SRC_META[g.source].icon} {SRC_META[g.source].label}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SourceBadge({ source, matchedName }) {
   const meta = SRC_META[source];
   if (!meta) return null;
@@ -635,8 +669,17 @@ function SourceBadge({ source, matchedName }) {
 }
 
 // ─── Confirm screen ────────────────────────────────────────────
-function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCancel, source, saving }) {
+function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onSaveComposite, onCancel, source, defaultName, saving }) {
   const sum = sumEntries(items.map(e => ({ kcal: +e.kcal || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0 })));
+
+  // «Одно блюдо»: свернуть N распознанных позиций в одно блюдо с видимым составом.
+  // Доступно от 2 позиций; позиции остаются редактируемыми (это и есть состав).
+  const canDish = items.length >= 2;
+  const [dishMode, setDishMode] = React.useState(false);
+  const [dishName, setDishName] = React.useState((defaultName || '').trim());
+  const [saveCatalog, setSaveCatalog] = React.useState(false);
+  React.useEffect(() => { if (!canDish && dishMode) setDishMode(false); }, [canDish, dishMode]);
+  const dishReady = dishName.trim().length > 0;
 
   function update(id, field, value) {
     setItems(items.map(it => {
@@ -665,8 +708,27 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCance
 
   return (
     <React.Fragment>
+      {canDish && (
+        <div className="modeswitch" style={{ marginTop: 4 }}>
+          <button className={'modeswitch__btn ' + (!dishMode ? 'modeswitch__btn--active' : '')}
+            onClick={() => setDishMode(false)}>Отдельные продукты</button>
+          <button className={'modeswitch__btn ' + (dishMode ? 'modeswitch__btn--active' : '')}
+            onClick={() => setDishMode(true)}>Одно блюдо</button>
+        </div>
+      )}
+
+      {dishMode && (
+        <div className="field" style={{ marginTop: 4 }}>
+          <div className="field__label">Название блюда</div>
+          <input className="input" placeholder="напр. Паста болоньезе"
+            value={dishName} onChange={e => setDishName(e.target.value)} />
+        </div>
+      )}
+
       <div className="card-title" style={{ paddingTop: 8 }}>
-        Распознано · {items.length} {items.length === 1 ? 'позиция' : (items.length < 5 ? 'позиции' : 'позиций')}
+        {dishMode ? 'Состав' : 'Распознано'} · {items.length} {dishMode
+          ? (items.length === 1 ? 'ингредиент' : (items.length < 5 ? 'ингредиента' : 'ингредиентов'))
+          : (items.length === 1 ? 'позиция' : (items.length < 5 ? 'позиции' : 'позиций'))}
       </div>
 
       {source === 'photo' && (
@@ -698,7 +760,7 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCance
               <div style={{ gridColumn: 'span 3' }} />
               <NumField label="У" value={it.c} onChange={v => update(it.id, 'c', v)} />
             </div>
-            {hasWeight && (
+            {!dishMode && hasWeight && (
               <button
                 className={'save-toggle ' + (it.save ? 'save-toggle--on' : '')}
                 onClick={() => update(it.id, 'save', !it.save)}
@@ -711,8 +773,18 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCance
       })}
 
       <button onClick={add} className="add-item-btn">
-        <IconPlus size={16} /> Добавить позицию
+        <IconPlus size={16} /> {dishMode ? 'Добавить ингредиент' : 'Добавить позицию'}
       </button>
+
+      {dishMode && (
+        <button
+          className={'save-toggle ' + (saveCatalog ? 'save-toggle--on' : '')}
+          style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}
+          onClick={() => setSaveCatalog(v => !v)}
+        >
+          💾 {saveCatalog ? 'Блюдо сохранится в каталог' : 'Сохранить блюдо в каталог'}
+        </button>
+      )}
 
       <div className="card-title">Приём пищи</div>
       <div className="pills">
@@ -727,7 +799,7 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCance
 
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: 12, color: 'var(--tg-text-2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Итого по записи</div>
+          <div style={{ fontSize: 12, color: 'var(--tg-text-2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{dishMode ? 'Итого по блюду' : 'Итого по записи'}</div>
           <div style={{ fontSize: 12, color: 'var(--tg-text-2)', marginTop: 4 }}>
             <span style={{ color: 'var(--protein)' }}>Б {fmtNum(sum.p)}</span> ·
             <span style={{ color: 'var(--fat)' }}> Ж {fmtNum(sum.f)}</span> ·
@@ -746,8 +818,10 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onCance
         <button className="fab" style={{ background: 'var(--tg-surface-hi)', boxShadow: 'none', flex: '0 0 35%' }} onClick={onCancel}>
           Отмена
         </button>
-        <button className="fab" style={{ flex: 1 }} onClick={onSave} disabled={saving || items.length === 0}>
-          {saving ? <span className="mainbutton__spin" /> : <React.Fragment><IconCheck size={18} /> Сохранить</React.Fragment>}
+        <button className="fab" style={{ flex: 1 }}
+          onClick={dishMode ? () => onSaveComposite(dishName.trim(), saveCatalog) : onSave}
+          disabled={saving || items.length === 0 || (dishMode && !dishReady)}>
+          {saving ? <span className="mainbutton__spin" /> : <React.Fragment><IconCheck size={18} /> {dishMode ? 'Сохранить блюдо' : 'Сохранить'}</React.Fragment>}
         </button>
       </div>
     </React.Fragment>
@@ -799,6 +873,8 @@ function EditEntrySheet({ open, entry, onClose, onSave, onDelete, saving }) {
             <NumField label="У" value={draft.c} onChange={v => set('c', v)} />
           </div>
         </div>
+
+        <Composition ingredients={entry.ingredients} />
 
         <div className="card-title">Приём пищи</div>
         <div className="pills">

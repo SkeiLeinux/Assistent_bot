@@ -1,0 +1,40 @@
+%% Контейнеры/компоненты — модульный монолит в одном процессе
+%% Derived from: CLAUDE.md §7/§9, ADR-0004, spec-identity §11. SSOT — docs/04_specs.
+flowchart TB
+  subgraph EXT["Внешние системы"]
+    TG["Telegram"]
+    GROQ["Groq LLM"]
+    OFF["OpenFoodFacts"]
+    GS["Google-таблица (xlsx)"]
+  end
+
+  FE["Mini App<br/>React (UMD, без сборки)"]
+
+  subgraph PROC["Один процесс · один event-loop · VPS (systemd)"]
+    BOT["aiogram (polling)<br/>вход + push"]
+    WEB["aiohttp<br/>REST /api/v1/*"]
+    SCHED["Scheduler<br/>(poll-loop)"]
+    subgraph APP["Доменное ядро — app/"]
+      KERN["kernel<br/>Identity · Shareable · auth"]
+      CTX["contexts<br/>lists · finance · nutrition ·<br/>reminders · analytics · notifications"]
+    end
+    DB[("БД<br/>SQLite → Postgres")]
+  end
+
+  FE <-->|"REST + initData"| WEB
+  TG <-->|"updates / sendMessage"| BOT
+  BOT --> KERN
+  WEB --> KERN
+  WEB --> CTX
+  SCHED --> CTX
+  CTX --> KERN
+  KERN --> DB
+  CTX --> DB
+  CTX -->|"разбор питания"| GROQ
+  CTX -->|"поиск КБЖУ"| OFF
+  GS -->|"импорт бюджета"| CTX
+
+  classDef kernel fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef ext fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  class KERN kernel;
+  class TG,GROQ,OFF,GS ext;

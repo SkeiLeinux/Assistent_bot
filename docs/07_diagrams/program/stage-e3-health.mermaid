@@ -1,0 +1,36 @@
+%% Карта возможностей E3 · Здоровье — ПРОЕКТНОЕ/КАНДИДАТНОЕ
+%% Derived from: 06_program/stage-3-health.md. SSOT — docs/06_program.
+flowchart LR
+  ROOT(("E3 · Здоровье<br/>драйвер: Катя (+С.)"))
+  F1["Журнал веса / измерений — must"]
+  F2["Журнал тренировок — must"]
+  F3["Huawei-импорт: тренировки · сон · шаги · вес — must"]
+  F4["Витамины → Reminders — must"]
+  F5["Медблок: показатели + анализы (vision) — should"]
+  F6["Цикл + фазовые подсказки — should"]
+  F7["Состав тела: фото InBody → vision — could"]
+  M1["Новый контекст Health: Measurement · Workout ·<br/>Supplement(+Schedule) · LabResult · CycleEntry"]
+  M2["Huawei privacy-zip ACL · новое ребро health→reminders"]
+  M3["ADR: 0008 канал/дедуп · 0009 модель показателей"]
+  M4["Приватность: дефолт scope — настройка владельца<br/>(С.: FAMILY · Катя — Q3-В8); цикл — всегда PERSONAL"]
+  M5["Гейт: Q3 + Huawei zip-тест + 3 бланка анализов"]
+
+  ROOT --> F1
+  ROOT --> F2
+  ROOT --> F3
+  ROOT --> F4
+  ROOT --> F5
+  ROOT --> F6
+  ROOT --> F7
+  ROOT -.-> M1
+  ROOT -.-> M2
+  ROOT -.-> M3
+  ROOT -.-> M4
+  ROOT -.-> M5
+
+  classDef root fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  classDef meta fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class ROOT root;
+  class F1,F2,F3,F4,F5,F6,F7 feat;
+  class M1,M2,M3,M4,M5 meta;

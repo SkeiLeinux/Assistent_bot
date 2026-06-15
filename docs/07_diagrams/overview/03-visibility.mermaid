@@ -1,0 +1,24 @@
+%% Модель видимости — три режима через один механизм visible_to(viewer)
+%% Derived from: ADR-0001, spec-identity-sharing §5/§7. SSOT — docs/04_specs.
+flowchart TD
+  Start["Shareable-сущность + Зритель v"] --> Q{"scope?"}
+  Q -->|PERSONAL| P{"v == owner_id?"}
+  P -->|да| VIS["✅ Видно"]
+  P -->|нет| HID["⛔ Скрыто"]
+  Q -->|FAMILY| F{"v ∈ family<br/>И v ∉ hidden_from?"}
+  F -->|да| VIS
+  F -->|нет| HID
+
+  subgraph LEGEND["Три режима = один механизм (ADR-0001)"]
+    direction TB
+    L1["PERSONAL — дневник еды, личные списки"]
+    L2["FAMILY — списки, бюджет, каталог блюд"]
+    L3["FAMILY + hidden_from = [одаряемый] → ПОДАРОК"]
+  end
+
+  classDef ok fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef no fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
+  classDef gift fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class VIS ok;
+  class HID no;
+  class L3 gift;

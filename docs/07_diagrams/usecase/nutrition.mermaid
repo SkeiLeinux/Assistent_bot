@@ -1,0 +1,36 @@
+%% Use Case — Nutrition (+ retrieval КБЖУ)
+%% Derived from: spec-nutrition §8 + spec-nutrition-retrieval §1. SSOT — docs/04_specs.
+flowchart LR
+  P(["👤 Партнёр"])
+  GR(["🧠 Groq LLM"])
+  OFF(["🍎 OpenFoodFacts"])
+
+  subgraph SYS["Nutrition (дневник = PERSONAL · каталог = FAMILY)"]
+    direction TB
+    UC1(["Залогировать приём текстом<br/>(resolver КБЖУ)"])
+    UC2(["Залогировать приём по фото<br/>(resolver КБЖУ)"])
+    UC3(["Залогировать из каталога"])
+    UC4(["Задать / снять цели КБЖУ"])
+    UC5(["Смотреть день (итоги vs цели)"])
+    UC6(["Смотреть / выгрузить период"])
+    UC7(["Каталог блюд: искать · создать<br/>(SharedFood)"])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  P --- UC6
+  P --- UC7
+  GR -. "извлечение (текст/фото)" .-> UC1
+  GR -. "извлечение" .-> UC2
+  OFF -. "поиск КБЖУ" .-> UC1
+  OFF -. "поиск КБЖУ" .-> UC2
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P actor;
+  class GR,OFF ext;
+  class UC1,UC2,UC3,UC4,UC5,UC6,UC7 uc;

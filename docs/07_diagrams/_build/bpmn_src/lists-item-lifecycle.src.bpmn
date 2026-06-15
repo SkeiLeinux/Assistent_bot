@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_lists-item-lifecycle" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_lists-item-lifecycle" name="Жизненный цикл элемента списка" isExecutable="false">
+<bpmn:startEvent id="s" name="Открыл список"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:userTask id="t1" name="Партнёр: добавить элемент"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="v1" name="Система: валидировать иерархию и specific_attrs"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g1" name="Валидно?"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing><bpmn:outgoing>f5</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="e422a" name="422 — вложение/атрибут"><bpmn:incoming>f4</bpmn:incoming></bpmn:endEvent>
+<bpmn:exclusiveGateway id="g2" name="hidden_from задан? (подарок)"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing><bpmn:outgoing>f7</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="v2" name="Система: проверить hidden_from (FAMILY, не owner, член семьи)"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g3" name="Корректно?"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing><bpmn:outgoing>f10</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="e422b" name="422 — нарушение видимости"><bpmn:incoming>f9</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="sv" name="Система: сохранить ListItem (OPEN) + история CREATED"><bpmn:incoming>f7</bpmn:incoming><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:userTask id="t2" name="Партнёр: отметить DONE"><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f12</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="vis" name="Система: visible_to(viewer)"><bpmn:incoming>f12</bpmn:incoming><bpmn:outgoing>f13</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g4" name="Виден зрителю?"><bpmn:incoming>f13</bpmn:incoming><bpmn:outgoing>f14</bpmn:outgoing><bpmn:outgoing>f15</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="e404" name="404 — скрыт от зрителя"><bpmn:incoming>f14</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="done" name="Система: OPEN→DONE + история STATUS_CHANGED"><bpmn:incoming>f15</bpmn:incoming><bpmn:outgoing>f16</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g5" name="Ещё действие?"><bpmn:incoming>f16</bpmn:incoming><bpmn:outgoing>f17</bpmn:outgoing><bpmn:outgoing>f18</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="edit" name="Система: перенести/удалить (+история, каскад)"><bpmn:incoming>f17</bpmn:incoming><bpmn:outgoing>f19</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eEdit" name="Элемент изменён"><bpmn:incoming>f19</bpmn:incoming></bpmn:endEvent>
+<bpmn:endEvent id="eDone" name="Готово (DONE)"><bpmn:incoming>f18</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="t1"/>
+<bpmn:sequenceFlow id="f2" sourceRef="t1" targetRef="v1"/>
+<bpmn:sequenceFlow id="f3" sourceRef="v1" targetRef="g1"/>
+<bpmn:sequenceFlow id="f4" name="нет" sourceRef="g1" targetRef="e422a"/>
+<bpmn:sequenceFlow id="f5" name="да" sourceRef="g1" targetRef="g2"/>
+<bpmn:sequenceFlow id="f6" name="да" sourceRef="g2" targetRef="v2"/>
+<bpmn:sequenceFlow id="f7" name="нет" sourceRef="g2" targetRef="sv"/>
+<bpmn:sequenceFlow id="f8" sourceRef="v2" targetRef="g3"/>
+<bpmn:sequenceFlow id="f9" name="нет" sourceRef="g3" targetRef="e422b"/>
+<bpmn:sequenceFlow id="f10" name="да" sourceRef="g3" targetRef="sv"/>
+<bpmn:sequenceFlow id="f11" sourceRef="sv" targetRef="t2"/>
+<bpmn:sequenceFlow id="f12" sourceRef="t2" targetRef="vis"/>
+<bpmn:sequenceFlow id="f13" sourceRef="vis" targetRef="g4"/>
+<bpmn:sequenceFlow id="f14" name="нет" sourceRef="g4" targetRef="e404"/>
+<bpmn:sequenceFlow id="f15" name="да" sourceRef="g4" targetRef="done"/>
+<bpmn:sequenceFlow id="f16" sourceRef="done" targetRef="g5"/>
+<bpmn:sequenceFlow id="f17" name="перенести/удалить" sourceRef="g5" targetRef="edit"/>
+<bpmn:sequenceFlow id="f18" name="готово" sourceRef="g5" targetRef="eDone"/>
+<bpmn:sequenceFlow id="f19" sourceRef="edit" targetRef="eEdit"/>
+</bpmn:process>
+</bpmn:definitions>

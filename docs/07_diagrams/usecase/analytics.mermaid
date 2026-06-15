@@ -1,0 +1,28 @@
+%% Use Case — Analytics & Digest (read-side)
+%% Derived from: spec-analytics §8 (S1–S4) + §9 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P(["👤 Партнёр"])
+  SCH(["⏰ Планировщик"])
+  TG(["✈️ Telegram"])
+
+  subgraph SYS["Analytics & Digest (read-side через contexts.*.read)"]
+    direction TB
+    UC1(["Смотреть кросс-сферный обзор<br/>Списки · Финансы · Питание"])
+    UC2(["Превью дайджеста"])
+    UC3(["Настроить расписание дайджеста<br/>ежедневный · еженедельный, per-семья"])
+    UC4(["Получить ретро-дайджест (push)"])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  SCH -. "каденс DigestSchedule" .-> UC4
+  UC4 -. "push" .-> TG
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P,SCH actor;
+  class TG ext;
+  class UC1,UC2,UC3,UC4 uc;

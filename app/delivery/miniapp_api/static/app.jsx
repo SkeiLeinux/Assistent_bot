@@ -218,6 +218,29 @@ function NutritionApp({ onExit }) {
     }
   }
 
+  // ─── Сохранение распознанного как ОДНОГО блюда (состав-снимок) ──────────────
+  async function handleSaveComposite(name, saveToCatalog) {
+    setSaving(true);
+    try {
+      const ingredients = confirmItems.map(it => ({
+        name: it.name, w: it.w, kcal: it.kcal, p: it.p, f: it.f, c: it.c,
+        source: it.source, source_ref: it.source_ref,
+      }));
+      await API.saveComposite({
+        name, ingredients, meal_type: mealType, source: confirmSource,
+        date, save_to_catalog: !!saveToCatalog,
+      });
+      setConfirmItems(null);
+      setText(''); setPhotos([]); setCaption('');
+      showToast(saveToCatalog ? 'Блюдо сохранено · в дневник и базу' : 'Блюдо сохранено в дневник');
+      await loadDay(date);
+    } catch (e) {
+      showToast(e.message || 'Не удалось сохранить блюдо');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // ─── Редактирование / удаление записи ──────────────────────────
   async function handleEntrySave(id, draft) {
     setEntrySaving(true);
@@ -413,7 +436,8 @@ function NutritionApp({ onExit }) {
       onBack={() => setConfirmItems(null)} />;
     content = <ConfirmScreen items={confirmItems} setItems={setConfirmItems}
       mealType={mealType} setMealType={setMealType} source={confirmSource}
-      saving={saving} onSave={handleSave} onCancel={() => setConfirmItems(null)} />;
+      defaultName={caption} saving={saving} onSave={handleSave}
+      onSaveComposite={handleSaveComposite} onCancel={() => setConfirmItems(null)} />;
   } else if (goalsOpen) {
     header = <TgHeader title="Цели КБЖУ" onBack={() => setGoalsOpen(false)} />;
     content = <GoalsScreen goals={goals} saving={goalsSaving} onSave={handleGoalsSave} />;

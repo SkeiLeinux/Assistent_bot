@@ -1,0 +1,36 @@
+%% Карта фич MVP «в одном экране»
+%% Derived from: MVP_Requirements §4, CLAUDE §6. SSOT — docs/01_requirements.
+flowchart LR
+  ROOT(("MVP"))
+  ROOT --- ID["⭐ Identity & Sharing"]
+  ROOT --- L["Lists"]
+  ROOT --- F["Finance"]
+  ROOT --- N["Nutrition"]
+  ROOT --- R["Reminders"]
+  ROOT --- A["Analytics & Digest"]
+  ROOT --- NT["Notifications"]
+
+  ID --> ID1["Пейринг семьи (≤2)"]
+  ID --> ID2["Видимость: personal / family / подарки"]
+  L --> L1["6 типов списков"]
+  L --> L2["Иерархия · метаданные · поиск"]
+  L --> L3["Подарки (hidden_from) · аналитика по типу"]
+  F --> F1["Импорт xlsx (ACL)"]
+  F --> F2["План vs факт · иерархия"]
+  F --> F3["Каденс D·W·M·Q·Y · доходы + остаток"]
+  N --> N1["Дневник: текст / фото / база"]
+  N --> N2["КБЖУ + цели · история"]
+  N --> N3["Resolver OFF→web→estimate · SharedFood"]
+  R --> R1["Generic (текст + время)"]
+  R --> R2["Recurrence · ack / snooze · push"]
+  A --> A1["Аналитика по сферам"]
+  A --> A2["Ретро-дайджест (ежедн / еженед) push"]
+  NT --> NT1["Push · инлайн-кнопки · callback"]
+  NT --> NT2["Алерты об ошибках админу"]
+
+  classDef kernel fill:#FCE8B2,stroke:#B8860B,stroke-width:2px,color:#1a1a1a;
+  classDef dom fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef feat fill:#F8F9FA,stroke:#9aa0a6,color:#1a1a1a;
+  class ID kernel;
+  class L,F,N,R,A,NT dom;
+  class ID1,ID2,L1,L2,L3,F1,F2,F3,N1,N2,N3,R1,R2,A1,A2,NT1,NT2 feat;

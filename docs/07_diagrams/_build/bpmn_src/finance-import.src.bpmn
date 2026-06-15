@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_finance-import" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_finance-import" name="Импорт финансов" isExecutable="false">
+<bpmn:startEvent id="s" name="Готов импортировать"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:userTask id="t1" name="Партнёр: загрузить xlsx (+ год)"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="p1" name="Import ACL: структурный парсинг (шапка, заливка)"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g1" name="Структура узнана?"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing><bpmn:outgoing>f5</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="fb" name="Import ACL: fallback — родитель = Σ детей"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="p2" name="Import ACL: MonthParse + валидация (|Δ|≤1₽)"><bpmn:incoming>f5</bpmn:incoming><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g2" name="Валидно?"><bpmn:incoming>f7</bpmn:incoming><bpmn:outgoing>f8</bpmn:outgoing><bpmn:outgoing>f9</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="eFail" name="Fail-loud — ничего не импортировано"><bpmn:incoming>f8</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="norm" name="Import ACL: нормализация + алиасы"><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g3" name="Категория известна?"><bpmn:incoming>f10</bpmn:incoming><bpmn:outgoing>f11</bpmn:outgoing><bpmn:outgoing>f12</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:serviceTask id="rev" name="Система: категория NEEDS_REVIEW"><bpmn:incoming>f11</bpmn:incoming><bpmn:outgoing>f13</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="up" name="Система: идемпотентный upsert месяца"><bpmn:incoming>f12</bpmn:incoming><bpmn:incoming>f13</bpmn:incoming><bpmn:outgoing>f14</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eOk" name="Импортировано — аналитика доступна"><bpmn:incoming>f14</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="t1"/>
+<bpmn:sequenceFlow id="f2" sourceRef="t1" targetRef="p1"/>
+<bpmn:sequenceFlow id="f3" sourceRef="p1" targetRef="g1"/>
+<bpmn:sequenceFlow id="f4" name="нет" sourceRef="g1" targetRef="fb"/>
+<bpmn:sequenceFlow id="f5" name="да" sourceRef="g1" targetRef="p2"/>
+<bpmn:sequenceFlow id="f6" sourceRef="fb" targetRef="p2"/>
+<bpmn:sequenceFlow id="f7" sourceRef="p2" targetRef="g2"/>
+<bpmn:sequenceFlow id="f8" name="расхождение" sourceRef="g2" targetRef="eFail"/>
+<bpmn:sequenceFlow id="f9" name="ок" sourceRef="g2" targetRef="norm"/>
+<bpmn:sequenceFlow id="f10" sourceRef="norm" targetRef="g3"/>
+<bpmn:sequenceFlow id="f11" name="невиданная" sourceRef="g3" targetRef="rev"/>
+<bpmn:sequenceFlow id="f12" name="известная" sourceRef="g3" targetRef="up"/>
+<bpmn:sequenceFlow id="f13" sourceRef="rev" targetRef="up"/>
+<bpmn:sequenceFlow id="f14" sourceRef="up" targetRef="eOk"/>
+</bpmn:process>
+</bpmn:definitions>

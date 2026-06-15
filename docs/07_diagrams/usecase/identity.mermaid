@@ -1,0 +1,28 @@
+%% Use Case — Identity & Sharing (эталон стиля)
+%% Derived from: spec-identity-sharing §9 (S1–S5) + §10 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P(["👤 Партнёр"])
+  TG(["✈️ Telegram"])
+
+  subgraph SYS["Identity & Sharing"]
+    direction TB
+    UC1(["Войти в Mini App<br/>(валидация initData)"])
+    UC2(["Создать семью"])
+    UC3(["Выпустить / перевыпустить инвайт"])
+    UC4(["Вступить по коду"])
+    UC5(["Посмотреть семью и партнёра"])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  TG -. "initData / HMAC" .-> UC1
+  UC2 -. "«include» войти" .-> UC1
+  UC4 -. "«include» войти" .-> UC1
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  class P,TG actor;
+  class UC1,UC2,UC3,UC4,UC5 uc;

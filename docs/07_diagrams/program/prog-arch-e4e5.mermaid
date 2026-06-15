@@ -1,0 +1,18 @@
+%% Эволюция архитектуры — дельта E4–E5 (проактивный слой + второй периметр). ПРОЕКТНОЕ.
+%% SSOT — 06_program/architecture-evolution.md §3.
+flowchart TB
+  subgraph VPS["Монолит (E4: + assistant-слой; E5: + внешний периметр)"]
+    AS["assistant (E4): план дня · вечерний сценарий ·<br/>вопросы к данным поверх *.read (LLM, read-only)"]
+    K2["kernel.auth (E5): initData-резолвер +<br/>собственный auth (ADR-0010)"]
+    No2["notifications (E5): транспорты Telegram + Web Push"]
+    PG[("E5: PostgreSQL (триггер ADR-0005)")]
+  end
+  PWA["PWA (тот же SPA вне Telegram)"] -->|"https, своя auth"| K2
+  AS -.-> Reads["contexts.*.read"]
+  AS --> No2
+  EdgeRisk{{"E5: впервые недоверенная сеть →<br/>CORS / CSRF / rate-limit на границе"}} -.-> PWA
+
+  classDef new fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef risk fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
+  class AS,K2,No2,PG new;
+  class EdgeRisk risk;

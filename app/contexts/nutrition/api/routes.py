@@ -118,9 +118,23 @@ def _path_int(request: web.Request, key: str) -> int:
 
 # ── Сериализация под поля фронта ─────────────────────────────────────────────
 
-def _entry(e, tz: ZoneInfo) -> dict:
-    local = e.created_at.replace(tzinfo=timezone.utc).astimezone(tz)
+def _ingredient(di) -> dict:
+    """Строка состава составного блюда (абсолют за порцию ингредиента + провенанс)."""
     return {
+        "name": di.name,
+        "w": di.weight_g,
+        "kcal": round(di.kcal, 1),
+        "p": round(di.protein, 1),
+        "f": round(di.fat, 1),
+        "c": round(di.carbs, 1),
+        "source": di.source,
+        "source_ref": di.source_ref,
+    }
+
+
+def _entry(e, tz: ZoneInfo, ingredients=None) -> dict:
+    local = e.created_at.replace(tzinfo=timezone.utc).astimezone(tz)
+    out = {
         "id": e.id,
         "time": local.strftime("%H:%M"),
         "meal": e.meal_type,
@@ -133,6 +147,10 @@ def _entry(e, tz: ZoneInfo) -> dict:
         "src": e.source,             # провенанс (ADR-0013)
         "source_ref": e.source_ref,  # ссылка/код источника (off/web)
     }
+    # Состав составного блюда (фича 2026-06-14): фронт показывает «из чего состоит».
+    if ingredients:
+        out["ingredients"] = [_ingredient(di) for di in ingredients]
+    return out
 
 
 def _totals(t) -> dict:
@@ -160,8 +178,8 @@ def _progress(prog: dict) -> dict:
     }
 
 
-def _shared_food(f, viewer_id: int) -> dict:
-    return {
+def _shared_food(f, viewer_id: int, ingredients=None) -> dict:
+    out = {
         "id": f.id,
         "name": f.name,
         "weight_g": f.weight_g,
@@ -172,6 +190,10 @@ def _shared_food(f, viewer_id: int) -> dict:
         "use_count": f.use_count,
         "by_me": f.created_by == viewer_id,
     }
+    # Состав блюда каталога (фича 2026-06-14): «посмотреть из чего состоит».
+    if ingredients:
+        out["ingredients"] = [_ingredient(di) for di in ingredients]
+    return out
 
 
 def _item(it: NutritionItem) -> dict:
@@ -220,11 +242,13 @@ async def get_day(request: web.Request) -> web.Response:
     day = _parse_date(request.query.get("date")) or today
 
     view = await svc.get_day(viewer, day, timezone_name=tz_name)
+    # Состав составных блюд — одним батч-запросом (без N+1), кладём на записи.
+    ing_map = await svc.ingredients_for_entries([e.id for e in view.entries])
     return _json(
         {
             "date": day.isoformat(),
             "is_today": day == today,
-            "entries": [_entry(e, tz) for e in view.entries],
+            "entries": [_entry(e, tz, ing_map.get(e.id)) for e in view.entries],
             "totals": _totals(view.totals),
             "goals": _goals(view.goals),
             "progress": _progress(view.progress()),
@@ -338,6 +362,61 @@ async def post_entries(request: web.Request) -> web.Response:
         save_to_db=save_flags,
     )
     return _json({"count": len(saved), "saved": [_entry(e, tz) for e in saved]})
+
+
+async def post_entry_composite(request: web.Request) -> web.Response:
+    """Свернуть распознанные позиции в ОДНО блюдо: запись дневника + состав-снимок.
+
+    Тело: {name, ingredients:[{name,w,kcal,p,f,c,source?,source_ref?}], meal_type?,
+    date?, source?, save_to_catalog?}. Запись создаётся всегда; при save_to_catalog —
+    ещё и блюдо каталога со своим составом (требует семьи). Возвращает запись с составом.
+    """
+    svc = _service(request)
+    viewer = _viewer(request)
+    tz_name = _tz_name(request)
+    tz = _tz(request)
+    body = await _body(request)
+
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise InvalidInput("Не задано название блюда")
+
+    ingredients: list[dict] = []
+    for ri in body.get("ingredients") or []:
+        ing_name = (ri.get("name") or "").strip()
+        if not ing_name:
+            continue
+        ingredients.append(
+            {
+                "name": ing_name,
+                "weight_g": _num_or_none(ri.get("w")),
+                "kcal": _num(ri.get("kcal")),
+                "protein": _num(ri.get("p")),
+                "fat": _num(ri.get("f")),
+                "carbs": _num(ri.get("c")),
+                # Провенанс позиции из /analyze (ADR-0013); ручная → None.
+                "source": _provenance(ri.get("source")),
+                "source_ref": (ri.get("source_ref") or None),
+            }
+        )
+    if not ingredients:
+        raise InvalidInput("Пустой состав блюда")
+
+    today = svc.today(tz_name)
+    created_at = _created_at_for(svc, tz_name, today, _parse_date(body.get("date")))
+    entry = await svc.save_composite_dish(
+        viewer,
+        name=name,
+        ingredients=ingredients,
+        # Дефолт провенанса записи; канал ввода ('photo'/'text') → 'manual'.
+        source=_provenance(body.get("source")) or "manual",
+        timezone_name=tz_name,
+        meal_type=body.get("meal_type"),
+        created_at=created_at,
+        save_to_catalog=bool(body.get("save_to_catalog")),
+    )
+    ing_map = await svc.ingredients_for_entries([entry.id])
+    return _json({"ok": True, "entry": _entry(entry, tz, ing_map.get(entry.id))})
 
 
 async def post_entry_from_food(request: web.Request) -> web.Response:
@@ -471,7 +550,9 @@ async def get_foods(request: web.Request) -> web.Response:
         items = await svc.search_shared_foods(viewer, q)
     else:
         items = await svc.get_quick_pick(viewer)
-    return _json([_shared_food(f, viewer.id) for f in items])
+    # Состав блюд каталога — батчем (без N+1).
+    ing_map = await svc.ingredients_for_foods([f.id for f in items])
+    return _json([_shared_food(f, viewer.id, ing_map.get(f.id)) for f in items])
 
 
 async def post_food(request: web.Request) -> web.Response:
@@ -565,6 +646,7 @@ def register_routes(app: web.Application) -> None:
     app.router.add_put("/api/v1/nutrition/goals", put_goals)
     app.router.add_post("/api/v1/nutrition/analyze", analyze)
     app.router.add_post("/api/v1/nutrition/entries/from-food", post_entry_from_food)
+    app.router.add_post("/api/v1/nutrition/entries/composite", post_entry_composite)
     app.router.add_post("/api/v1/nutrition/entries", post_entries)
     app.router.add_patch("/api/v1/nutrition/entries/{entry_id}", patch_entry)
     app.router.add_delete("/api/v1/nutrition/entries/{entry_id}", delete_entry)

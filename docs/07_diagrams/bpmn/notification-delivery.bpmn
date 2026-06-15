@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_notification-delivery" targetNamespace="http://assistent-bot/bpmn">
+  <bpmn:process id="Proc_notification-delivery" name="Доставка уведомления" isExecutable="false">
+    <bpmn:startEvent id="s" name="Источник: уведомление + получатели (visible_to)">
+      <bpmn:outgoing>f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="deliver" name="Notifications: deliver(recipients, text, buttons?)">
+      <bpmn:incoming>f1</bpmn:incoming>
+      <bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="send" name="Отправить в Telegram (best-effort)">
+      <bpmn:incoming>f2</bpmn:incoming>
+      <bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g1" name="Исход отправки?">
+      <bpmn:incoming>f3</bpmn:incoming>
+      <bpmn:outgoing>f4</bpmn:outgoing>
+      <bpmn:outgoing>f5</bpmn:outgoing>
+      <bpmn:outgoing>f6</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="ok" name="Учесть в sent">
+      <bpmn:incoming>f4</bpmn:incoming>
+      <bpmn:incoming>f8</bpmn:incoming>
+      <bpmn:outgoing>f10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="blocked" name="Заблокирован/bad request: лог, без ретрая">
+      <bpmn:incoming>f5</bpmn:incoming>
+      <bpmn:outgoing>f11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="retry" name="Транзиентный: один ретрай">
+      <bpmn:incoming>f6</bpmn:incoming>
+      <bpmn:outgoing>f7</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g2" name="После ретрая — ок?">
+      <bpmn:incoming>f7</bpmn:incoming>
+      <bpmn:outgoing>f8</bpmn:outgoing>
+      <bpmn:outgoing>f9</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="alert" name="alert_admin → админ">
+      <bpmn:incoming>f9</bpmn:incoming>
+      <bpmn:outgoing>f12</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="g3" name="Есть callback?">
+      <bpmn:incoming>f10</bpmn:incoming>
+      <bpmn:outgoing>f13</bpmn:outgoing>
+      <bpmn:outgoing>f14</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="route" name="delivery/bot: callback → источник (ack/snooze)">
+      <bpmn:incoming>f13</bpmn:incoming>
+      <bpmn:outgoing>f15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="eEnd" name="DeliveryReport {sent, blocked, failed}">
+      <bpmn:incoming>f11</bpmn:incoming>
+      <bpmn:incoming>f12</bpmn:incoming>
+      <bpmn:incoming>f14</bpmn:incoming>
+      <bpmn:incoming>f15</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="deliver" />
+    <bpmn:sequenceFlow id="f2" sourceRef="deliver" targetRef="send" />
+    <bpmn:sequenceFlow id="f3" sourceRef="send" targetRef="g1" />
+    <bpmn:sequenceFlow id="f4" name="успех" sourceRef="g1" targetRef="ok" />
+    <bpmn:sequenceFlow id="f5" name="блокировка" sourceRef="g1" targetRef="blocked" />
+    <bpmn:sequenceFlow id="f6" name="транзиентный" sourceRef="g1" targetRef="retry" />
+    <bpmn:sequenceFlow id="f7" sourceRef="retry" targetRef="g2" />
+    <bpmn:sequenceFlow id="f8" name="успех" sourceRef="g2" targetRef="ok" />
+    <bpmn:sequenceFlow id="f9" name="снова фейл" sourceRef="g2" targetRef="alert" />
+    <bpmn:sequenceFlow id="f10" sourceRef="ok" targetRef="g3" />
+    <bpmn:sequenceFlow id="f11" sourceRef="blocked" targetRef="eEnd" />
+    <bpmn:sequenceFlow id="f12" sourceRef="alert" targetRef="eEnd" />
+    <bpmn:sequenceFlow id="f13" name="да" sourceRef="g3" targetRef="route" />
+    <bpmn:sequenceFlow id="f14" name="нет" sourceRef="g3" targetRef="eEnd" />
+    <bpmn:sequenceFlow id="f15" sourceRef="route" targetRef="eEnd" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Proc_notification-delivery">
+    <bpmndi:BPMNPlane id="BPMNPlane_Proc_notification-delivery" bpmnElement="Proc_notification-delivery">
+      <bpmndi:BPMNShape id="s_di" bpmnElement="s">
+        <dc:Bounds x="57" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="deliver_di" bpmnElement="deliver">
+        <dc:Bounds x="175" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="send_di" bpmnElement="send">
+        <dc:Bounds x="325" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g1_di" bpmnElement="g1" isMarkerVisible="true">
+        <dc:Bounds x="500" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ok_di" bpmnElement="ok">
+        <dc:Bounds x="625" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g3_di" bpmnElement="g3" isMarkerVisible="true">
+        <dc:Bounds x="800" y="45" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="route_di" bpmnElement="route">
+        <dc:Bounds x="925" y="30" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="eEnd_di" bpmnElement="eEnd">
+        <dc:Bounds x="1407" y="52" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="blocked_di" bpmnElement="blocked">
+        <dc:Bounds x="625" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="retry_di" bpmnElement="retry">
+        <dc:Bounds x="625" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="g2_di" bpmnElement="g2" isMarkerVisible="true">
+        <dc:Bounds x="1100" y="325" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="alert_di" bpmnElement="alert">
+        <dc:Bounds x="1225" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f1_di" bpmnElement="f1">
+        <di:waypoint x="93" y="70" />
+        <di:waypoint x="175" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f2_di" bpmnElement="f2">
+        <di:waypoint x="275" y="70" />
+        <di:waypoint x="325" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f3_di" bpmnElement="f3">
+        <di:waypoint x="425" y="70" />
+        <di:waypoint x="500" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f4_di" bpmnElement="f4">
+        <di:waypoint x="550" y="70" />
+        <di:waypoint x="625" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f5_di" bpmnElement="f5">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="210" />
+        <di:waypoint x="625" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f6_di" bpmnElement="f6">
+        <di:waypoint x="525" y="95" />
+        <di:waypoint x="525" y="350" />
+        <di:waypoint x="625" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f10_di" bpmnElement="f10">
+        <di:waypoint x="725" y="70" />
+        <di:waypoint x="800" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f13_di" bpmnElement="f13">
+        <di:waypoint x="850" y="70" />
+        <di:waypoint x="925" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f14_di" bpmnElement="f14">
+        <di:waypoint x="825" y="95" />
+        <di:waypoint x="825" y="140" />
+        <di:waypoint x="1425" y="140" />
+        <di:waypoint x="1425" y="88" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f15_di" bpmnElement="f15">
+        <di:waypoint x="1025" y="70" />
+        <di:waypoint x="1407" y="70" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f11_di" bpmnElement="f11">
+        <di:waypoint x="725" y="210" />
+        <di:waypoint x="1425" y="210" />
+        <di:waypoint x="1425" y="88" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f7_di" bpmnElement="f7">
+        <di:waypoint x="725" y="350" />
+        <di:waypoint x="1100" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f8_di" bpmnElement="f8">
+        <di:waypoint x="1125" y="375" />
+        <di:waypoint x="1125" y="420" />
+        <di:waypoint x="675" y="420" />
+        <di:waypoint x="675" y="110" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f9_di" bpmnElement="f9">
+        <di:waypoint x="1150" y="350" />
+        <di:waypoint x="1225" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f12_di" bpmnElement="f12">
+        <di:waypoint x="1325" y="350" />
+        <di:waypoint x="1425" y="350" />
+        <di:waypoint x="1425" y="88" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

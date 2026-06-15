@@ -1,0 +1,34 @@
+%% Use Case — Finance (+ Import ACL)
+%% Derived from: spec-finance §9 (S1–S6) + §10 (REST). SSOT — docs/04_specs.
+flowchart LR
+  P(["👤 Партнёр"])
+  GS(["📊 Google-таблица (xlsx)"])
+  ACL(["⚙️ Import ACL"])
+
+  subgraph SYS["Finance (scope: FAMILY)"]
+    direction TB
+    UC1(["Импортировать таблицу"])
+    UC2(["Ревьюить новые категории"])
+    UC3(["Смотреть план / факт"])
+    UC4(["Анализировать по каденсу<br/>D · W · M · Q · Y + период"])
+    UC5(["Доходы по источникам и партнёрам<br/>(+ переходящий остаток)"])
+    UC6(["Просматривать иерархию категорий"])
+    UC7(["Выгрузить период в xlsx"])
+  end
+
+  P --- UC1
+  P --- UC2
+  P --- UC3
+  P --- UC4
+  P --- UC5
+  P --- UC6
+  P --- UC7
+  GS -. "xlsx-выгрузка" .-> UC1
+  UC1 -. "парсит → модель" .-> ACL
+
+  classDef actor fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
+  classDef uc fill:#E8F0FE,stroke:#4285F4,color:#1a1a1a;
+  classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
+  class P actor;
+  class GS,ACL ext;
+  class UC1,UC2,UC3,UC4,UC5,UC6,UC7 uc;

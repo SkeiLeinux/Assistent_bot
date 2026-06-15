@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_digest" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_digest" name="Формирование и доставка дайджеста" isExecutable="false">
+<bpmn:startEvent id="s" name="Тик по каденсу DigestSchedule"><bpmn:outgoing>f1</bpmn:outgoing><bpmn:timerEventDefinition/></bpmn:startEvent>
+<bpmn:exclusiveGateway id="g1" name="Расписание созрело?"><bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing><bpmn:outgoing>f3</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="eNo" name="Не шлётся (обзор в Mini App)"><bpmn:incoming>f2</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="read" name="Система: читать изменения (lists/finance/nutrition .read)"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="vis" name="Система: фильтр visible_to per-recipient"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="compose" name="Система: композиция дайджеста"><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g2" name="Непустой дайджест?"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing><bpmn:outgoing>f8</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:endEvent id="eEmpty" name="Пусто — не отправляется"><bpmn:incoming>f7</bpmn:incoming></bpmn:endEvent>
+<bpmn:serviceTask id="push" name="Notifications → push каждому в семье"><bpmn:incoming>f8</bpmn:incoming><bpmn:outgoing>f9</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:serviceTask id="upd" name="Система: last_sent_at = now"><bpmn:incoming>f9</bpmn:incoming><bpmn:outgoing>f10</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:endEvent id="eDone" name="Дайджест доставлен"><bpmn:incoming>f10</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="g1"/>
+<bpmn:sequenceFlow id="f2" name="нет/disabled" sourceRef="g1" targetRef="eNo"/>
+<bpmn:sequenceFlow id="f3" name="созрело" sourceRef="g1" targetRef="read"/>
+<bpmn:sequenceFlow id="f4" sourceRef="read" targetRef="vis"/>
+<bpmn:sequenceFlow id="f5" sourceRef="vis" targetRef="compose"/>
+<bpmn:sequenceFlow id="f6" sourceRef="compose" targetRef="g2"/>
+<bpmn:sequenceFlow id="f7" name="пусто" sourceRef="g2" targetRef="eEmpty"/>
+<bpmn:sequenceFlow id="f8" name="есть контент" sourceRef="g2" targetRef="push"/>
+<bpmn:sequenceFlow id="f9" sourceRef="push" targetRef="upd"/>
+<bpmn:sequenceFlow id="f10" sourceRef="upd" targetRef="eDone"/>
+</bpmn:process>
+</bpmn:definitions>

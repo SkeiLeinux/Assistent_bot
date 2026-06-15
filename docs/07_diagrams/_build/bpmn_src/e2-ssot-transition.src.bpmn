@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Defs_e2-ssot-transition" targetNamespace="http://assistent-bot/bpmn">
+<bpmn:process id="Proc_e2-ssot-transition" name="E2 · Переход SSOT: таблица → транзакции (кандидат, ADR-0007)" isExecutable="false">
+<bpmn:startEvent id="s" name="Старт E2"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+<bpmn:serviceTask id="par" name="Параллельный период: транзакции в боте + таблица как раньше"><bpmn:incoming>f1</bpmn:incoming><bpmn:incoming>f5</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:exclusiveGateway id="g" name="Сверка месяца: Σ транзакций ≈ таблица?"><bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing><bpmn:outgoing>f4</bpmn:outgoing></bpmn:exclusiveGateway>
+<bpmn:userTask id="fix" name="Партнёр: разбор причин (забытые траты? канал?) → правки привычек/категорий"><bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing></bpmn:userTask>
+<bpmn:serviceTask id="arch" name="Система: таблица → архив; Import ACL → консервация (код остаётся, не зовётся)"><bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f6</bpmn:outgoing></bpmn:serviceTask>
+<bpmn:userTask id="ritual" name="Партнёр (Катя): экспорт периода (xlsx) из бота (F2.6)"><bpmn:incoming>f6</bpmn:incoming><bpmn:outgoing>f7</bpmn:outgoing></bpmn:userTask>
+<bpmn:endEvent id="eGate" name="Выход-гейт E2"><bpmn:incoming>f7</bpmn:incoming></bpmn:endEvent>
+<bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="par"/>
+<bpmn:sequenceFlow id="f2" sourceRef="par" targetRef="g"/>
+<bpmn:sequenceFlow id="f3" name="расхождения" sourceRef="g" targetRef="fix"/>
+<bpmn:sequenceFlow id="f4" name="сходится N месяцев" sourceRef="g" targetRef="arch"/>
+<bpmn:sequenceFlow id="f5" sourceRef="fix" targetRef="par"/>
+<bpmn:sequenceFlow id="f6" sourceRef="arch" targetRef="ritual"/>
+<bpmn:sequenceFlow id="f7" sourceRef="ritual" targetRef="eGate"/>
+</bpmn:process>
+</bpmn:definitions>
