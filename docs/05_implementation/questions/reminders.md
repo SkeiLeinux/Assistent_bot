@@ -9,7 +9,9 @@
   3. Положить общий тип `Button`/`Notifier` в `notifications` и импортировать его из reminders. Trade-off: создаёт ребро `reminders → notifications` на типах; ADR-0004 ребро Rem→Notif допускает, но порт в домене (вариант 1) держит домен полностью агностичным и тестируемым без notifications.
 - Обход в коде: реализован вариант 1. Порт `Notifier` + `Button` + хелперы `ack_button/snooze_button/reminder_buttons` в `app/contexts/reminders/services/delivery_port.py`; `reminder_poll` принимает `notifier` снаружи; callback-payload'ы `rem:ack:{id}`/`rem:snooze:{id}` уже сформированы. Прод-адаптер `Notifier`→`notifications.deliver` и маршрутизация нажатий — за delivery-agent/интегратором (НЕ в моей границе).
 
-## Q-rem-2: регистрация job `reminder_poll` и DI грейса/часов — композиция в main.py
+## Q-rem-2: регистрация job `reminder_poll` и DI грейса/часов — композиция в main.py — ⏳ FOLLOW-UP (не блокер)
+> **Статус (приёмка волны B, `reviews/review-waveB-2026-06-10.md` finding 1):** функционально закрыто вариантом 1 — грейс берётся из **дефолта фабрики `DEFAULT_GRACE_SECONDS = 3 ч`** (= спека), `make_reminder_poll(async_session_maker, notifier)` зарегистрирован в `main.py`. Буква OQ-R2 («грейс в конфиг») **отложена**: поля в `app/config.py` нет → вынесено в follow-up, приёмку не блокирует.
+
 - Где: ТЗ §6 («Регистрация job — в `main.py`»), build-contract §6.5 (волна B: регистрация job `reminder_poll` + `digest` — интегратор).
 - Проблема: Reminders экспортирует `make_reminder_poll(session_factory, notifier, *, now_fn, grace_seconds)` (callable `() -> Awaitable[None]`, совместимый со `scheduler.Scheduler.register`). Где берётся грейс-конфиг (дефолт 3 ч, R2) — сейчас литерал `DEFAULT_GRACE_SECONDS` в коде; ТЗ §6/OQ-R2 говорит «в конфиг». Добавление поля в `app/config.py` — НЕ моя граница.
 - Варианты:

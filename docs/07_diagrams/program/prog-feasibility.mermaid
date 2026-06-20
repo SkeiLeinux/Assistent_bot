@@ -3,7 +3,7 @@
 flowchart TB
   subgraph OK["✅ Путь подтверждён"]
     direction TB
-    A1["Huawei privacy-zip (E3) — осн."]
+    A1["Vision-скрины тренировки/сна (E3) — ведущий"]
     A2["Чек по фото · vision (E2) — осн."]
     A3["QR-скан Mini App (showScanQrPopup)"]
     A4["Анализы / InBody → vision"]
@@ -15,7 +15,6 @@ flowchart TB
     B1["proverkacheka API (E2, ~15/сут)"]
     B2["Офиц. API ФНС — отдаёт ли позиции?"]
     B3["lkdr «Мои чеки» — хрупко"]
-    B4["Huawei Health Kit API — бюрократия"]
     B5["Web-push вне Telegram (E5, iOS капризен)"]
   end
   subgraph NO["❌ Не путь"]
@@ -23,11 +22,18 @@ flowchart TB
     C1["Health Connect — нужен свой Android-app"]
     C2["Google Fit — отключение к концу 2026"]
     C3["GCal запись / синк — OAuth, конфликты"]
+    C4["Huawei privacy-zip — ❌ отклонён #16"]
+  end
+  subgraph NS["🌟 North Star"]
+    direction TB
+    D1["Huawei Health Kit API (E3) — бюрократия, North Star"]
   end
 
   classDef ok fill:#E6F4EA,stroke:#34A853,color:#1a1a1a;
   classDef warn fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
   classDef no fill:#FCE8E6,stroke:#EA4335,color:#1a1a1a;
   class A1,A2,A3,A4,A5,A6 ok;
-  class B1,B2,B3,B4,B5 warn;
-  class C1,C2,C3 no;
+  class B1,B2,B3,B5 warn;
+  class C1,C2,C3,C4 no;
+  classDef ns fill:#E8F0FE,stroke:#4285F4,stroke-width:2px,color:#1a1a1a;
+  class D1 ns;

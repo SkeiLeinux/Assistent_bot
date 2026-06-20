@@ -8,7 +8,7 @@
 - **shared kernel** — ядро `Identity & Sharing`: единственный контекст, от которого зависят все остальные.
 - **Viewer (зритель)** — аутентифицированный `User`, от лица которого выполняется запрос; вход любого фильтра видимости.
 - **Family / Membership** — семья (пара, ≤2) и членство пользователя в ней.
-- **Invite** — одноразовый инвайт-код для пейринга; FSM `active → used/expired/revoked`.
+- **Invite / InviteStatus** — одноразовый инвайт-код для пейринга; статус — enum `InviteStatus` (`active` / `used` / `expired` / `revoked`, полный набор), см. spec-identity §3.4.
 - **Shareable** — миксин видимости: `owner_id` + `family_id` + `scope` + `hidden_from`; примешивается к каждой разделяемой сущности.
 - **scope** — режим видимости: `PERSONAL` (только владелец) или `FAMILY` (вся семья).
 - **hidden_from** — множество исключённых пользователей при `FAMILY`; подарок = `FAMILY` + `hidden_from=[одаряемый]`.

@@ -4,16 +4,16 @@ flowchart LR
   ROOT(("E3 · Здоровье<br/>драйвер: Катя (+С.)"))
   F1["Журнал веса / измерений — must"]
   F2["Журнал тренировок — must"]
-  F3["Huawei-импорт: тренировки · сон · шаги · вес — must"]
+  F3["Vision-скрины: тренировки · сон · шаги · вес — must"]
   F4["Витамины → Reminders — must"]
   F5["Медблок: показатели + анализы (vision) — should"]
   F6["Цикл + фазовые подсказки — should"]
   F7["Состав тела: фото InBody → vision — could"]
   M1["Новый контекст Health: Measurement · Workout ·<br/>Supplement(+Schedule) · LabResult · CycleEntry"]
-  M2["Huawei privacy-zip ACL · новое ребро health→reminders"]
+  M2["Vision-скрины: analyze→confirm→save (Huawei-zip ❌ #16) · новое ребро health→reminders"]
   M3["ADR: 0008 канал/дедуп · 0009 модель показателей"]
   M4["Приватность: дефолт scope — настройка владельца<br/>(С.: FAMILY · Катя — Q3-В8); цикл — всегда PERSONAL"]
-  M5["Гейт: Q3 + Huawei zip-тест + 3 бланка анализов"]
+  M5["Гейт: Q3 + vision-разбор скринов + 3 бланка анализов"]
 
   ROOT --> F1
   ROOT --> F2

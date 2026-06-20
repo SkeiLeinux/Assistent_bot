@@ -10,13 +10,13 @@
 
 | # | Контекст | Зависит от | Статус | Файл |
 |---|---|---|---|---|
-| 1 | Identity & Sharing (kernel) | — | ✅ Принято (С., 2026-06-06) | [spec-identity-sharing.md](spec-identity-sharing.md) |
-| 2 | Lists | Identity | ✅ Принято (С./Катя, 2026-06-07) | [spec-lists.md](spec-lists.md) |
-| 3 | Finance (+ Import ACL) | Identity | ✅ Принято (С./Катя, 2026-06-07) | [spec-finance.md](spec-finance.md) |
-| 4 | Nutrition | Identity | ✅ Принято (С./Катя, 2026-06-07) | [spec-nutrition.md](spec-nutrition.md) |
-| 5 | Reminders | Identity, Notifications | ✅ Принято (С./Катя, 2026-06-07) | [spec-reminders.md](spec-reminders.md) |
-| 6 | Notifications / Delivery | kernel; потребляется reminders/analytics/delivery | ✅ Принято (С./Катя, 2026-06-07) | [spec-notifications.md](spec-notifications.md) |
-| 7 | Analytics & Digest | read-side: Lists/Finance/Nutrition | ✅ Принято (С./Катя, 2026-06-07) | [spec-analytics.md](spec-analytics.md) |
+| 1 | Identity & Sharing (kernel) | — | ✅ Принято v0.5 (С., 2026-06-07) | [spec-identity-sharing.md](spec-identity-sharing.md) |
+| 2 | Lists | Identity | ✅ Принято v0.4 (С., 2026-06-18) | [spec-lists.md](spec-lists.md) |
+| 3 | Finance (+ Import ACL) | Identity | ✅ Принято v0.4 (С., 2026-06-10) | [spec-finance.md](spec-finance.md) |
+| 4 | Nutrition | Identity | ✅ Принято v0.2.2 (С./Катя 2026-06-07; +инкременты 06-13/14) | [spec-nutrition.md](spec-nutrition.md) |
+| 5 | Reminders | Identity, Notifications | ✅ Принято v0.4 (С., 2026-06-18) | [spec-reminders.md](spec-reminders.md) |
+| 6 | Notifications / Delivery | kernel; потребляется reminders/analytics/delivery | ✅ Принято v0.3 (С./Катя, 2026-06-10) | [spec-notifications.md](spec-notifications.md) |
+| 7 | Analytics & Digest | read-side: Lists/Finance/Nutrition | ✅ Принято v0.4 (С./Катя, 2026-06-10) | [spec-analytics.md](spec-analytics.md) |
 
 **✅ Фаза ТЗ закрыта 2026-06-07 — 7/7 принято.** Дальше по пайплайну: субагенты/код (вариант C — расширяем `lifeManager_bot` к target-архитектуре).
 
@@ -26,9 +26,9 @@
 
 | Контекст | Инкремент | Статус | Реализует | Файл |
 |---|---|---|---|---|
-| Nutrition | R — retrieval КБЖУ (vision→поиск) | 🔵 На реализацию (Code), приёмка С. | ADR-0013 | [spec-nutrition-retrieval.md](spec-nutrition-retrieval.md) |
+| Nutrition | R — retrieval КБЖУ (vision→поиск) | ✅ R1 реализован (Code); сквозная приёмка С. на VPS | ADR-0013 | [spec-nutrition-retrieval.md](spec-nutrition-retrieval.md) |
 
-_2026-06-13: заведён инкремент R (см. ADR-0013); первый срез R1 — OFF + estimate, web-ступень (Compound) за флагом до gate-теста; barcode — fast-follow._
+_2026-06-13: заведён инкремент R (см. ADR-0013). **Фича-флагов нет** (решение С.): R1 — OFF + estimate; web-ступень (Compound) = **этап R2**, добавляется кодом (не рантайм-флагом); barcode — fast-follow. R1 реализован (Claude Code), gate-тест RU-покрытия OFF пройден._
 
 **Правило фазы:** kernel-first → write-side домены → read-side/delivery последними. **Чек-поинт** (приёмка С. — архитектура, Катя — продукт) после каждого ТЗ перед стартом следующего слоя. Не строить ТЗ на неподтверждённом предыдущем.
 
@@ -77,3 +77,7 @@ _2026-06-13: заведён инкремент R (см. ADR-0013); первый 
 - **2026-06-07:** ТЗ Notifications принято (v0.2) — OQ-No1/No2 закрыты (real-time уведомления сохранены с учётом видимости; синхронно в MVP, очереди — после). Остался последний ТЗ — Analytics & Digest.
 - **2026-06-07:** ТЗ Analytics & Digest — черновик v0.1 на ревью (последний домен). Read-side через `contexts.*.read`; `DigestSchedule` (настраиваемый каденс — Катя), дайджест Списки+Финансы+Питание (без напоминаний), триггер через scheduler + Notifications. 2 OQ. После приёмки — фаза ТЗ закрыта (7/7).
 - **2026-06-07:** ТЗ Analytics принято (v0.2) — OQ-A1/A2 закрыты: расписание per-семья; `DigestSchedule` мульти-каденсный (ежедневный 23:59 + еженедельный вс 23:00). **🎉 ФАЗА ТЗ ЗАКРЫТА — 7/7 принято.** Дальше — субагенты/код.
+- **2026-06-10 (волна A, Q1 влит):** Finance → v0.3/v0.4 (год импорта `year`, `plan=null` вне целых месяцев, допуск ≤1 ₽, `metric` снят, carryover, экспорт xlsx); Lists → v0.3 (кап истории 50, поиск по названиям, `tags`, clear-done только видимых); Notifications → v0.3 (матрица change-уведомлений, усечение >4096); Analytics → v0.4 (recent-changes из `lists.read`, top-3 трат).
+- **2026-06-13/14 (инкремент R + фиксы):** Nutrition → v0.2.1 (мультифото, удалён `add_explicit`), v0.2.2 (составное блюдо `DishIngredient`); заведён и **принят** ADR-0013, реализован инкремент R (retrieval КБЖУ) — `spec-nutrition-retrieval.md` v0.3→v0.5, R1 отгружен.
+- **2026-06-18 (MVP-фидбэк, партия №1):** Lists → v0.4 (LINK `comment`, TASK `priority`-enum); Reminders → v0.4 (`max_occurrences`/`until`/`fired_count`, `delivery_target`). Приняты С. Источник дельт — `05_implementation/mvp-feedback-triage.md`.
+- **2026-06-20 (док-ревью):** таблица статусов/версий и история фазы синхронизированы с фактическими версиями ТЗ (были заморожены на 2026-06-07/v0.2); инкремент R отмечен реализованным; формулировка «web-ступень за флагом» исправлена (фича-флаги убраны).

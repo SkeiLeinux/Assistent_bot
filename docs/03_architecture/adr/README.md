@@ -16,7 +16,7 @@
 | [ADR-0003](ADR-0003-reminder-scheduler.md) | Планировщик напоминаний | ✅ Принято (B poll-loop, Reminder=SSOT) | №3 планировщик | 2026-06-04 |
 | [ADR-0004](ADR-0004-context-isolation.md) | Изоляция контекстов в коде | ✅ Принято (Вариант B + import-linter) | №4 изоляция | 2026-06-04 |
 | [ADR-0005](ADR-0005-postgres-timing.md) | Тайминг миграции на PostgreSQL | ✅ Принято (A: SQLite + триггеры) | №5 PostgreSQL | 2026-06-04 |
-| [ADR-0013](ADR-0013-nutrition-retrieval.md) | Retrieval-augmented питание (vision→поиск КБЖУ) | 🟡 Предложено (draft, на ревью С./Катя) | Enhancement Nutrition (E1, из North Star) | 2026-06-13 |
+| [ADR-0013](ADR-0013-nutrition-retrieval.md) | Retrieval-augmented питание (vision→поиск КБЖУ) | ✅ Принято (С., 2026-06-13; R1 реализован) | Enhancement Nutrition (E1, из North Star) | 2026-06-13 |
 
 ---
 
@@ -46,4 +46,5 @@
 - **2026-06-04:** структура источника финансов выверена по реальному файлу (4 листа): иерархия — заливкой строки `FFF9CB9C`, инвариант «родитель = Σ детей» подтверждён 10/10; уточнения внесены в ADR-0002 и requirements §4.2.
 - **2026-06-04:** ADR-0003 принят (B: async poll-loop, `Reminder`=SSOT; misfire догнать-в-грейсе; recurrence простой). Открыт только ADR-0005 (тайминг Postgres).
 - **2026-06-04:** ADR-0005 принят (A: SQLite в MVP, миграция по триггеру). **Фаза архитектуры закрыта — 5/5 ADR приняты.** Дальше — ТЗ по доменам (`04_specs/`).
-- **2026-06-13:** заведён **ADR-0013** (retrieval-augmented разбор питания) в статусе «Предложено» — post-MVP enhancement E1-контекста Nutrition, вытянут из North Star «vision→поиск». Номера 0006–0012 зарезервированы под кандидатов программы (`program-roadmap.md §4`), поэтому 0013. На ревью С./Катя.
+- **2026-06-13:** заведён и **принят** (С.) **ADR-0013** (retrieval-augmented разбор питания) — post-MVP enhancement E1-контекста Nutrition, вытянут из North Star «vision→поиск». Номера 0006–0012 зарезервированы под кандидатов программы (`program-roadmap.md §4`), поэтому 0013. Реализация — `04_specs/spec-nutrition-retrieval.md` (R1 отгружен).
+- **2026-06-20 (док-ревью):** статус ADR-0013 в журнале синхронизирован с самим ADR и ТЗ (был рассинхрон «Предложено» ↔ «Принято»); action items ADR-0013 закрыты.

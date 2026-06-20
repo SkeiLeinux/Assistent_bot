@@ -15,6 +15,7 @@ flowchart TB
 
   An["Analytics & Digest<br/>(read-side, проекция)"]
   Notif["Notifications / Delivery<br/>(supporting)"]
+  Sched["Scheduler<br/>(generic poll-loop, ADR-0003)"]
   ACL["Import ACL<br/>(таблица → модель Finance)"]
   ID["⭐ Identity & Sharing<br/>shared kernel"]
 
@@ -32,6 +33,8 @@ flowchart TB
   An -.->|reads| Nut
   Rem --> Notif
   An --> Notif
+  Rem -.->|"job (main.py)"| Sched
+  An -.->|"job (main.py)"| Sched
   Notif --> Bot
   ACL --> Fin
   Bot --> ID

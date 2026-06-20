@@ -56,6 +56,7 @@ app/
     reminders/    { models, repositories, services, api }
   analytics/               # read-side: импортирует kernel + contexts/*/read (и только их)
   notifications/           # supporting: импортируется reminders, analytics, delivery
+  scheduler/               # generic top-level планировщик (poll-loop, ADR-0003); reminders/analytics регистрируют job из main.py (аудит F2.1)
   delivery/
     bot/                   # вход (запуск Mini App, initData) + push
     miniapp_api/           # REST для Mini App
@@ -67,10 +68,13 @@ app/
 - `contexts.*` → только `kernel` (+ собственный подпакет). **Sibling-context импорты запрещены.**
 - `analytics` → `kernel` + `contexts.*.read`. Доступ к `services`/`models` чужих доменов запрещён.
 - `notifications` → только `kernel`; импортируется `reminders` / `analytics` / `delivery`.
+- `scheduler` (generic top-level) → только `kernel`; `reminders`/`analytics` отдают job-callable, регистрируемые в `main.py` (ребро `reminders→analytics` не вводится — аудит F2.1).
 - `finance.importing` — изолирован, импортируется только внутри `finance`.
 - `delivery.*` → `contexts.*.api`/`services`, `analytics`, `notifications`, `kernel`. **Домены не импортируют `delivery`** (шов под standalone).
 
 ---
+
+> **Уточнение (2026-06-20, аудит F2.1):** в структуру добавлен generic top-level `scheduler/` (был пропущен в исходном эскизе). Reminders и Analytics отдают job-callable, которые регистрируются в `main.py`; прямого ребра `reminders→analytics` нет. См. ТЗ Reminders §6/§10, ТЗ Analytics §4.
 
 ## Рассмотренные варианты
 

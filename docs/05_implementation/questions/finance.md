@@ -4,7 +4,9 @@
 
 ---
 
-## Q-finance-1: дневной инвариант I3 vs реальный файл (A1)
+## Q-finance-1: дневной инвариант I3 vs реальный файл (A1) — ✅ РЕШЕНО
+> **Решение (С., влито в spec-finance v0.4; сверено `reviews/review-finance-2026-06-10.md`):** вариант 2. I3 переформулирован — `Факт` родителя = Σ `Факт` детей **и** `Факт` ребёнка = Σ его дней (оба, допуск ≤1 ₽); дневная строка родителя — производная, не валидируется и не хранится. Реальный файл (лист Май) проходит. Обход в коде стал каноном.
+
 
 - **Где:** spec-finance §6 I3 / §7 шаг 4 / §15 A1.
   - I3: «`Факт` родителя = Σ `Факт` детей **и** дневная строка родителя = Σ детей. Проверяется при импорте; расхождение → fail-loud (ничего не пишем)».
@@ -18,7 +20,9 @@
 
 ---
 
-## Q-finance-2: семантика `metric` в GET /finance/analytics
+## Q-finance-2: семантика `metric` в GET /finance/analytics — ✅ РЕШЕНО
+> **Решение (С., spec-finance v0.4; `reviews/review-finance-2026-06-10.md`):** параметр `metric` **снят** из контракта (`AnalyticsDTO` и так несёт все метрики plan/fact/diff/pct). Код его не парсит — де-факто no-op; поведение «показать всё» консистентно.
+
 
 - **Где:** spec-finance §10 (`GET /finance/analytics?metric=&period=&from=&to=&category_id=`) и DTO `AnalyticsDTO`.
 - **Проблема:** параметр `metric=` присутствует в сигнатуре, но его допустимые значения и влияние на ответ нигде не специфицированы. `AnalyticsDTO` всегда несёт `total:{plan,fact,diff}` и `lines:[{plan,fact,diff,pct,...}]` — то есть все метрики сразу. Что выбирает `metric`?
@@ -30,7 +34,9 @@
 
 ---
 
-## Q-finance-3: `IncomeReportDTO.carryover` — что именно
+## Q-finance-3: `IncomeReportDTO.carryover` — что именно — ✅ РЕШЕНО
+> **Решение (С., spec-finance v0.4; `reviews/review-finance-2026-06-10.md`):** вариант 1/3 — `carryover` = Σ `actual` источников `kind=CARRYOVER` по целым месяцам периода (I10); те же источники остаются в `by_source` (дубль для UI). Семантика «остаток на начало» (вариант 2) сознательно не делалась.
+
 
 - **Где:** spec-finance §10 DTO `IncomeReportDTO = {range, by_source:[…], carryover, total_income, total_expense, delta}`.
 - **Проблема:** `carryover` вынесен отдельным полем рядом с `by_source`. Но «Переход с предыдущего месяца» — это уже источник (`IncomeSource.kind=CARRYOVER`), он попадёт в `by_source`. Дублировать ли его отдельным полем `carryover`, и что в нём — сумма факта carryover-источников за период? за какой месяц при мультимесячном периоде?

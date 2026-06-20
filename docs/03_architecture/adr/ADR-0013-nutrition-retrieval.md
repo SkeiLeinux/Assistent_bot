@@ -138,11 +138,11 @@
 
 ## Action Items
 1. [x] С.: подход выбран — OFF + Compound web fallback; barcode fast-follow; детали делегированы в ТЗ (2026-06-13).
-2. [ ] Дельта ТЗ `spec-nutrition.md` v0.3: `ProductResolver`, лестница, контракт/DTO, провенанс, конфиг, тест-план (фейки источников, без живых вызовов).
-3. [ ] Схемы DTO (`ExtractedProduct`, `ResolvedNutrition`) + таблица маппинга OFF→DTO; целевые промпты (извлечение, веб-парс).
-4. [ ] OpenAPI: поле `source`/цитата в ответах `/analyze`, `/foods/analyze` (+опц. endpoint резолва).
-5. [ ] Зафиксировать ADR-0013 в `adr/README.md` (журнал) и упомянуть в `program-roadmap.md` (post-MVP enhancement Nutrition).
-6. [ ] После принятия — статус → «Принято».
+2. [x] ТЗ-дельта вынесена в отдельный `04_specs/spec-nutrition-retrieval.md` (а не в `spec-nutrition.md`): `ProductResolver`, лестница, контракт/DTO, провенанс, конфиг, тест-план.
+3. [x] Схемы DTO (`ExtractedItem`/`ExtractResult`/`ResolveQuery`/`ResolvedNutrition`) + маппинг OFF→DTO + промпты — ТЗ §5–§8.
+4. [x] OpenAPI: `ProvenanceSource`, `source`/`source_ref`/`matched_name` в `/analyze`, `/foods/analyze` — синкнуто.
+5. [x] ADR-0013 зафиксирован в `adr/README.md` (журнал, статус «Принято») и в `program-roadmap.md` (реестр post-MVP, 2026-06-20).
+6. [x] Статус → «Принято» (С., 2026-06-13; журнал синхронизирован 2026-06-20).
 
 ## Изменения
 - **2026-06-13:** по решению С. убраны фича-флаги (резолвер всегда вкл., деградация встроена; web — этап R2 кодом). Реализация — `04_specs/spec-nutrition-retrieval.md` v0.2.

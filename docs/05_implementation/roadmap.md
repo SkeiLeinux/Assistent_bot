@@ -113,22 +113,25 @@ app/
 - **DoD:** критерии Identity A1–A7.
 - **✅ Выполнено (2026-06-09):** `app/kernel/` (`models`/`sharing`/`auth`/`repositories`/`services`), REST `/api/v1/{me,family,family/join,family/invites}`, бот-пейринг, **greenfield-baseline `237ca7b0e901`** (5 миграций → 1). DoD A1–A7 закрыты (20 тестов + сквозной REST). Решение **«чистый kernel»** (С.): транзит Lists/Food снят с проводки (дормант; устаревшие ссылки на kernel-`User`/`Family`) → переписывается в S2; menu-button и `food api.py` сняты до S2/S4. `Shareable` — миксин с per-entity `<table>_hidden_from` (H3-a); `visible_to` — один WHERE+NOT EXISTS; `Viewer{id, family_id}`.
 
-### Срез 2 — write-side домены  *(параллелизуемо после kernel)*
+### Срез 2 — write-side домены  *(параллелизуемо после kernel)* ✅ выполнено (волны A/B, ~2026-06-10)
 - **Lists** (первое применение `Shareable`): `List`/`ListItem`(самоссылочный)/`ListItemHistory`/`list_item_hidden_from`; `specific_attrs` JSON + валидация на тип; двухуровневая видимость; REST `/api/v1/lists`,`/items`; `read`-модуль. Переработка current дерева списков, переезд в Mini App.
 - **Finance** (новый): `Category`-дерево/`BudgetPlan`/`ActualAmount`/`Income`/`IncomeSource`/`CategoryAlias`; **`importing/`** ACL — парсер реального xlsx (заливка→родитель, инвариант родитель=Σ, идемпотентный upsert, fail-loud); REST `/api/v1/finance`; `read`.
 - **Nutrition** (переиспользование): перенести цели в `NutritionGoals`(`user_id`); `SharedFood.family_id`; применить `scope` (FoodEntry PERSONAL / SharedFood FAMILY); namespace API `/api/v1/nutrition/*`; `read`. Маппинг `owner_id`↔`user_id`/`created_by`.
 - **DoD:** A-критерии каждого ТЗ + тест видимости (подарок скрыт от исключённого).
+- **✅ Выполнено (волны A/B, ~2026-06-10):** Lists (S2a), Finance (S2b), Nutrition (S2c) — `app/contexts/{lists,finance,nutrition}/`; приёмки в `reviews/review-{lists,finance,nutrition}-2026-06-10.md`; интеграция волны A — `reviews/integration-A-2026-06-10.md`.
 
-### Срез 3 — read-side / delivery-job  *(закрывает F2.1, F6.2)*
+### Срез 3 — read-side / delivery-job  *(закрывает F2.1, F6.2)* ✅ выполнено (волны B/C, ~2026-06-10/11)
 - **Reminders:** `Reminder`(SSOT) + `reminder_poll`-job (recurrence, misfire-грейс 3ч); ack/snooze.
 - **Analytics:** read-композиция через `contexts.*.read`; `DigestSchedule`(мульти-каденс) + `compose_digest` + digest-job.
 - **`main.py`:** зарегистрировать обе job (`reminder_poll`, `digest`) в `scheduler` — здесь связываются Reminders и Analytics (не импортом).
 - **Notifications:** инлайн-кнопки + маршрутизация callback'ов; **change-уведомления Lists** эмитятся через `delivery` (F6.2).
 - **DoD:** тесты misfire/рестарт/грейс/без-двойного-срабатывания (ADR-0003); дайджест по расписанию, видимость-фильтрован; политика доставки (ретрай/алерт/блокировка).
+- **✅ Выполнено (волна B, ~2026-06-10):** Reminders/Analytics/Notifications + проводка job в `main.py` + S3.1-wiring change-хука Lists — `app/{contexts/reminders,analytics,notifications}/`; приёмка `reviews/review-waveB-2026-06-10.md` (189 passed, вердикт ✅), интеграция `reviews/integration-waveB-2026-06-10.md`. Q-rem-2 (грейс в конфиг) — follow-up.
 
-### Срез 4 — фронт Mini App  *(F6.3; можно параллелить по контекстам)*
+### Срез 4 — фронт Mini App  *(F6.3; можно параллелить по контекстам)* ✅ выполнено (волна C, ~2026-06-11)
 - Переиспользовать фронт еды; новые экраны Lists/Finance/Reminders/Analytics по REST-контрактам. Без сборки (React UMD+Babel, как сейчас) или ввести сборку — решение фазы фронта.
 - **DoD:** сквозные сценарии каждого домена в Mini App.
+- **✅ Выполнено (волна C, ~2026-06-11):** экраны Lists/Finance/Reminders+Analytics на React-UMD-без-сборки; приёмка `reviews/wave-c.md` (⚠️ принять с условиями: изъять вне-границевые правки `06_program/` из коммита). MVP отгружен на VPS ~2026-06-11 (`deploy-mvp-vps-runbook.md`).
 
 ---
 
@@ -171,5 +174,7 @@ app/
 
 ---
 
-## 8. Следующий шаг
-Roadmap принят, решения S0 — §0, SSOT синхронизирован. **Исполнение Среза 0 переносится в Claude Code** (гайд `code-handoff.md`): `git init` → перенос по карте §4 → import-linter + generic `scheduler/`/`notifications/` + `main.py` → снос `lifeManager_bot/`. Затем Срез 1 (kernel).
+## 8. Состояние (обновлено 2026-06-20)
+Срезы S0–S4 выполнены, **MVP собран целиком и отгружен на VPS** (~2026-06-11, `deploy-mvp-vps-runbook.md`), идёт живое тестирование. Цепочка приёмок — `reviews/` (волна A: lists/finance/nutrition + integration-A; волна B: review-waveB + integration-waveB; волна C: wave-c — принята с условием изъять правки `06_program/`).
+
+**Пост-MVP:** реализован инкремент R (retrieval-augmented разбор КБЖУ, R1 — ТЗ `04_specs/spec-nutrition-retrieval.md`, ADR-0013); по партии MVP-фидбэка №1 (2026-06-18, `mvp-feedback-triage.md`) идёт E1-стабилизация — Lists/Reminders подняты до **v0.4** (Reminders: max_occurrences/until + delivery_target=PARTNER; Lists: тип LINK + приоритет дел), плюс баг-фиксы и UX-полировка фронта. Программа этапов E2–E5 — `docs/06_program/`.

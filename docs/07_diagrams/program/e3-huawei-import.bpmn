@@ -1,29 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Defs_e3-huawei-import" targetNamespace="http://assistent-bot/bpmn">
-  <bpmn:process id="Proc_e3-huawei-import" name="E3 · Huawei-импорт здоровья (кандидат)" isExecutable="false">
-    <bpmn:startEvent id="s" name="Напоминание-пресет: «запроси экспорт» (раз в 1–2 нед)">
+  <bpmn:process id="Proc_e3-huawei-import" name="E3 · Здоровье: vision-разбор скринов (Huawei-zip отклонён #16)" isExecutable="false">
+    <bpmn:startEvent id="s" name="Напоминание-пресет: «сними скрины тренировки/сна» (раз в 1–2 нед)">
       <bpmn:outgoing>f1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id="h2" name="Партнёр: Huawei Health → Privacy center → Request data → Health">
+    <bpmn:userTask id="h2" name="Партнёр: делает скрины экранов Huawei Health (тренировка · сон · шаги · вес)">
       <bpmn:incoming>f1</bpmn:incoming>
       <bpmn:outgoing>f2</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:userTask id="h3" name="Партнёр: получает zip на почту, скачивает">
+    <bpmn:userTask id="h3" name="Партнёр: загружает скрины в Mini App (мультифото)">
       <bpmn:incoming>f2</bpmn:incoming>
       <bpmn:outgoing>f3</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:userTask id="h4" name="Партнёр: грузит zip в Mini App (+ пароль архива)">
+    <bpmn:serviceTask id="b1" name="Система: vision-LLM analyze — распознаёт показатели на скринах">
       <bpmn:incoming>f3</bpmn:incoming>
       <bpmn:outgoing>f4</bpmn:outgoing>
-    </bpmn:userTask>
-    <bpmn:serviceTask id="b1" name="Health ACL: распаковка → парс JSON-папок (Health detail / Sport / Sleep…)">
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="b2" name="Система: нормализация → Measurement / Workout (с провенансом скрина)">
       <bpmn:incoming>f4</bpmn:incoming>
       <bpmn:outgoing>f5</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:serviceTask id="b2" name="Система: нормализация → Measurement / Workout">
+    <bpmn:userTask id="h4" name="Партнёр: confirm — проверяет/правит распознанное">
       <bpmn:incoming>f5</bpmn:incoming>
       <bpmn:outgoing>f6</bpmn:outgoing>
-    </bpmn:serviceTask>
+    </bpmn:userTask>
     <bpmn:exclusiveGateway id="g" name="Пересечение с ручными записями?">
       <bpmn:incoming>f6</bpmn:incoming>
       <bpmn:outgoing>f7</bpmn:outgoing>
@@ -33,12 +33,12 @@
       <bpmn:incoming>f7</bpmn:incoming>
       <bpmn:outgoing>f9</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:serviceTask id="up" name="Система: идемпотентный upsert по периодам">
+    <bpmn:serviceTask id="up" name="Система: save — идемпотентный upsert по периодам">
       <bpmn:incoming>f8</bpmn:incoming>
       <bpmn:incoming>f9</bpmn:incoming>
       <bpmn:outgoing>f10</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:serviceTask id="destroy" name="Система: zip уничтожается (медданные не храним сырьём)">
+    <bpmn:serviceTask id="destroy" name="Система: скрины уничтожаются (медданные не храним сырьём)">
       <bpmn:incoming>f10</bpmn:incoming>
       <bpmn:outgoing>f11</bpmn:outgoing>
     </bpmn:serviceTask>
@@ -51,10 +51,10 @@
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="h2" />
     <bpmn:sequenceFlow id="f2" sourceRef="h2" targetRef="h3" />
-    <bpmn:sequenceFlow id="f3" sourceRef="h3" targetRef="h4" />
-    <bpmn:sequenceFlow id="f4" sourceRef="h4" targetRef="b1" />
-    <bpmn:sequenceFlow id="f5" sourceRef="b1" targetRef="b2" />
-    <bpmn:sequenceFlow id="f6" sourceRef="b2" targetRef="g" />
+    <bpmn:sequenceFlow id="f3" sourceRef="h3" targetRef="b1" />
+    <bpmn:sequenceFlow id="f4" sourceRef="b1" targetRef="b2" />
+    <bpmn:sequenceFlow id="f5" sourceRef="b2" targetRef="h4" />
+    <bpmn:sequenceFlow id="f6" sourceRef="h4" targetRef="g" />
     <bpmn:sequenceFlow id="f7" name="да" sourceRef="g" targetRef="dedup" />
     <bpmn:sequenceFlow id="f8" name="нет" sourceRef="g" targetRef="up" />
     <bpmn:sequenceFlow id="f9" sourceRef="dedup" targetRef="up" />
@@ -73,13 +73,13 @@
       <bpmndi:BPMNShape id="h3_di" bpmnElement="h3">
         <dc:Bounds x="325" y="30" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="h4_di" bpmnElement="h4">
+      <bpmndi:BPMNShape id="b1_di" bpmnElement="b1">
         <dc:Bounds x="475" y="30" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="b1_di" bpmnElement="b1">
+      <bpmndi:BPMNShape id="b2_di" bpmnElement="b2">
         <dc:Bounds x="625" y="30" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="b2_di" bpmnElement="b2">
+      <bpmndi:BPMNShape id="h4_di" bpmnElement="h4">
         <dc:Bounds x="775" y="30" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="g_di" bpmnElement="g" isMarkerVisible="true">

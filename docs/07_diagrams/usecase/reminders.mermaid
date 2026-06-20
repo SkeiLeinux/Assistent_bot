@@ -1,5 +1,5 @@
 %% Use Case — Reminders
-%% Derived from: spec-reminders §8 (S1–S5) + §9 (REST). SSOT — docs/04_specs.
+%% Derived from: spec-reminders §9 (S1–S7), v0.4 / 2026-06-20. SSOT — docs/04_specs.
 flowchart LR
   P(["👤 Партнёр"])
   SCH(["⏰ Планировщик"])
@@ -13,6 +13,8 @@ flowchart LR
     UC4(["Получить push-напоминание"])
     UC5(["Отметить выполненным (ack)"])
     UC6(["Отложить (snooze)"])
+    UC7(["Напомнить партнёру<br/>delivery_target: OWNER / FAMILY / PARTNER (S7)"])
+    UC8(["Ограниченный повтор<br/>max_occurrences · until (S6)"])
   end
 
   P --- UC1
@@ -21,6 +23,8 @@ flowchart LR
   P --- UC5
   P --- UC6
   P --- UC4
+  P --- UC7
+  P --- UC8
   SCH -. "срабатывание (poll-loop)" .-> UC4
   UC4 -. "push" .-> TG
 
@@ -29,4 +33,4 @@ flowchart LR
   classDef ext fill:#FEF7E0,stroke:#F9AB00,color:#1a1a1a;
   class P,SCH actor;
   class TG ext;
-  class UC1,UC2,UC3,UC4,UC5,UC6 uc;
+  class UC1,UC2,UC3,UC4,UC5,UC6,UC7,UC8 uc;

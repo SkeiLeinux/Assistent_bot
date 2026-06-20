@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: Семейный ассистент — REST API (MVP / E1)
-  version: 1.0.0-mvp
+  version: 1.0.1-mvp
   description: |
-    Консолидированный контракт всех контекстов E1 по принятым ТЗ (docs/04_specs/*, 2026-06-07).
+    Консолидированный контракт всех контекстов E1 по принятым ТЗ (docs/04_specs/*). Покрытие на 2026-06-20: Identity v0.5, Lists v0.4, Finance v0.4, Nutrition v0.2.2 (+инкремент R — retrieval КБЖУ), Reminders v0.4, Notifications v0.3, Analytics v0.4.
     SSOT при расхождении — ТЗ; этот файл — производный артефакт для фронта (волна C) и standalone-шва (E5).
     Аутентификация: каждый запрос несёт Telegram initData в заголовке X-Telegram-Init-Data (HMAC, max-age 30 дней).
     Все сообщения об ошибках — на русском. Контракты E2+ добавляются на входе своих этапов.
@@ -226,7 +226,7 @@ paths:
     parameters: [ { $ref: "#/components/parameters/Id" } ]
     post:
       tags: [lists]
-      summary: Удалить отмеченные (только видимые зрителю — CH-10)
+      summary: Удалить отмеченные (только видимые зрителю — Q1-А6)
       responses:
         "200":
           description: OK
@@ -665,6 +665,9 @@ paths:
                 recurrence: { $ref: "#/components/schemas/Recurrence" }
                 interval_seconds: { type: integer, description: "Обязателен для interval" }
                 scope: { $ref: "#/components/schemas/Scope" }
+                delivery_target: { $ref: "#/components/schemas/DeliveryTarget" }
+                max_occurrences: { type: integer, minimum: 1, nullable: true, description: "S1: стоп по числу; только при recurrence≠none" }
+                until: { type: string, format: date-time, nullable: true, description: "S1: стоп по дате; только при recurrence≠none; > fire_at" }
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -683,7 +686,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [reminders]
-      summary: Правка (текст/время/recurrence/scope)
+      summary: Правка (текст/время/recurrence/scope/адресат/условие конца)
       requestBody:
         content:
           application/json:
@@ -695,6 +698,9 @@ paths:
                 recurrence: { $ref: "#/components/schemas/Recurrence" }
                 interval_seconds: { type: integer }
                 scope: { $ref: "#/components/schemas/Scope" }
+                delivery_target: { $ref: "#/components/schemas/DeliveryTarget" }
+                max_occurrences: { type: integer, minimum: 1, nullable: true }
+                until: { type: string, format: date-time, nullable: true }
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Reminder" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -836,6 +842,7 @@ components:
       enum: ["label", "off", "web", "nutritionix", "estimate", "db", "manual"]
     Recurrence: { type: string, enum: [none, daily, weekly, interval] }
     ReminderStatus: { type: string, enum: [ACTIVE, DONE, MISSED, CANCELLED] }
+    DeliveryTarget: { type: string, enum: [owner, family, partner], nullable: true, description: "S2: адресат push; NULL ⇒ из scope (personal→owner, family→family); partner — только при наличии второго члена семьи (I10)" }
 
     User:
       type: object
@@ -1153,6 +1160,10 @@ components:
         next_fire_at: { type: string, format: date-time, nullable: true }
         recurrence: { $ref: "#/components/schemas/Recurrence" }
         interval_seconds: { type: integer, nullable: true }
+        max_occurrences: { type: integer, nullable: true, description: "S1: стоп после N срабатываний (только при recurrence≠none; ≥1)" }
+        until: { type: string, format: date-time, nullable: true, description: "S1: стоп после момента UTC (только при recurrence≠none)" }
+        fired_count: { type: integer, description: "S1: счётчик фактических срабатываний (растёт только на fire, не на ack/snooze)" }
+        delivery_target: { $ref: "#/components/schemas/DeliveryTarget" }
         scope: { $ref: "#/components/schemas/Scope" }
         status: { $ref: "#/components/schemas/ReminderStatus" }
         last_fired_at: { type: string, format: date-time, nullable: true }
