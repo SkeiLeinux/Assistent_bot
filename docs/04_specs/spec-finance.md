@@ -233,9 +233,9 @@ stateDiagram-v2
 **DTO:**
 - `ImportResultDTO` = `{months:[{month, categories:int, income:int}], created_for_review:[CategoryNodeDTO], status:"ok"\|"failed", errors:[{row, reason}]}`
 - `CategoryNodeDTO` = `{id, name, parent_id, status, children:[CategoryNodeDTO]}`
-- `AnalyticsDTO` = `{period, range, total:{plan,fact,diff}, lines:[{category_id, name, plan, fact, diff, pct, children:[…]}]}`
+- `AnalyticsDTO` = `{period, range, plan_applicable:bool, total:{plan,fact,diff}, lines:[{category_id, name, plan, fact, diff, pct, children:[…]}]}` — `plan_applicable=false` ⇒ план/разница `null` вне целых месяцев (I9, as-built).
 - `IncomeReportDTO` = `{range, by_source:[{source, kind, partner?, plan, fact}], carryover, total_income, total_expense, delta}` — `carryover` = Σ факта `CARRYOVER`-источников за целые месяцы периода (Q-fin-3, согласовано с I10)
-- `MonthDTO` = `{month, imported_at, categories, has_facts}`
+- `MonthDTO` = `{month, imported_at, categories, has_facts}` — _as-built: `imported_at` в MVP не заполняется (null), `categories` = общее число категорий семьи; точные per-month значения — North Star._
 
 ---
 

@@ -16,7 +16,7 @@ from aiohttp import web
 
 from app.kernel import Scope
 
-from app.contexts.reminders.models import Recurrence, ReminderStatus
+from app.contexts.reminders.models import DeliveryTarget, Recurrence, ReminderStatus
 from app.contexts.reminders.services import InvalidInput, ReminderService
 
 
@@ -71,6 +71,10 @@ def _dto(rem) -> dict:
         "next_fire_at": rem.next_fire_at.isoformat() if rem.next_fire_at else None,
         "recurrence": rem.recurrence.value,
         "interval_seconds": rem.interval_seconds,
+        "max_occurrences": rem.max_occurrences,
+        "until": rem.until.isoformat() if rem.until else None,
+        "fired_count": rem.fired_count,
+        "delivery_target": rem.delivery_target.value if rem.delivery_target else None,
         "scope": rem.scope.value,
         "status": rem.status.value,
         "last_fired_at": rem.last_fired_at.isoformat() if rem.last_fired_at else None,
@@ -101,6 +105,17 @@ async def post_reminder(request: web.Request) -> web.Response:
     recurrence = _enum(Recurrence, body.get("recurrence", Recurrence.NONE.value), "recurrence")
     scope = _enum(Scope, body.get("scope", Scope.PERSONAL.value), "scope")
     interval_seconds = body.get("interval_seconds")
+    max_occurrences = body.get("max_occurrences")
+    if max_occurrences is not None and (
+        not isinstance(max_occurrences, int) or isinstance(max_occurrences, bool)
+    ):
+        raise InvalidInput("max_occurrences должен быть целым числом")
+    until = _parse_dt(body["until"], "until") if body.get("until") else None
+    delivery_target = (
+        _enum(DeliveryTarget, body["delivery_target"], "delivery_target")
+        if body.get("delivery_target")
+        else None
+    )
     rem = await svc.create_reminder(
         request["viewer"],
         text=text,
@@ -108,6 +123,9 @@ async def post_reminder(request: web.Request) -> web.Response:
         recurrence=recurrence,
         interval_seconds=interval_seconds,
         scope=scope,
+        max_occurrences=max_occurrences,
+        until=until,
+        delivery_target=delivery_target,
     )
     return _json(_dto(rem), status=201)
 
@@ -133,6 +151,16 @@ async def patch_reminder(request: web.Request) -> web.Response:
         kwargs["interval_seconds"] = body["interval_seconds"]
     if "scope" in body:
         kwargs["scope"] = _enum(Scope, body["scope"], "scope")
+    if "max_occurrences" in body:
+        kwargs["max_occurrences"] = body["max_occurrences"]
+    if "until" in body:
+        kwargs["until"] = _parse_dt(body["until"], "until") if body["until"] else None
+    if "delivery_target" in body:
+        kwargs["delivery_target"] = (
+            _enum(DeliveryTarget, body["delivery_target"], "delivery_target")
+            if body["delivery_target"]
+            else None
+        )
     rem = await svc.update_reminder(
         request["viewer"], _path_int(request, "reminder_id"), **kwargs
     )

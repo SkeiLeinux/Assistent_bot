@@ -987,8 +987,8 @@ components:
       type: object
       properties:
         month: { type: string, example: "2026-03" }
-        imported_at: { type: string, format: date-time }
-        categories: { type: integer }
+        imported_at: { type: string, format: date-time, nullable: true, description: "[as-built] в MVP не заполняется (null); точный per-month timestamp — North Star" }
+        categories: { type: integer, description: "[as-built] в MVP — общее число категорий семьи; per-month счёт — North Star" }
         has_facts: { type: boolean }
 
     CategoryNode:
@@ -1005,6 +1005,7 @@ components:
       properties:
         period: { type: string }
         range: { type: string }
+        plan_applicable: { type: boolean, description: "План применим только для периодов из целых календарных месяцев (I9); false ⇒ plan/diff = null" }
         total:
           type: object
           properties:

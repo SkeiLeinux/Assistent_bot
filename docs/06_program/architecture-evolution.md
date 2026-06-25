@@ -61,7 +61,7 @@ flowchart TB
 flowchart TB
   subgraph VPS["Тот же монолит"]
     F2["finance: + Transaction/Receipt + receipts-ACL + price history"]
-    H["health (НОВЫЙ контекст): Measurement/Workout/Supplement/Lab + vision-разбор скринов"]
+    H["health (НОВЫЙ контекст): Measurement/Workout(+пульс/зоны)/Supplement/Lab/Cycle + vision-разбор скринов"]
     R2["reminders (+ интерфейс для расписаний витаминов — ребро решает ADR-0008)"]
     A2["analytics: + сферы health/transactions в обзоре и дайджесте (состав — Катя)"]
   end
@@ -69,7 +69,7 @@ flowchart TB
   QR["QR чека (showScanQrPopup)"] --> CHAN
   PHOTO["Фото чека"] --> CHAN
   CHAN{{"чек-канал (ADR-0006): vision (осн.) / proverkacheka (бонус); API ФНС / lkdr — не инвестируем"}} --> F2
-  HSCR["Скрины тренировки/сна Huawei Health (vision, раз в 1–2 нед, вручную)"] --> H
+  HSCR["Скрины тренировки/сна Huawei Health (vision, раз в 1–3 дня, вручную; 2–3 скрина на полный набор)"] --> H
   LAB["Бланк анализов (фото/PDF)"] --> H
   H --> R2
 ```
@@ -101,11 +101,12 @@ E4 не добавляет write-моделей (композиции + трет
 ## 4. Что architectural-инвариантно на всю программу
 
 1. Домены не знают про Telegram, LLM-провайдера, формат внешних файлов и транспорт push — всё за швами (kernel.auth / llm_service / ACL / notifications).
-2. `visible_to` — единственный путь чтения shareable-данных на любом этапе; health-данные расширяют модель только значением `PERSONAL`-дефолта, не механизмом.
+2. `visible_to` — единственный путь чтения shareable-данных; **E3 добавляет в механизм read-only sharing** (owner-write/family-read — партнёр видит, не редактирует; ADR-0016): это расширение модели приватности правом записи, а не только новым значением scope. Health-данные по умолчанию `PERSONAL`.
 3. Один scheduler на все периодические job (reminder_poll, digest, E4-план, E3-напоминание «загрузить скрины тренировки/сна») — job добавляются регистрацией в композиции, не новыми лупами.
 4. Analytics/assistant читают только `*.read`-проекции — рост проактивности не повышает связность доменов.
 5. Любое новое межконтекстное ребро (E3: health→reminders; E4: связки закупок) — явное решение ADR + правка import-linter, никогда «просто импорт».
 
 ## История изменений
+- **2026-06-25 (Q3 раунд-1):** §2 health-узел + WORKOUT с пульсом/зонами; HSCR ритм 1–3 дня (2–3 скрина); §4 инвариант п.2 — модель приватности расширена read-only sharing (ADR-0016), право записи, не только scope-значение.
 - **2026-06-20 (#16):** узел E3 Huawei privacy-zip (`HZIP`) → vision-узел скринов тренировки/сна (`HSCR`); job «напоминание об экспорте» → «загрузить скрины»; чек-канал E2 (`CHAN`) — vision основным, API ФНС/lkdr сняты («не инвестируем без явного повода»); приведено к канону `feasibility.md` #16.
 - **2026-06-10:** первичная версия (E1 картинка + дельты E2–E3, E4–E5, программные инварианты).

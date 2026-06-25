@@ -55,8 +55,9 @@ async def _process_due(
         rem.last_fired_at = now
 
         if in_grace:
-            # «Догнать» один раз: доставить и продвинуть/закрыть (I2/I3/I5).
+            # «Догнать» один раз: доставить, нарастить счётчик, продвинуть/закрыть.
             to_deliver.append(_Fired(reminder_id=rem.id, text=rem.text))
+            rem.fired_count = (rem.fired_count or 0) + 1  # S1: fire растит счётчик
             _advance_after_fire(rem, scheduled)
         else:
             # Сверх грейса: MISSED, без доставки (I5).
@@ -74,13 +75,31 @@ async def _process_due(
 
 
 def _advance_after_fire(rem: Reminder, scheduled: datetime) -> None:
-    """I2/I3: одноразовое → DONE/None; повторяемое → следующий слот, ACTIVE."""
+    """I2/I3: одноразовое → DONE/None; повторяемое → следующий слот, ACTIVE;
+    затем I9 (S1): остановка по числу/дате → DONE."""
     if rem.recurrence == Recurrence.NONE:
         rem.status = ReminderStatus.DONE
         rem.next_fire_at = None
-    else:
-        rem.status = ReminderStatus.ACTIVE
-        rem.next_fire_at = next_after(scheduled, rem.recurrence, rem.interval_seconds)
+        return
+    rem.status = ReminderStatus.ACTIVE
+    rem.next_fire_at = next_after(scheduled, rem.recurrence, rem.interval_seconds)
+    if _should_stop(rem):
+        rem.status = ReminderStatus.DONE
+        rem.next_fire_at = None
+
+
+def _should_stop(rem: Reminder) -> bool:
+    """I9 (S1): остановка повторений по числу (max_occurrences) и/или дате (until).
+    Проверяется ПОСЛЕ инкремента fired_count и продвижения next_fire_at."""
+    if rem.max_occurrences is not None and rem.fired_count >= rem.max_occurrences:
+        return True
+    if (
+        rem.until is not None
+        and rem.next_fire_at is not None
+        and rem.next_fire_at > rem.until
+    ):
+        return True
+    return False
 
 
 async def run_poll(

@@ -24,7 +24,12 @@ from app.db.base import Base
 from app.kernel.models import Family, Membership, Scope, User
 from app.kernel.sharing import Viewer
 
-from app.contexts.reminders.models import Recurrence, Reminder, ReminderStatus
+from app.contexts.reminders.models import (
+    DeliveryTarget,
+    Recurrence,
+    Reminder,
+    ReminderStatus,
+)
 from app.contexts.reminders.services import (
     DEFAULT_GRACE_SECONDS,
     InvalidInput,
@@ -540,3 +545,126 @@ async def test_run_poll_with_external_session(session):
     notifier = MockNotifier()
     delivered = await run_poll(session, notifier, now_fn=clock)
     assert delivered == 1 and notifier.push_count == 1
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# A8 — остановка повторений (S1): max_occurrences / until; ack/snooze не растят
+# ════════════════════════════════════════════════════════════════════════════
+
+async def test_a8_max_occurrences_stops_after_n(maker, session):
+    _, _, _, v1, _ = await _family(session)
+    clock = FakeClock()
+    rem = await ReminderService(session, now_fn=clock).create_reminder(
+        v1, text="курс антибиотика", fire_at=UTC0,
+        recurrence=Recurrence.INTERVAL, interval_seconds=3600, max_occurrences=3,
+    )
+    await session.commit()
+    rid = rem.id
+    notifier = MockNotifier()
+    poll = _poll(maker, notifier, clock)
+    for _ in range(3):
+        await poll()
+        clock.advance(seconds=3600)
+    after = await _get(session, rid)
+    assert after.fired_count == 3
+    assert after.status == ReminderStatus.DONE and after.next_fire_at is None
+    assert notifier.push_count == 3
+    await poll()
+    assert notifier.push_count == 3
+
+
+async def test_a8_until_stops_after_date(maker, session):
+    _, _, _, v1, _ = await _family(session)
+    clock = FakeClock()
+    rem = await ReminderService(session, now_fn=clock).create_reminder(
+        v1, text="до даты", fire_at=UTC0, recurrence=Recurrence.DAILY,
+        until=UTC0 + timedelta(days=1, hours=1),
+    )
+    await session.commit()
+    rid = rem.id
+    poll = _poll(maker, MockNotifier(), clock)
+    await poll()
+    assert (await _get(session, rid)).status == ReminderStatus.ACTIVE
+    clock.advance(days=1)
+    await poll()
+    after = await _get(session, rid)
+    assert after.status == ReminderStatus.DONE and after.next_fire_at is None
+
+
+async def test_a8_both_conditions_first_wins(maker, session):
+    _, _, _, v1, _ = await _family(session)
+    clock = FakeClock()
+    rem = await ReminderService(session, now_fn=clock).create_reminder(
+        v1, text="оба", fire_at=UTC0, recurrence=Recurrence.DAILY,
+        max_occurrences=10, until=UTC0 + timedelta(days=1, hours=1),
+    )
+    await session.commit()
+    rid = rem.id
+    poll = _poll(maker, MockNotifier(), clock)
+    await poll()
+    clock.advance(days=1)
+    await poll()
+    after = await _get(session, rid)
+    assert after.status == ReminderStatus.DONE and after.fired_count == 2
+
+
+async def test_a8_ack_snooze_do_not_grow_fired_count(maker, session):
+    _, _, _, v1, _ = await _family(session)
+    clock = FakeClock()
+    svc = ReminderService(session, now_fn=clock)
+    rem = await svc.create_reminder(
+        v1, text="d", fire_at=UTC0, recurrence=Recurrence.DAILY, max_occurrences=5,
+    )
+    await session.commit()
+    rid = rem.id
+    await _poll(maker, MockNotifier(), clock)()
+    assert (await _get(session, rid)).fired_count == 1
+    await svc.ack(v1, rid)
+    await svc.snooze(v1, rid, 10)
+    assert (await _get(session, rid)).fired_count == 1
+
+
+async def test_a8_stop_fields_rejected_for_oneshot(session):
+    _, _, _, v1, _ = await _family(session)
+    svc = ReminderService(session, now_fn=FakeClock())
+    with pytest.raises(InvalidInput):
+        await svc.create_reminder(
+            v1, text="x", fire_at=UTC0, recurrence=Recurrence.NONE, max_occurrences=3,
+        )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# A9 — адресат доставки (S2): delivery_target=PARTNER → только партнёру
+# ════════════════════════════════════════════════════════════════════════════
+
+async def test_a9_partner_target_routes_to_partner_only(maker, session):
+    _u1, u2, _, v1, _ = await _family(session)
+    clock = FakeClock()
+    await ReminderService(session, now_fn=clock).create_reminder(
+        v1, text="напомни партнёру", fire_at=UTC0 - timedelta(minutes=1),
+        recurrence=Recurrence.NONE, scope=Scope.PERSONAL,
+        delivery_target=DeliveryTarget.PARTNER,
+    )
+    await session.commit()
+    notifier = MockNotifier()
+    await _poll(maker, notifier, clock)()
+    assert notifier.push_count == 1
+    assert notifier.calls[0]["recipient_ids"] == [u2.id]
+
+
+async def test_a9_partner_target_requires_second_member(session):
+    u1 = User(telegram_user_id=99, first_name="Solo", timezone="UTC")
+    session.add(u1)
+    await session.flush()
+    fam = Family(created_by=u1.id)
+    session.add(fam)
+    await session.flush()
+    session.add(Membership(user_id=u1.id, family_id=fam.id))
+    await session.flush()
+    v = Viewer(id=u1.id, family_id=fam.id)
+    svc = ReminderService(session, now_fn=FakeClock())
+    with pytest.raises(InvalidInput):
+        await svc.create_reminder(
+            v, text="x", fire_at=UTC0, recurrence=Recurrence.NONE,
+            delivery_target=DeliveryTarget.PARTNER,
+        )

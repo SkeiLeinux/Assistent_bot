@@ -19,3 +19,11 @@ class ReminderStatus(str, enum.Enum):
     DONE = "done"
     MISSED = "missed"
     CANCELLED = "cancelled"
+
+
+class DeliveryTarget(str, enum.Enum):
+    """Адресат push (S2, §3.1). NULL ⇒ из scope (PERSONAL→OWNER, FAMILY→FAMILY)."""
+
+    OWNER = "owner"
+    FAMILY = "family"
+    PARTNER = "partner"

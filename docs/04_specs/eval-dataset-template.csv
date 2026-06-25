@@ -1,0 +1,6 @@
+case_id,tier,mode,input_text,input_images,item_name,grams,basis,kcal,protein,fat,carbs,barcode,truth_source,tags
+case-0001,C,diary,100г ветчины,case-0001-label.jpg,ветчина,100,per100g,250,18,20,1,4690228012345,label,packaged;ocr
+case-0002,D,text,Чикенбургер Вкусно и Точка,,чикенбургер,129,per_portion,337,,,,,fatsecret (дозаполнить БЖУ),restaurant;web
+case-0003,A,diary,"100г ветчины, 100г сыра, 2.5 яйца С1",case-0003-1.jpg;case-0003-2.jpg,ветчина,100,per100g,250,18,20,1,,label,homemade;weighed
+case-0003,A,diary,"100г ветчины, 100г сыра, 2.5 яйца С1",case-0003-1.jpg;case-0003-2.jpg,сыр,100,per100g,350,25,27,2,,label,homemade;weighed
+case-0003,A,diary,"100г ветчины, 100г сыра, 2.5 яйца С1",case-0003-1.jpg;case-0003-2.jpg,яйцо С1,140,per100g,143,12.7,9.5,0.7,,reference,homemade;weighed

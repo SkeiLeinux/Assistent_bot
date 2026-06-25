@@ -28,3 +28,13 @@ class HistoryAction(str, enum.Enum):
     EDITED = "edited"
     STATUS_CHANGED = "status_changed"
     MOVED = "moved"
+
+
+class TaskPriority(str, enum.Enum):
+    """Приоритет задачи (TASK), v0.4. Отображаемые лейблы — UI-копи, не в БД."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    URGENT = "urgent"
+    CRITICAL = "critical"

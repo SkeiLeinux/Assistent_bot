@@ -334,8 +334,10 @@ class FoodService:
     ) -> list[FoodEntry]:
         """Сохранить подтверждённые позиции. save_to_db[i]=True → также в каталог.
 
-        source — канал ввода: 'text' | 'photo' | 'db' (вокабуляр UI; иного рантайм
-        не порождает). 'manual' остаётся лишь защитным дефолтом роута/модели.
+        source — fallback-канал ввода ('text' | 'photo' | 'db'). Сохраняемый
+        FoodEntry.source — это ПРОВЕНАНС per-item (ADR-0013): источник позиции
+        (label/off/web/estimate) побеждает; этот параметр — дефолт для «голых»
+        позиций, 'manual' — защитный дефолт роута/модели.
         """
         if meal_type is None:
             local_now = datetime.now(self._tz(timezone_name))

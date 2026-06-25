@@ -11,7 +11,7 @@ from app.kernel import Scope, VisibilityDTO, VisibilityError
 from app.kernel.models import Family, Membership, User
 from app.kernel.sharing import Viewer
 
-from app.contexts.lists.models import ItemStatus, ListType
+from app.contexts.lists.models import ItemStatus, ListType, TaskPriority
 from app.contexts.lists.repositories import HISTORY_CAP, MAX_DEPTH
 from app.contexts.lists.services import (
     CrossListNesting,
@@ -343,3 +343,46 @@ async def test_move_prevents_cycle(session):
     b = await svc.add_item(v1, lst.id, text="B", parent_id=a.id)
     with pytest.raises(InvalidParent):  # нельзя вложить A в своего потомка B
         await svc.update_item(v1, a.id, parent_id=b.id)
+
+
+# ── v0.4: priority-enum / LINK comment / tags ────────────────────────────────
+async def test_task_priority_enum_accepts_valid_rejects_free_text(session):
+    _, _, _, v1, _ = await _family(session)
+    svc = ListService(session)
+    lst = await _mk_list(svc, v1, ListType.TASK, "Дела")
+    ok = await svc.add_item(
+        v1, lst.id, text="Срочное", specific_attrs={"priority": TaskPriority.HIGH.value}
+    )
+    assert ok.specific_attrs == {"priority": "high"}
+    with pytest.raises(InvalidSpecificAttrs):
+        await svc.add_item(v1, lst.id, text="плохо", specific_attrs={"priority": "вотпрямщас"})
+
+
+async def test_link_uses_comment_not_title(session):
+    _, _, _, v1, _ = await _family(session)
+    svc = ListService(session)
+    lst = await _mk_list(svc, v1, ListType.LINK, "Ссылки")
+    ok = await svc.add_item(
+        v1, lst.id, text="Заголовок",
+        specific_attrs={"url": "https://x.test", "comment": "почему полезно"},
+    )
+    assert ok.specific_attrs["comment"] == "почему полезно"
+    with pytest.raises(InvalidSpecificAttrs):
+        await svc.add_item(
+            v1, lst.id, text="старое",
+            specific_attrs={"url": "https://x.test", "title": "deprecated"},
+        )
+
+
+async def test_tags_must_be_list_of_str(session):
+    _, _, _, v1, _ = await _family(session)
+    svc = ListService(session)
+    lst = await _mk_list(svc, v1, ListType.GIFT, "Подарки")
+    ok = await svc.add_item(
+        v1, lst.id, text="Книга", specific_attrs={"tags": ["др", "книги"]}
+    )
+    assert ok.specific_attrs == {"tags": ["др", "книги"]}
+    with pytest.raises(InvalidSpecificAttrs):
+        await svc.add_item(v1, lst.id, text="плохо", specific_attrs={"tags": "не список"})
+    with pytest.raises(InvalidSpecificAttrs):
+        await svc.add_item(v1, lst.id, text="плохо2", specific_attrs={"tags": [1, 2]})

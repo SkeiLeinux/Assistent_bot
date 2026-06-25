@@ -18,7 +18,7 @@ from app.db.base import Base
 from app.db.time import utcnow_naive
 from app.kernel.models import Scoped
 
-from .enums import Recurrence, ReminderStatus
+from .enums import DeliveryTarget, Recurrence, ReminderStatus
 
 
 def _enum(enum_cls):
@@ -48,6 +48,17 @@ class Reminder(Base, Scoped):
     )
     # Шаг для INTERVAL (секунды). Для WEEKLY день недели берётся из next_fire_at.
     interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # S1: условие остановки повторений (только при recurrence≠NONE).
+    max_occurrences: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fired_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # S2: адресат push. NULL ⇒ из scope (PERSONAL→OWNER, FAMILY→FAMILY).
+    delivery_target: Mapped[DeliveryTarget | None] = mapped_column(
+        _enum(DeliveryTarget), nullable=True
+    )
 
     status: Mapped[ReminderStatus] = mapped_column(
         _enum(ReminderStatus), nullable=False, default=ReminderStatus.ACTIVE

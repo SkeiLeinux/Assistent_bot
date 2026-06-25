@@ -13,8 +13,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.db.time import utcnow_naive
 from app.kernel import IdentityService, Scope, Viewer
+from app.kernel.repositories import FamilyRepository
 
-from app.contexts.reminders.models import Recurrence, Reminder, ReminderStatus
+from app.contexts.reminders.models import (
+    DeliveryTarget,
+    Recurrence,
+    Reminder,
+    ReminderStatus,
+)
 from app.contexts.reminders.repositories import ReminderRepository
 from app.contexts.reminders.services.errors import (
     FamilyRequired,
@@ -72,6 +78,9 @@ class ReminderService:
         recurrence: Recurrence = Recurrence.NONE,
         interval_seconds: int | None = None,
         scope: Scope = Scope.PERSONAL,
+        max_occurrences: int | None = None,
+        until: datetime | None = None,
+        delivery_target: DeliveryTarget | None = None,
     ) -> Reminder:
         if not text or not text.strip():
             raise InvalidInput("Пустой текст напоминания")
@@ -93,6 +102,24 @@ class ReminderService:
         tz_name = await self._owner_timezone(viewer.id)
         next_fire_at = _to_naive_utc(fire_at, tz_name)
 
+        # S1: условие остановки — только при повторяемом.
+        until_utc = None
+        if recurrence == Recurrence.NONE:
+            if max_occurrences is not None or until is not None:
+                raise InvalidInput(
+                    "max_occurrences/until допустимы только при повторяемом напоминании"
+                )
+        else:
+            if max_occurrences is not None and max_occurrences < 1:
+                raise InvalidInput("max_occurrences должен быть ≥ 1")
+            if until is not None:
+                until_utc = _to_naive_utc(until, tz_name)
+                if until_utc <= next_fire_at:
+                    raise InvalidInput("until должен быть позже первого срабатывания")
+        # S2: delivery_target=PARTNER требует второго члена семьи (I10).
+        if delivery_target == DeliveryTarget.PARTNER:
+            await self._require_partner(viewer)
+
         rem = Reminder(
             owner_id=viewer.id,
             family_id=viewer.family_id,
@@ -101,6 +128,9 @@ class ReminderService:
             next_fire_at=next_fire_at,
             recurrence=recurrence,
             interval_seconds=interval_seconds,
+            max_occurrences=max_occurrences,
+            until=until_utc,
+            delivery_target=delivery_target,
             status=ReminderStatus.ACTIVE,
         )
         return await self.reminders.create(rem)
@@ -117,6 +147,9 @@ class ReminderService:
         recurrence: Recurrence | None = None,
         interval_seconds=_UNSET,
         scope: Scope | None = None,
+        max_occurrences=_UNSET,
+        until=_UNSET,
+        delivery_target=_UNSET,
     ) -> Reminder:
         rem = await self.get_reminder(viewer, reminder_id)
 
@@ -137,6 +170,19 @@ class ReminderService:
             if rem.status in (ReminderStatus.DONE, ReminderStatus.MISSED):
                 rem.status = ReminderStatus.ACTIVE
 
+        if max_occurrences is not _UNSET:
+            rem.max_occurrences = max_occurrences
+        if until is not _UNSET:
+            rem.until = (
+                _to_naive_utc(until, await self._owner_timezone(rem.owner_id))
+                if until is not None
+                else None
+            )
+        if delivery_target is not _UNSET:
+            if delivery_target == DeliveryTarget.PARTNER:
+                await self._require_partner(viewer)
+            rem.delivery_target = delivery_target
+
         # Согласованность interval после правки recurrence.
         if rem.recurrence == Recurrence.INTERVAL and (
             not rem.interval_seconds or rem.interval_seconds <= 0
@@ -144,6 +190,12 @@ class ReminderService:
             raise InvalidInput("recurrence=interval требует положительный interval_seconds")
         if rem.recurrence != Recurrence.INTERVAL:
             rem.interval_seconds = None
+        # S1: условие остановки только при повторяемом; иначе снимаем.
+        if rem.recurrence == Recurrence.NONE:
+            rem.max_occurrences = None
+            rem.until = None
+        elif rem.max_occurrences is not None and rem.max_occurrences < 1:
+            raise InvalidInput("max_occurrences должен быть ≥ 1")
 
         await self.session.flush()
         return rem
@@ -189,3 +241,11 @@ class ReminderService:
     async def _owner_timezone(self, owner_id: int) -> str:
         user = await self.identity.users.get(owner_id)
         return getattr(user, "timezone", None) or "UTC"
+
+    async def _require_partner(self, viewer: Viewer) -> None:
+        """I10: delivery_target=PARTNER требует второго члена семьи."""
+        if viewer.family_id is None:
+            raise FamilyRequired("Нужна семья")
+        members = await FamilyRepository(self.session).members(viewer.family_id)
+        if not any(u.id != viewer.id for _m, u in members):
+            raise InvalidInput("delivery_target=partner требует второго члена семьи")
