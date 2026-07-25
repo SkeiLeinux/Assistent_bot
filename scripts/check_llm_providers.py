@@ -49,6 +49,13 @@ from dataclasses import dataclass, field
 
 TIMEOUT = 15
 
+# User-Agent обязателен. Groq (и не только) стоит за Cloudflare, а Cloudflare
+# банит дефолтный `Python-urllib/3.x` как скраперную подпись и отдаёт
+# `403 error code: 1010` — что выглядит как отказ провайдера, хотя провайдер
+# запроса даже не увидел. Проверено на живом VPS 2026-07-25: с urllib-дефолтом
+# Groq давал 1010, при том что прод-код через httpx работает.
+USER_AGENT = "lifeManager-bot-provider-check/1.0"
+
 # ── Вердикты ────────────────────────────────────────────────────────────────
 
 OK = "ДОСТУПЕН"
@@ -56,6 +63,7 @@ GEO = "ЗАКРЫТ ПО ГЕО"
 KEY = "ДОСТУПЕН (ключ невалиден)"
 NET = "СЕТЬ НЕ ПРОХОДИТ"
 NOKEY = "НЕ ПРОВЕРЕН (нет ключа)"
+CF = "БЛОК CLOUDFLARE (не вендор)"
 UNKNOWN = "НЕЯСНО — смотри тело ответа"
 
 # Подстроки гео-отказа. Список эвристический и может отстать от формулировок
@@ -205,7 +213,7 @@ def check_network(host: str, force_ipv4: bool) -> tuple[bool, str]:
 def http(url: str, headers: dict, body: dict | None = None) -> tuple[int, str]:
     """Возвращает (код, тело). HTTPError — это тоже ответ, а не сбой."""
     data = json.dumps(body).encode() if body is not None else None
-    hdrs = dict(headers)
+    hdrs = {"User-Agent": USER_AGENT, "Accept": "application/json", **headers}
     if data is not None:
         hdrs["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=hdrs, method="POST" if data else "GET")
@@ -230,10 +238,19 @@ def classify(code: int, body: str) -> str:
         return GEO
     if any(m in low for m in REACHABLE_MARKERS):
         return OK
-    if code in (401, 403) and any(m in low for m in KEY_MARKERS):
+    # Код НЕ проверяем намеренно. Первая редакция требовала 401/403 — и промахнулась
+    # на живом прогоне: Google на невалидный ключ отдаёт `400 INVALID_ARGUMENT /
+    # API_KEY_INVALID`, вердикт свалился в «НЕЯСНО». Признак «дело в ключе» несёт
+    # тело, а не статус; статусы у вендоров разъезжаются (400 Google, 401 OpenAI,
+    # 401 Anthropic).
+    if any(m in low for m in KEY_MARKERS):
         return KEY
     if code == 429:
         return OK
+    # Cloudflare-заглушки приходят без JSON и до провайдера: «error code: 1010»
+    # (забанена подпись клиента), 1020 (правило доступа). Это не отказ вендора.
+    if "error code: 10" in low:
+        return CF
     return UNKNOWN
 
 
@@ -274,6 +291,14 @@ def run(p: Provider, force_ipv4: bool, verbose: bool) -> str:
     if not key:
         print(f"  ключ   : не задан ({' / '.join(p.env)})")
         print(f"  ВЕРДИКТ: {NOKEY} — сеть проходит, но гео без ключа не проверить")
+        return NOKEY
+    # Защита от главной ошибки первого прогона (2026-07-25): в инструкции стояло
+    # `export OPENAI_API_KEY=...`, и многоточие было скопировано БУКВАЛЬНО. Все
+    # четыре провайдера отчитались «ключ есть» и честно ответили «ключ невалиден».
+    # Прогон впустую. Дешевле поймать здесь, чем разбирать вывод.
+    if len(key) < 20 or set(key) <= set(".xX*<>"):
+        print(f"  ключ   : ⚠ похоже на заглушку ({key!r}) — это не ключ, а из "
+              f"примера. Гео по нему не проверить.")
         return NOKEY
     print(f"  ключ   : есть (…{key[-4:]})")
 
@@ -335,8 +360,15 @@ def main() -> int:
 
     print(f"\n{'═' * 70}\nИТОГ")
     for name, v in results.items():
-        mark = {OK: "✅", KEY: "✅", GEO: "❌", NET: "🔌", NOKEY: "⚪", UNKNOWN: "❓"}[v]
+        mark = {OK: "✅", KEY: "✅", GEO: "❌", NET: "🔌",
+                NOKEY: "⚪", CF: "🛡", UNKNOWN: "❓"}[v]
         print(f"  {mark} {name:<10} {v}")
+
+    if any(v == CF for v in results.values()):
+        print("\n🛡  Cloudflare отбил запрос до провайдера — это проблема КЛИЕНТА,\n"
+              "   не доступности API. Обычно виноват User-Agent. Скрипт уже слаёт\n"
+              f"   свой ({USER_AGENT}); если блок остался, попробуй --ipv4 или\n"
+              "   проверь этого провайдера рабочим SDK — прод-код ходит через httpx.")
 
     if results.get("groq") == NET:
         print("\n⚠  Groq — контрольная группа, и он недостижим по сети.\n"
