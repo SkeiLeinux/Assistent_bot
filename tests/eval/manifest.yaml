@@ -1,0 +1,444 @@
+# Eval-датасет: сравнение vision-моделей на распознавании КБЖУ.
+# Спецификация: docs/05_implementation/llm-eval-dataset.md (SSOT по схеме, метрикам, порогам).
+#
+# tier: A (этикетки, эталон = цифры с упаковки) | B (тарелки, эталона нет) | C (составное блюдо, эталон = сумма по A)
+#
+# Схема кейса яруса A:
+#
+# - id: A-01
+#   tier: A
+#   image: images/A-01_kj-only.jpg
+#   trap: kj-only              # тег ловушки — для группировки в отчёте по §4
+#   ground_truth:
+#     basis: per100g            # per100g | per_portion
+#     kcal: 119
+#     protein: 7.8
+#     fat: 4.2
+#     carbs: 11.5
+#     name: творог
+#     brand: Простоквашино
+#   note: на упаковке только кДж (496), ккал не напечатаны
+#   confidence: high            # high | low — low, если эталон прочитан с самого тестового (нечитаемого) фото и не подтверждён отдельно
+#
+# Теги trap (§3): kj-only · small-font-ru · glare-crumpled · per-portion · dual-table · composite-product · clean
+
+- id: A-15
+  tier: A
+  image: images/A-15_clean.png
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 110
+    protein: 17
+    fat: 2.5
+    carbs: 4
+    name: Корейка по-черкизовски (мясной продукт из свинины варёно-копчёный)
+    brand: Черкизово
+  note: И кДж (450), и ккал (110) указаны на этикетке, сходится (450/110≈4.09 кДж/ккал)
+  confidence: high
+
+- id: A-16
+  tier: A
+  image: images/A-16_clean.png
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 210.9
+    protein: 8.5
+    fat: 18.5
+    carbs: 2.6
+    name: Сыр мягкий творожный, 65% жира в сухом веществе
+    brand: null  # на фото только изготовитель (АО «УНАГРАНДЕ КОМПАНИ»), потребительского бренда не видно
+  note: И кДж (873.2), и ккал (210.9) указаны; Atwater 4*8.5+9*18.5+4*2.6=210.9 — точное совпадение
+  confidence: high
+
+- id: A-17
+  tier: A
+  image: images/A-17_clean.png
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 56
+    protein: 13
+    fat: null  # на этикетке не напечатано (продукт практически обезжиренный)
+    carbs: 1
+    name: Белок яичный пастеризованный охлаждённый жидкий
+    brand: ВкусВилл
+  note: жир отсутствует на этикетке; Atwater с fat=0 даёт 4*13+4*1=56 — точно сходится. Бренд подтверждён С.
+  confidence: high
+
+- id: A-04
+  tier: A
+  image: images/A-04_small-font-ru.jpg
+  trap: small-font-ru
+  ground_truth:
+    basis: per100g
+    kcal: 222.5
+    protein: 0
+    fat: 0
+    carbs: 56.6
+    name: Сироп "Дабл Бёрн Солёная карамель двойного обжига"
+    brand: Herbarista (Гербариста)
+  note: текст повёрнут на 90°, продублирован на английском — сверка по обоим языкам совпадает
+  confidence: high
+
+- id: A-05
+  tier: A
+  image: images/A-05_small-font-ru.jpg
+  trap: small-font-ru
+  ground_truth:
+    basis: per100g
+    kcal: 213
+    protein: 11.6
+    fat: 17.5
+    carbs: 2.2
+    name: Сыр плавленый Фетакса, 45% жира в сухом веществе
+    brand: Фетакса
+  note: билингвальная этикетка (рус+каз), плотный мелкий текст; Atwater 4*11.6+9*17.5+4*2.2=212.7≈213 — сходится, подтверждает fat=17.5
+  confidence: high
+
+- id: A-06
+  tier: A
+  image: images/A-06_small-font-ru.jpg
+  trap: small-font-ru
+  ground_truth:
+    basis: per100g
+    kcal: 72.5
+    protein: 2
+    fat: 0.9
+    carbs: 14.1
+    name: Картофель отварной с укропом
+    brand: ВкусВилл Классика
+  note: текст повёрнут на 90°; на этикетке есть ещё разбивка транс-/насыщенных жиров — вне нашей схемы, не переносил. Atwater 4*2+9*0.9+4*14.1=72.5 — точное совпадение
+  confidence: high
+
+- id: A-07
+  tier: A
+  image: images/A-07_glare-crumpled.jpg
+  trap: glare-crumpled
+  ground_truth:
+    basis: per100g
+    kcal: 425.8
+    protein: 6
+    fat: 20.6
+    carbs: 54.1
+    name: '"Картошка" классическая (составной продукт, молочный/белый шоколад 15%)'
+    brand: null
+  note: "Эталон продиктован С. напрямую (фото нечитаемо из-за перекрученной обёртки — по протоколу). На этикетке также соль 0.03 г — вне схемы, не переношу. Atwater 4*6+9*20.6+4*54.1=425.8 — точное совпадение"
+  confidence: high
+
+- id: A-09
+  tier: A
+  image: images/A-09_per-portion.jpg
+  trap: per-portion
+  ground_truth:
+    basis: per_portion
+    portion_grams: 500
+    kcal: 695
+    protein: 10
+    fat: 39
+    carbs: 76
+    name: Картофельное пюре с молоком, сливками и сливочным маслом
+    brand: ВВ (ВкусВилл)
+  note: значения на всю упаковку (500 г), НЕ на 100 г — это и есть ловушка. Atwater 4*10+9*39+4*76=695 — точное совпадение. portion_grams — поле сверх схемы из спеки §5, добавил для однозначного пересчёта (С. подтвердил).
+  confidence: high
+
+- id: A-13
+  tier: A
+  image: images/A-13_composite-product.jpg
+  trap: composite-product
+  ground_truth:
+    basis: per100g
+    kcal: 176.1
+    protein: 3.9
+    fat: 4.5
+    carbs: 30
+    name: Онигири с запечённым тунцом
+    brand: ВкусВилл
+  note: "Эталон подтверждён С. напрямую — мой первый прочит по повёрнутому мелкому тексту (227.5/9.1/4.7/39.1) был заметно неверным, несмотря на то что тоже правдоподобно сходился по Atwater (235≈227.5). Урок: сходимость Atwater не доказывает верность чтения, если сама подстановка цифр неверна. Проверка: 4*3.9+9*4.5+4*30=176.1 — точное совпадение"
+  confidence: high
+
+- id: A-18
+  tier: A
+  image: images/A-18_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 71
+    protein: 2.8
+    fat: 2.0
+    carbs: 10.5
+    name: Коктейль молочный стерилизованный со вкусом клубники, 2%
+    brand: Чудо
+  note: Atwater 4*2.8+9*2+4*10.5=71.2≈71 — сходится
+  confidence: high
+
+- id: A-19
+  tier: A
+  image: images/A-19_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 90
+    protein: 5.0
+    fat: 0.5
+    carbs: 16.0
+    name: Паста томатная концентрированная
+    brand: null  # без явного бренда, только изготовитель ООО «Агро-инвест»
+  note: Atwater 4*5+9*0.5+4*16=88.5≈90 — в пределах обычного округления
+  confidence: high
+
+- id: A-20
+  tier: A
+  image: images/A-20_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 57
+    protein: 3.0
+    fat: 3.2
+    carbs: 4.0
+    name: Кефир 3.2%
+    brand: null  # бренд на кадре не виден (только произв. АО «Эйч энд Эн» + кот-маскот)
+  note: Atwater 4*3+9*3.2+4*4=56.8≈57 — сходится
+  confidence: medium  # бренд не подтверждён
+
+- id: A-21
+  tier: A
+  image: images/A-21_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 60
+    protein: 3.0
+    fat: 3.2
+    carbs: 4.7
+    name: Молоко питьевое пастеризованное 3.2%
+    brand: null  # бренд на кадре не виден
+  note: "clean уже закрыт (6/6 на A-15..20) — кейс сверх квоты §3, бонусный. Atwater 4*3+9*3.2+4*4.7=59.6≈60 — сходится"
+  confidence: medium  # бренд не подтверждён
+
+- id: A-26
+  tier: A
+  image: images/A-26_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 221
+    protein: 17
+    fat: 17
+    carbs: null  # не напечатано; Atwater с carbs=0 даёт 68+153=221 — точное совпадение
+    name: Стейк на кости в пряных травах и специях (полуфабрикат мясной из свинины)
+    brand: Черкизово
+  note: Atwater (без carbs) 4*17+9*17=221 — точное совпадение
+  confidence: high
+
+- id: A-27
+  tier: A
+  image: images/A-27_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 32.6
+    protein: 2.6
+    fat: 1
+    carbs: 3.3
+    name: Суп с куриными фрикадельками и пастой в виде звёздочек
+    brand: ВкусВилл
+  note: "Параллельно указано 'в одной порции (300 г) содержится 98 ккал' (98≈32.6×3 — сходится). Это НЕ дублирую как dual-table: одна основная таблица per100g + отдельная фраза-сноска про порцию — не два равноправных столбца, путать почти нечего. dual-table оставляю только для реальных двух параллельных таблиц (см. A-31/A-32). Atwater 4*2.6+9*1+4*3.3=32.6 — точное"
+  confidence: high
+
+- id: A-28
+  tier: A
+  image: images/A-28_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 203.6
+    protein: 2.5
+    fat: 20
+    carbs: 3.4
+    name: Сметана 20%
+    brand: ВкусВилл
+  note: Atwater 4*2.5+9*20+4*3.4=203.6 — точное совпадение
+  confidence: high
+
+- id: A-29
+  tier: A
+  image: images/A-29_glare-crumpled.jpg
+  trap: glare-crumpled
+  ground_truth:
+    basis: per100g
+    kcal: 150
+    protein: 34
+    fat: 2
+    carbs: null
+    name: Карпаччо из индейки, сырокопчёное
+    brand: Черкизово
+  note: "Жир подтверждён С. напрямую (2 г, не 1 — этикетка была измята ровно в этом месте). Atwater 4*34+9*2=154 vs 150 — расхождение ~2.7%, обычное округление"
+  confidence: high
+
+- id: A-30
+  tier: A
+  image: images/A-30_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 447
+    protein: 22
+    fat: 28
+    carbs: 14.8
+    name: Печенье глазированное шоколадом со вкусом брауни и вишни
+    brand: Bombbar
+  note: клетчатка 24г/100г отдельно от углеводов (не в 14.8). Atwater 4/9/4 даёт только 399; с клетчаткой @~2ккал/г — 447.2≈447
+  confidence: high
+
+- id: A-31
+  tier: A
+  image: images/A-31_dual-table.jpg
+  trap: dual-table
+  ground_truth:
+    basis: per100g
+    kcal: 432
+    protein: 15
+    fat: 32
+    carbs: 13
+    name: Печенье с арахисом, покрытое шоколадом
+    brand: Bombbar
+  note: "Бренд не читается явно в кадре — предположил Bombbar по совпадению изготовителя (ООО «Фитнес фуд», Самарская обл.) с A-30, подтверди. Настоящая двойная таблица: порция(40г) и 100г параллельно, оба полные наборы Б/Ж/У/клетчатка/энергия — вот это и есть dual-table в узком смысле. На 40г: 173ккал/6/13/5, клетчатка 7г. Всё масштабируется ровно ×0.4172. Тот же паттерн клетчатки, что A-30: с fiber@2ккал/г — 436≈432"
+  confidence: medium  # бренд предположен, не прочитан напрямую
+
+- id: A-32
+  tier: A
+  image: images/A-32_dual-table.jpg
+  trap: dual-table
+  ground_truth:
+    basis: per100g
+    kcal: 290
+    protein: 7.0
+    fat: 7.0
+    carbs: 48.0
+    name: Тортилья со вкусом сыра
+    brand: null  # потребительский бренд не идентифицирован уверенно
+  note: "Тоже настоящая двойная таблица: 'на 100г' и 'в одной тортилье' (~41.7г) параллельно. Б/Ж/У масштабируются точно ×0.4172, но соль — нет (1.12×0.4172=1.25 ожидается, указано 0.47) — либо я неверно прочитал одно из значений соли, не проверено (соль вне нашей схемы). Atwater 4*7+9*7+4*48=283≈290"
+  confidence: high  # по 4 основным полям; соль расходится, но вне схемы
+
+- id: A-33
+  tier: A
+  image: images/A-33_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 44.1
+    protein: 4.2
+    fat: 1.7
+    carbs: 3
+    name: Щавелевый суп с куриной грудкой
+    brand: ВкусВилл (в балансе)
+  note: Atwater 4*4.2+9*1.7+4*3=44.1 — точное совпадение
+  confidence: high
+
+- id: A-34
+  tier: A
+  image: images/A-34_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 72.3
+    protein: 11
+    fat: 1.5
+    carbs: 3.7
+    name: Творог мягкий высокобелковый 1.5%
+    brand: ВкусВилл
+  note: Atwater 4*11+9*1.5+4*3.7=72.3 — точное совпадение. Тоже есть сноска "в одной порции (250г) — 181ккал" (72.3×2.5=180.75≈181, сходится), классифицирую как clean по той же логике, что A-27
+  confidence: high
+
+- id: A-35
+  tier: A
+  image: images/A-35_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 140.4
+    protein: 10.8
+    fat: 4
+    carbs: 15.3
+    name: Творог со сливками с наполнителем черника, 5%
+    brand: null  # бренд-бейдж в этом кадре не виден уверенно
+  note: На фото видны потёки/пятна черники поверх этикетки, но сами цифры не задеты и читаются чётко. Atwater 4*10.8+9*4+4*15.3=140.4 — точное совпадение, поэтому classify как clean, а не glare-crumpled (реальной трудности чтения не было)
+  confidence: high
+
+- id: A-36
+  tier: A
+  image: images/A-36_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 188
+    protein: 23.5
+    fat: 10.7
+    carbs: 1.2
+    name: Филе тунца в масле, консервы
+    brand: null  # виден только изготовитель (Tropical Food, Китай) и импортёр, потребительского бренда на этикетке нет
+  note: Atwater 4*23.5+9*10.7+4*1.2=195.1 vs заявленных 188 — расхождение ~3.8%, чуть больше обычного, но не тревожно (рыба в масле, часть масла не учитывается в 100г продукта)
+  confidence: high
+
+- id: A-37
+  tier: A
+  image: images/A-37_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 107
+    protein: 24
+    fat: 1.4
+    carbs: 0
+    name: Тунец Скипджек филе натуральный, консервы
+    brand: null  # только "PRODUCT OF THAILAND", потребительского бренда на кадре нет
+  note: Третий разный тунец в датасете (после A-36 в масле, 188ккал) — этот в собственном соку/воде, постнее. Atwater 4*24+9*1.4=108.6≈107
+  confidence: high
+
+- id: A-38
+  tier: A
+  image: images/A-38_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 100
+    protein: 23
+    fat: 0.9
+    carbs: 0
+    name: Тунец (SK)
+    brand: SK
+  note: Четвёртый тунец, ещё один отдельный продукт. Полное наименование на кадре обрезано, виден только бренд-значок SK. Atwater 4*23+9*0.9=100.1≈100 — точное совпадение
+  confidence: medium  # полное название продукта не поймано в кадр
+
+- id: A-39
+  tier: A
+  image: images/A-39_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 342
+    protein: 12.0
+    fat: 1.3
+    carbs: 70.5
+    name: Макароны "Спиральки-экспресс", группа А высший сорт
+    brand: МАКФА
+  note: "Это СУХИЕ (сырые) макароны — на кадре только одна таблица 'на 100г изделий'. Если на пачке есть вторая панель 'в отварном виде' — это будет настоящий dual-table в исходном смысле спеки §3 (сухое/готовое), которого у нас пока нет вообще ни одного. Если такая панель есть на пачке — сфоткай отдельно, это ценнее новых clean. Atwater 4*12+9*1.3+4*70.5=341.7≈342"
+  confidence: high
+
+- id: A-40
+  tier: A
+  image: images/A-40_clean.jpg
+  trap: clean
+  ground_truth:
+    basis: per100g
+    kcal: 128.1
+    protein: 8
+    fat: 5.3
+    carbs: 12.1
+    name: Творог мягкий высокобелковый "Шоколадный брауни", 5.3%
+    brand: ВкусВилл
+  note: Собрано с двух твоих фото — этикетка на банке не влезает в один кадр (белки с одной половины, жиры/углеводы/ккал с другой). Atwater 4*8+9*5.3+4*12.1=128.1 — точное совпадение, обе половины стыкуются верно
+  confidence: high
