@@ -26,6 +26,7 @@ from app.contexts.nutrition.resolve.ports import ExtractedItem, ExtractResult
 from app.contexts.nutrition.services.llm_service import (
     LLMError,
     LLMRateLimitError,
+    _cap_images,
     _extract_json,
     _get_client,
 )
@@ -67,12 +68,21 @@ class Extractor(Protocol):
 
 
 class LLMExtractor:
-    """Groq/Scout-реализация извлекателя (vision + text, строгий JSON, §6)."""
+    """Groq-реализация извлекателя (vision + text, строгий JSON, §6).
+
+    Модель — `settings.groq_model` (с 2026-07-25 `qwen/qwen3.6-27b`: Scout
+    отключён Groq, см. ADR-0014).
+    """
 
     def __init__(self, model: str | None = None) -> None:
         self.model = model or settings.groq_model
 
     async def _complete(self, user_content) -> list[ExtractedItem]:
+        # См. llm_service._complete: у двухрежимных моделей без reasoning_effort
+        # включается thinking и reasoning-токены выедают max_tokens → пустой JSON.
+        extra: dict = {}
+        if settings.groq_reasoning_effort:
+            extra["reasoning_effort"] = settings.groq_reasoning_effort
         try:
             response = await _get_client().chat.completions.create(
                 model=self.model,
@@ -83,6 +93,7 @@ class LLMExtractor:
                 response_format={"type": "json_object"},
                 temperature=0.2,
                 max_tokens=1500,
+                **extra,
             )
         except RateLimitError as e:
             raise LLMRateLimitError(
@@ -120,7 +131,7 @@ class LLMExtractor:
                     or "Определи продукты на фото и оцени их КБЖУ.",
                 }
             ]
-            for image_bytes in images[:5]:  # лимит Groq: ≤ 5 изображений (I6)
+            for image_bytes in _cap_images(images):  # кап модели (groq_max_images)
                 b64 = base64.b64encode(image_bytes).decode()
                 parts.append(
                     {

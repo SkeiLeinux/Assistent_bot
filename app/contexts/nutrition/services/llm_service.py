@@ -1,8 +1,15 @@
 """services/llm_service.py — провайдер-агностичная обёртка над LLM для КБЖУ (ТЗ §I6/I7).
 
 Зачем отдельный сервис: FoodService и delivery не знают, какой провайдер считает
-калории. Здесь спрятан Groq (модель llama-4-scout). Замена Groq→локальная модель
-(Ollama + Qwen2.5-VL) меняет только этот файл — контракт `NutritionLLM` тот же (I7).
+калории. Здесь спрятан Groq (модель — `settings.groq_model`). Замена Groq→локальная
+модель (Ollama + Qwen2.5-VL) меняет только этот файл — контракт `NutritionLLM` тот
+же (I7).
+
+Оговорка про I7 (2026-07-25): агностичность заявлена на уровне КОНТРАКТА, но клиент
+здесь жёстко `AsyncGroq`, а параметры вызова (лимит изображений, `reasoning_effort`)
+— свойства конкретной модели. Смена провайдера сегодня = правка этого файла, а не
+конфига. Закрывается ADR-0014 (переход на OpenAI-совместимый клиент с
+конфигурируемым base_url + расщепление text/vision-моделей).
 
 Контракт (`NutritionLLM`): все методы возвращают `NutritionResult` (список
 `NutritionItem`), т.к. одна строка/тарелка может содержать несколько продуктов.
@@ -169,6 +176,23 @@ def _get_client() -> AsyncGroq:
     return _client
 
 
+def _cap_images(images: list) -> list:
+    """Режет список снимков до лимита модели (`settings.groq_max_images`).
+
+    Обрезка — деградация, а не ошибка: у пользователя уже есть 4-е фото в UI, и
+    падать на этом хуже, чем посчитать по первым N. Но факт потери логируем —
+    без этого «модель не увидела этикетку» выглядит как галлюцинация.
+    Решение «ошибка vs обрезка vs два вызова» — открытый вопрос ADR-0014.
+    """
+    cap = settings.groq_max_images
+    if len(images) > cap:
+        logger.warning(
+            f"Изображений {len(images)} > лимита модели {cap} "
+            f"({settings.groq_model}) — в запрос уйдут первые {cap}"
+        )
+    return images[:cap]
+
+
 def _extract_json(content: str) -> dict:
     """Достаёт JSON из ответа модели (срезает ```-ограждения, берёт внешние скобки)."""
     text = content.strip()
@@ -194,6 +218,12 @@ class LLMService:
         self, user_content, system_prompt: str | None = None
     ) -> NutritionResult:
         """Общий вызов чата для текста и фото. user_content — str или список частей."""
+        # reasoning_effort передаём только если задан: у двухрежимных моделей
+        # (qwen3.6) без него включается thinking, и reasoning-токены выедают
+        # max_tokens до того, как модель дойдёт до JSON → пустой content.
+        extra: dict = {}
+        if settings.groq_reasoning_effort:
+            extra["reasoning_effort"] = settings.groq_reasoning_effort
         try:
             response = await _get_client().chat.completions.create(
                 model=self.model,
@@ -202,8 +232,11 @@ class LLMService:
                     {"role": "user", "content": user_content},
                 ],
                 response_format={"type": "json_object"},
+                # 0.2 — под детерминизм JSON. Qwen для non-thinking рекомендует 0.7;
+                # если КБЖУ поедут, крутить здесь (замер — на реальных фото этикеток).
                 temperature=0.2,
                 max_tokens=1024,
+                **extra,
             )
         except RateLimitError as e:
             raise LLMRateLimitError(
@@ -234,16 +267,18 @@ class LLMService:
     ) -> NutritionResult:
         """Одно или несколько фото блюда/упаковки (+ опц. описание) -> позиции с КБЖУ.
 
-        Все снимки уходят ОДНИМ вызовом (лимит Groq ≤ 5 изображений). Промпт —
-        прежний _SYSTEM_PROMPT: несколько продуктов на фото → несколько позиций.
+        Все снимки уходят ОДНИМ вызовом; кап — `settings.groq_max_images`
+        (свойство модели, не домена). Промпт — прежний _SYSTEM_PROMPT: несколько
+        продуктов на фото → несколько позиций.
         """
+        images = _cap_images(images)
         parts: list[dict] = [
             {
                 "type": "text",
                 "text": caption.strip() or "Определи продукты на фото и оцени их КБЖУ.",
             }
         ]
-        for image_bytes in images[:5]:  # лимит Groq: ≤ 5 изображений (I6)
+        for image_bytes in images:
             b64 = base64.b64encode(image_bytes).decode()
             parts.append(
                 {
@@ -267,7 +302,7 @@ class LLMService:
     async def analyze_dish_photos(
         self, images_b64: list[str], name: str, weight_g: float
     ) -> NutritionResult:
-        """До 5 фото блюда + название + вес → суммарное КБЖУ одной порции."""
+        """Фото блюда (кап `groq_max_images`) + название + вес → КБЖУ порции."""
         parts: list[dict] = [
             {
                 "type": "text",
@@ -277,7 +312,7 @@ class LLMService:
                 ),
             }
         ]
-        for b64 in images_b64[:5]:  # лимит Groq: ≤ 5 изображений (I6)
+        for b64 in _cap_images(images_b64):
             parts.append(
                 {
                     "type": "image_url",
@@ -299,7 +334,7 @@ class LLMService:
                 ),
             }
         ]
-        for b64 in images_b64[:5]:
+        for b64 in _cap_images(images_b64):
             parts.append(
                 {
                     "type": "image_url",

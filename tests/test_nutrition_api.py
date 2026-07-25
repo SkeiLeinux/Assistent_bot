@@ -1,7 +1,7 @@
 """FIX-2 (партия 1) — мультифото в фото-режиме дневника (REST /api/v1/nutrition/analyze).
 
 Два уровня:
-  - LLMService.analyze_photo собирает N image-частей в ОДИН вызов (cap 5) — промпт
+  - LLMService.analyze_photo собирает N image-частей в ОДИН вызов (cap = лимит модели) — промпт
     не меняется (монкипатчим _complete, сети нет).
   - роут analyze (type=photo) читает список images (dataURL/raw), режет до 5,
     обратно совместим с одиночным `image`, пустой ввод → 422 (InvalidInput).
@@ -33,7 +33,7 @@ def _b64(raw: bytes) -> str:
     return base64.b64encode(raw).decode()
 
 
-# ── Уровень LLMService: один вызов, N image-частей, cap 5 ─────────────────────
+# ── Уровень LLMService: один вызов, N image-частей, cap = лимит модели ────────
 
 async def test_llm_analyze_photo_one_call_n_image_parts(monkeypatch):
     svc = LLMService()
@@ -60,7 +60,15 @@ async def test_llm_analyze_photo_one_call_n_image_parts(monkeypatch):
     assert cap["system"] is None
 
 
-async def test_llm_analyze_photo_caps_at_five(monkeypatch):
+async def test_llm_analyze_photo_caps_at_model_limit(monkeypatch):
+    """Кап = лимит МОДЕЛИ (`settings.groq_max_images`), а не константа домена.
+
+    Тест читает лимит из конфига намеренно: он переезжает при каждой смене
+    провайдера (scout=5 → qwen3.6=3, ADR-0014), и хардкод «5» здесь уже один раз
+    протух вместе с моделью.
+    """
+    from app.config import settings
+
     svc = LLMService()
     cap: dict = {"content": None}
 
@@ -72,10 +80,11 @@ async def test_llm_analyze_photo_caps_at_five(monkeypatch):
 
     monkeypatch.setattr(svc, "_complete", fake_complete)
 
-    await svc.analyze_photo([bytes([i]) for i in range(6)])
+    limit = settings.groq_max_images
+    await svc.analyze_photo([bytes([i]) for i in range(limit + 2)])
 
     image_parts = [p for p in cap["content"] if p["type"] == "image_url"]
-    assert len(image_parts) == 5  # > 5 → берутся первые 5
+    assert len(image_parts) == limit
 
 
 # ── Уровень роута: парсинг images, cap, обратная совместимость, 0 → 422 ───────
