@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""check_off_coverage.py — диагностика ступени OFF с прод-машины (v2).
+"""check_off_coverage.py — диагностика ступени OFF с прод-машины (v3).
 
-ЧТО СЛУЧИЛОСЬ (прогон v1, 2026-07-27, VPS skylineNiderland):
-  18 из 25 запросов к `/cgi/search.pl` вернули HTTP 503 за 0.06 с — это не поиск,
-  а мгновенный отказ. Причина найдена: легаси-бэкенд поиска OFF (Perl), на котором
-  построены и `/cgi/search.pl`, и `/api/v2/search`, признан устаревшим и отдаёт 503
-  массово. Замена — search-a-licious (Elasticsearch) на search.openfoodfacts.org,
-  статус beta. Barcode-путь `/api/v2/product/{code}` при этом работает.
+ИСТОРИЯ ЗАМЕРА (важна, чтобы не повторить ошибки):
+  v1 — ходил в `/cgi/search.pl`: 18 из 25 запросов → HTTP 503 за 0.06 с. Причина не
+       в лимитах: легаси-бэкенд поиска OFF (Perl), питающий и `/cgi/search.pl`, и
+       `/api/v2/search`, устарел и отдаёт 503 массово. Замер недействителен.
+  v2 — перешёл на search-a-licious: 200 OK, 25/25 «найдено». Тоже недействителен:
+       скрипт брал первую карточку с полным КБЖУ, минуя `select_best()` из прода.
+       Elasticsearch всегда возвращает топ-20 по релевантности, поэтому «найдено»
+       означало «что-то вернулось», а не «нашёлся нужный товар». На запрос
+       «сыр плавленый фетакса» возвращался просто «Сыр плавленый», на «онигири с
+       запечённым тунцом» — «Онигири с креветкой».
 
-ПОЧЕМУ ЭТО ВАЖНО ДЛЯ ПРОДА: `OpenFoodFactsSource` ходит ровно в `/cgi/search.pl`.
-503 → SourceError → warning в лог → следующая ступень. То есть лестница ADR-0013
-в проде, вероятно, уже давно сводится к label→estimate, и это никем не замечено —
-наблюдаемости нет (дефект D12, `spec-nutrition-llm-contract.md` §9).
-
-ЭТОТ СКРИПТ отвечает на три вопроса:
-  ЭТАП 1 — РАЗВЕДКА: какой из четырёх эндпоинтов вообще отвечает 200 и какую форму
-           ответа отдаёт (форму печатаем — она нужна, чтобы переписать адаптер).
-  ЭТАП 2 — ПОКРЫТИЕ: на живом эндпоинте прогоняем 25 реальных товаров яруса A.
-  ЭТАП 3 — ВЫВОД: сводка + что это значит для решения OQ-1 и приоритета R2.
+ЧТО ДЕЛАЕТ v3:
+  1. Переносит `select_best()` из прода ДОСЛОВНО (бренд ×3, доля токенов имени ×2,
+     близость жирности +1, completeness) и печатает СКОР победителя.
+  2. Отдельно ищет среди всех 20 кандидатов те, чьи ккал сходятся с эталоном ≤10%,
+     и печатает их ранг. Это разделяет два разных диагноза:
+        «товара нет в базе»  ≠  «товар есть, но ранжирован не первым».
+  3. Подбирает минимальный порог скора, ниже которого матч надо отбрасывать.
+     В проде такого порога НЕТ — `select_best` возвращает топ-1 всегда.
 
 Только стандартная библиотека. Ничего не пишет и не меняет — только GET.
 Запуск:  python3 scripts/check_off_coverage.py
@@ -32,22 +34,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# ── Настройки ───────────────────────────────────────────────────────────────
-# User-Agent по требованию OFF: AppName/Version (ContactEmail).
-# ВНИМАНИЕ: в проде сейчас `lifeManager_bot (skyline987650@gmail.com)` — без версии,
-# то есть формат нарушен. Здесь шлём правильный, чтобы отделить проблему формата
-# от проблемы самого эндпоинта.
 USER_AGENT = "lifeManager_bot/1.0 (skyline987650@gmail.com)"
 REQUEST_TIMEOUT_S = 15.0
-PROD_TIMEOUT_S = 2.5      # off_timeout_s в конфиге прода
-PAUSE_S = 7.0             # лимит OFF: 10 запросов/мин на IP для поиска
-RETRY_ON_503_S = 20.0     # одна повторная попытка после 503
+PROD_TIMEOUT_S = 2.5
+PAUSE_S = 5.0
+PAGE_SIZE = 20
+KCAL_MATCH_TOL = 0.10     # «это тот самый товар» — ккал сходятся в пределах 10%
 
-PROBE_QUERY = "кефир"
-PROBE_BARCODE = "3017620422003"   # Nutella — заведомо есть в OFF, эталон живости
+SEARCH_URL = "https://search.openfoodfacts.org/search"
+BARCODE_URL = "https://world.openfoodfacts.org/api/v2/product/{}"
+PROBE_BARCODE = "3017620422003"   # Nutella — эталон живости
 
 # (id, бренд, название, жирность %, эталонные ккал/100 г)
-# Запросы = то, что реально выдаёт прод-модель (runs/2026-07-27_gpt-5.4-mini.json)
 CASES = [
     ('A-04', 'Double B', 'сироп карамельный', None, 222.5),
     ('A-05', None, 'сыр плавленый фетакса', 45.0, 213),
@@ -75,17 +73,11 @@ CASES = [
     ('A-37', 'Квалитет', 'тунец натуральный консервированный', None, 107),
     ('A-39', 'Макфа', 'макаронные изделия спиральки', None, 342),
 ]
-BLIND = {'A-05', 'A-13'}   # кейсы, где проверки C2–C4 слепы (§7 ТЗ)
-
-LEGACY_FIELDS = (
-    "code,product_name,product_name_ru,brands,quantity,"
-    "nutrition_data_per,nutriments,completeness"
-)
+BLIND = {'A-05', 'A-13'}
 
 
 # ── Транспорт ───────────────────────────────────────────────────────────────
 def http_get(url):
-    """GET → (данные|None, латентность, ошибка|None)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     t0 = time.monotonic()
     try:
@@ -102,67 +94,88 @@ def http_get(url):
     except urllib.error.URLError as e:
         return None, time.monotonic() - t0, f"сеть: {e.reason}"
     except json.JSONDecodeError:
-        return None, time.monotonic() - t0, "ответ не JSON (вероятно HTML-заглушка)"
+        return None, time.monotonic() - t0, "ответ не JSON"
     except Exception as e:                       # noqa: BLE001 — диагностика
         return None, time.monotonic() - t0, f"{type(e).__name__}: {e}"
 
 
-# ── Построители URL под каждый эндпоинт ─────────────────────────────────────
-def url_legacy(terms):
-    p = {"search_terms": terms, "search_simple": "1", "action": "process",
-         "json": "1", "page_size": "20", "lc": "ru", "fields": LEGACY_FIELDS}
-    return "https://world.openfoodfacts.org/cgi/search.pl?" + urllib.parse.urlencode(p)
+def search(terms):
+    q = urllib.parse.urlencode({"q": terms, "page_size": str(PAGE_SIZE),
+                                "langs": "ru,en"})
+    return http_get(f"{SEARCH_URL}?{q}")
 
 
-def url_v2(terms):
-    p = {"categories_tags_ru": terms, "fields": LEGACY_FIELDS, "page_size": "20"}
-    return "https://world.openfoodfacts.org/api/v2/search?" + urllib.parse.urlencode(p)
-
-
-def url_salicious(terms):
-    p = {"q": terms, "page_size": "20", "langs": "ru,en"}
-    return "https://search.openfoodfacts.org/search?" + urllib.parse.urlencode(p)
-
-
-ENDPOINTS = [
-    ("legacy /cgi/search.pl   (используется в проде)", url_legacy),
-    ("world /api/v2/search    (тот же Perl-бэкенд)", url_v2),
-    ("search-a-licious        (рекомендованная замена, beta)", url_salicious),
-]
-
-
-# ── Разбор ответа: две разные формы ─────────────────────────────────────────
-def extract_hits(data):
-    """Легаси отдаёт `products`, search-a-licious — `hits`. Возвращаем список."""
-    if not isinstance(data, dict):
-        return []
-    return data.get("products") or data.get("hits") or []
-
-
-def num(n, key):
+# ── Прод-логика, перенесённая ДОСЛОВНО из openfoodfacts.py ──────────────────
+def _num(n, key):
+    v = (n or {}).get(key)
+    if v is None or v == "":
+        return None
     try:
-        v = n.get(key)
-        return float(v) if v not in (None, "") else None
-    except (TypeError, ValueError, AttributeError):
+        return float(v)
+    except (TypeError, ValueError):
         return None
 
 
-def kcal_of(product):
-    """Повторяет map_product: ккал напрямую либо из кДж; нужны все 4 значения."""
-    n = product.get("nutriments") or {}
-    kcal = num(n, "energy-kcal_100g")
+def _norm(v):
+    return (v or "").strip().lower().replace("ё", "е")
+
+
+def _tokens(v):
+    return [t for t in _norm(v).replace(",", " ").split() if t]
+
+
+def _first_brand(csv):
+    return csv.split(",")[0].strip() if csv else ""
+
+
+def _best_name(p):
+    return (p.get("product_name_ru") or p.get("product_name") or "").strip()
+
+
+def map_product(p):
+    """Нет любого из 4 значений → None (карточка отбрасывается)."""
+    n = p.get("nutriments") or {}
+    kcal = _num(n, "energy-kcal_100g")
     if kcal is None:
-        kj = num(n, "energy-kj_100g")
+        kj = _num(n, "energy-kj_100g")
         kcal = round(kj / 4.184, 1) if kj is not None else None
-    p, f, c = num(n, "proteins_100g"), num(n, "fat_100g"), num(n, "carbohydrates_100g")
-    return None if None in (kcal, p, f, c) else kcal
+    pr, fa, ca = _num(n, "proteins_100g"), _num(n, "fat_100g"), _num(n, "carbohydrates_100g")
+    return None if None in (kcal, pr, fa, ca) else kcal
 
 
-def best_name(product):
-    return (product.get("product_name_ru") or product.get("product_name") or "").strip()
+def score_of(product, brand, name, fat_pct):
+    """Дословный перенос score() из select_best (§7.2)."""
+    s = 0.0
+    brand_norm = _norm(brand)
+    name_tokens = set(_tokens(name))
+    prod_brand = _norm(_first_brand(product.get("brands")))
+    prod_name = _norm(_best_name(product))
+    if brand_norm and (brand_norm in prod_brand or brand_norm in prod_name):
+        s += 3.0
+    if name_tokens:
+        prod_tokens = set(_tokens(_best_name(product)))
+        s += 2.0 * (len(name_tokens & prod_tokens) / len(name_tokens))
+    if fat_pct is not None:
+        pf = _num(product.get("nutriments") or {}, "fat_100g")
+        if pf is not None and abs(pf - fat_pct) < 0.6:
+            s += 1.0
+    try:
+        s += float(product.get("completeness") or 0.0)
+    except (TypeError, ValueError):
+        pass
+    return s
 
 
-def search_terms(brand, name, fat_pct):
+def select_best(products, brand, name, fat_pct):
+    """ВНИМАНИЕ: как в проде — минимального порога скора НЕТ, топ-1 всегда."""
+    cands = [p for p in products if map_product(p) is not None]
+    if not cands:
+        return None, 0.0
+    best = max(cands, key=lambda p: score_of(p, brand, name, fat_pct))
+    return best, score_of(best, brand, name, fat_pct)
+
+
+def terms_of(brand, name, fat_pct):
     fat = f"{fat_pct:g}%" if fat_pct is not None else None
     return " ".join(p for p in (brand, name, fat) if p)
 
@@ -170,146 +183,163 @@ def search_terms(brand, name, fat_pct):
 # ── ЭТАП 1. Разведка ────────────────────────────────────────────────────────
 def probe():
     print("=" * 78)
-    print("ЭТАП 1 — РАЗВЕДКА: какой эндпоинт OFF жив")
-    print(f"User-Agent: {USER_AGENT}")
+    print("ЭТАП 1 — РАЗВЕДКА")
     print("=" * 78)
 
-    alive = []
-    for label, builder in ENDPOINTS:
-        print(f"\n  {label}")
-        data, dt, err = http_get(builder(PROBE_QUERY))
-        if err:
-            print(f"    ✗ {err}   ({dt:.2f} с)")
-        else:
-            hits = extract_hits(data)
-            print(f"    ✓ 200 OK, найдено {len(hits)} карточек   ({dt:.2f} с)")
-            print(f"      ключи ответа: {sorted(data.keys())[:8]}")
-            if hits:
-                h = hits[0]
-                print(f"      ключи карточки: {sorted(h.keys())[:10]}")
-                print(f"      КБЖУ читается: "
-                      f"{'да, ' + str(kcal_of(h)) + ' ккал' if kcal_of(h) else 'НЕТ'}")
-                if not kcal_of(h):
-                    n = h.get("nutriments") or {}
-                    print(f"      ключи nutriments: {sorted(n.keys())[:12]}")
-            alive.append((label, builder))
-        time.sleep(3)
-
-    print("\n  barcode /api/v2/product/{code} — отдельный путь, поиск не задействует")
-    data, dt, err = http_get(
-        f"https://world.openfoodfacts.org/api/v2/product/{PROBE_BARCODE}"
-        f"?fields={LEGACY_FIELDS}"
-    )
+    print("\n  search-a-licious — форма ответа (нужна для переписывания адаптера):")
+    data, dt, err = search("кефир 3.2%")
     if err:
-        print(f"    ✗ {err}   ({dt:.2f} с)")
-        barcode_ok = False
-    else:
-        prod = data.get("product") or {}
-        k = kcal_of(prod)
-        print(f"    ✓ 200 OK: «{best_name(prod)[:40]}» "
-              f"{'КБЖУ ' + str(k) + ' ккал' if k else 'без полного КБЖУ'}   ({dt:.2f} с)")
-        barcode_ok = True
+        print(f"    ✗ {err} ({dt:.2f} с) — дальше идти некуда")
+        return False, False
+    hits = data.get("hits") or []
+    print(f"    ✓ 200 OK, {len(hits)} карточек ({dt:.2f} с)")
+    if hits:
+        h = hits[0]
+        print(f"    ВСЕ ключи карточки ({len(h)}):")
+        for i in range(0, len(sorted(h.keys())), 6):
+            print("      " + ", ".join(sorted(h.keys())[i:i + 6]))
+        has = [k for k in ("product_name", "product_name_ru", "brands",
+                           "completeness", "nutriments", "code", "_score")
+               if k in h]
+        miss = [k for k in ("product_name", "product_name_ru", "brands",
+                            "completeness", "nutriments", "code") if k not in h]
+        print(f"    поля, нужные проду — есть: {has}")
+        print(f"    поля, нужные проду — НЕТ : {miss if miss else '— все на месте'}")
+        n = h.get("nutriments") or {}
+        print(f"    ключи nutriments (первые 10): {sorted(n.keys())[:10]}")
+        print(f"    map_product даёт: {map_product(h)}")
 
-    return alive, barcode_ok
+    time.sleep(3)
+    print("\n  barcode /api/v2/product — отдельный путь:")
+    data, dt, err = http_get(BARCODE_URL.format(PROBE_BARCODE)
+                             + "?fields=code,product_name,brands,nutriments")
+    if err:
+        print(f"    ✗ {err} ({dt:.2f} с)")
+        return True, False
+    prod = data.get("product") or {}
+    print(f"    ✓ «{_best_name(prod)[:40]}» → {map_product(prod)} ккал ({dt:.2f} с)")
+    return True, True
 
 
-# ── ЭТАП 2. Покрытие ────────────────────────────────────────────────────────
-def measure(label, builder):
+# ── ЭТАП 2. Матчинг ─────────────────────────────────────────────────────────
+def measure():
     print("\n" + "=" * 78)
-    print(f"ЭТАП 2 — ПОКРЫТИЕ на: {label.strip()}")
+    print("ЭТАП 2 — МАТЧИНГ с прод-логикой select_best")
     print("=" * 78)
 
     rows, lats = [], []
     for idx, (cid, brand, name, fat, ref) in enumerate(CASES, 1):
-        terms = search_terms(brand, name, fat)
+        terms = terms_of(brand, name, fat)
         mark = "  <— слепой кейс" if cid in BLIND else ""
-        print(f"\n[{idx:2}/{len(CASES)}] {cid}{mark}\n    запрос: {terms}")
+        print(f"\n[{idx:2}/{len(CASES)}] {cid}{mark}   запрос: {terms}")
 
-        data, dt, err = http_get(builder(terms))
-        if err and "503" in err:
-            print(f"    503 — повтор через {RETRY_ON_503_S:.0f} с…")
-            time.sleep(RETRY_ON_503_S)
-            data, dt, err = http_get(builder(terms))
+        data, dt, err = search(terms)
         lats.append(dt)
-
         if err:
-            print(f"    ОШИБКА: {err}  ({dt:.2f} с)")
-            rows.append((cid, "ОШИБКА", err, dt))
+            print(f"    ОШИБКА: {err} ({dt:.2f} с)")
+            rows.append((cid, "ОШИБКА", 0.0, None, None, ref))
+            continue
+
+        hits = data.get("hits") or []
+        cands = [h for h in hits if map_product(h) is not None]
+        best, sc = select_best(hits, brand, name, fat)
+
+        # есть ли ВООБЩЕ в выдаче карточка с сошедшимися ккал и на каком ранге
+        right_rank, right_name = None, None
+        for r, h in enumerate(cands, 1):
+            k = map_product(h)
+            if abs(k - ref) / max(ref, 1) <= KCAL_MATCH_TOL:
+                right_rank, right_name = r, _best_name(h)
+                break
+
+        if best is None:
+            print(f"    НЕТ КАНДИДАТОВ: {len(hits)} карточек, ни одной с полным КБЖУ")
+            rows.append((cid, "НЕТ КБЖУ", 0.0, None, right_rank, ref))
         else:
-            hits = extract_hits(data)
-            full = [h for h in hits if kcal_of(h) is not None]
-            if not hits:
-                verdict, detail = "НЕ НАЙДЕН", "выдача пуста"
-            elif not full:
-                verdict = "БЕЗ КБЖУ"
-                detail = f"{len(hits)} карточек, ни одной с полным КБЖУ"
+            got = map_product(best)
+            dev = abs(got - ref) / max(ref, 1)
+            verdict = "СОШЁЛСЯ" if dev <= 0.15 else "НЕ ТОТ ТОВАР"
+            print(f"    выбран: «{_best_name(best)[:42]}» "
+                  f"[{_first_brand(best.get('brands'))[:18]}]")
+            print(f"    скор={sc:.2f}  ккал={got} vs эталон={ref} (откл. {dev:.0%})"
+                  f"  → {verdict}")
+            if right_rank:
+                print(f"    ✓ подходящая карточка ЕСТЬ в выдаче: ранг {right_rank} "
+                      f"«{right_name[:38]}»")
             else:
-                got = kcal_of(full[0])
-                diff = abs(got - ref) / max(ref, 1)
-                verdict = "СОШЁЛСЯ" if diff <= 0.15 else "РАСХОЖДЕНИЕ"
-                detail = (f"«{best_name(full[0])[:38]}» {got} vs эталон {ref} "
-                          f"(откл. {diff:.0%}); полных {len(full)}/{len(hits)}")
-            slow = "  ⚠ дольше прод-лимита" if dt > PROD_TIMEOUT_S else ""
-            print(f"    {verdict}: {detail}\n    время: {dt:.2f} с{slow}")
-            rows.append((cid, verdict, detail, dt))
+                print(f"    ✗ среди {len(cands)} карточек с КБЖУ подходящей НЕТ "
+                      f"(±{KCAL_MATCH_TOL:.0%})")
+            print(f"    время: {dt:.2f} с")
+            rows.append((cid, verdict, sc, dev, right_rank, ref))
 
         if idx < len(CASES):
             time.sleep(PAUSE_S)
     return rows, lats
 
 
-# ── ЭТАП 3. Сводка ──────────────────────────────────────────────────────────
-def report(rows, lats, barcode_ok, endpoint_label):
+# ── ЭТАП 3. Сводка и подбор порога ──────────────────────────────────────────
+def report(rows, lats, barcode_ok):
     print("\n" + "=" * 78)
     print("ИТОГИ")
     print("=" * 78)
     n = len(rows)
     cnt = lambda v: sum(1 for r in rows if r[1] == v)   # noqa: E731
-    found = cnt("СОШЁЛСЯ") + cnt("РАСХОЖДЕНИЕ")
-    err_n = cnt("ОШИБКА")
-    valid = n - err_n
 
-    print(f"\n  эндпоинт             : {endpoint_label.strip()}")
-    print(f"  всего товаров        : {n}")
-    print(f"  ошибок запроса       : {err_n}   ← если >20%, замер недействителен")
-    print(f"  измерено фактически  : {valid}")
-    if valid:
-        print(f"  найдено с полным КБЖУ: {found}  ({found / valid:.0%} от измеренных)")
-        print(f"    сошлось ≤15%       : {cnt('СОШЁЛСЯ')}")
-        print(f"    расхождение >15%   : {cnt('РАСХОЖДЕНИЕ')}")
-    print(f"  найдено без КБЖУ     : {cnt('БЕЗ КБЖУ')}")
-    print(f"  не найдено           : {cnt('НЕ НАЙДЕН')}")
+    print(f"\n  всего                : {n}")
+    print(f"  ошибок запроса       : {cnt('ОШИБКА')}")
+    print(f"  выбран верный товар  : {cnt('СОШЁЛСЯ')}   ← реальное покрытие")
+    print(f"  выбран НЕ ТОТ товар  : {cnt('НЕ ТОТ ТОВАР')}   ← опаснее, чем «не найдено»")
+    print(f"  ни одной карточки с КБЖУ: {cnt('НЕТ КБЖУ')}")
+
+    present = sum(1 for r in rows if r[4])
+    top1 = sum(1 for r in rows if r[4] == 1)
+    print(f"\n  подходящая карточка есть в выдаче: {present}/{n}"
+          f"   ← сколько товаров ВООБЩЕ в базе")
+    print(f"    из них ранжирована первой       : {top1}")
+    print(f"    из них прод-логика взяла не ту  : {present - cnt('СОШЁЛСЯ')}"
+          f"   ← чинится матчингом, не источником")
+
+    print("\n  ПОДБОР ПОРОГА СКОРА (в проде порога нет — берётся топ-1 всегда):")
+    print(f"  {'порог':>7} | {'останется матчей':>17} | {'из них верных':>14} | {'точность':>9}")
+    good = [r for r in rows if r[1] in ("СОШЁЛСЯ", "НЕ ТОТ ТОВАР")]
+    for t in (0.0, 1.0, 2.0, 3.0, 3.5, 4.0, 4.5, 5.0):
+        kept = [r for r in good if r[2] >= t]
+        ok = [r for r in kept if r[1] == "СОШЁЛСЯ"]
+        acc = f"{len(ok) / len(kept):.0%}" if kept else "—"
+        print(f"  {t:>7.1f} | {len(kept):>17} | {len(ok):>14} | {acc:>9}")
 
     s = sorted(lats)
-    slow = sum(1 for x in lats if x > PROD_TIMEOUT_S)
     print(f"\n  латентность: медиана {s[len(s) // 2]:.2f} с, максимум {max(s):.2f} с")
-    print(f"  не уложились в прод-лимит {PROD_TIMEOUT_S} с: {slow}/{n}")
-    print(f"  barcode-путь /api/v2/product: {'РАБОТАЕТ' if barcode_ok else 'НЕ РАБОТАЕТ'}")
+    print(f"  не уложились в прод-лимит {PROD_TIMEOUT_S} с: "
+          f"{sum(1 for x in lats if x > PROD_TIMEOUT_S)}/{n}")
+    print(f"  barcode-путь: {'РАБОТАЕТ' if barcode_ok else 'НЕ РАБОТАЕТ'}")
 
     print("\n  Слепые кейсы (ради них вводилась сверка, §7 ТЗ):")
-    for cid, verdict, detail, _ in rows:
+    for cid, verdict, sc, dev, rank, ref in rows:
         if cid in BLIND:
-            print(f"    {cid}: {verdict} — {detail}")
+            where = f"есть на ранге {rank}" if rank else "в базе НЕ найдена"
+            d = f"откл. {dev:.0%}" if dev is not None else "—"
+            print(f"    {cid}: {verdict}, скор={sc:.2f}, {d}; подходящая карточка {where}")
+
+    print("\n  Как читать:")
+    print("   • «выбран НЕ ТОТ товар» — главное число. Такие матчи в проде получат")
+    print("     source=off и уйдут в сверку label-preferred, породив ложную тревогу")
+    print("     на экране подтверждения. Это хуже, чем честное «не найдено».")
+    print("   • если «подходящая есть в выдаче» >> «выбран верный» — проблема в")
+    print("     ранжировании/матчинге, а не в покрытии базы: чинится порогом и")
+    print("     скорингом, менять источник не надо.")
+    print("   • строка порога, где точность впервые ≥90%, — кандидат в min_score")
+    print("     для select_best.")
     print()
 
 
 def main():
-    alive, barcode_ok = probe()
-    if not alive:
-        print("\n" + "=" * 78)
-        print("❌ НИ ОДИН ПОИСКОВЫЙ ЭНДПОИНТ OFF НЕ ОТВЕЧАЕТ")
-        print("=" * 78)
-        print("  Замер покрытия невозможен. Для проекта это означает, что сетевая")
-        print("  ступень лестницы ADR-0013 в проде не работает вообще, и резолвер")
-        print("  фактически сводится к label→estimate.")
-        bc = ("работает — остаётся единственным входом в OFF"
-              if barcode_ok else "тоже не работает")
-        print(f"  barcode-путь: {bc}")
+    search_ok, barcode_ok = probe()
+    if not search_ok:
+        print("\n❌ search-a-licious недоступен — замер невозможен.")
         return 1
-
-    label, builder = alive[-1]   # предпочитаем последний живой (search-a-licious)
-    rows, lats = measure(label, builder)
-    report(rows, lats, barcode_ok, label)
+    rows, lats = measure()
+    report(rows, lats, barcode_ok)
     return 0
 
 
