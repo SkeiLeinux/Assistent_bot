@@ -124,12 +124,26 @@ def _tokens(v):
     return [t for t in _norm(v).replace(",", " ").split() if t]
 
 
-def _first_brand(csv):
-    return csv.split(",")[0].strip() if csv else ""
+def _first_brand(brands):
+    """ВАЖНО: в легаси `brands` — CSV-строка, в search-a-licious — СПИСОК или её нет.
+    Прод (`_first_brand`) умеет только строку и падает на списке — дефект найден
+    этим замером."""
+    if not brands:
+        return ""
+    if isinstance(brands, (list, tuple)):
+        return str(brands[0]).strip() if brands else ""
+    return str(brands).split(",")[0].strip()
 
 
 def _best_name(p):
-    return (p.get("product_name_ru") or p.get("product_name") or "").strip()
+    """ВАЖНО: `product_name_ru` в search-a-licious НЕ существует — только
+    `product_name` (на языке карточки) и `product_name_en`. Прод рассчитывает
+    на `product_name_ru` как на основной источник."""
+    for k in ("product_name_ru", "product_name", "product_name_en"):
+        v = p.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
 
 
 def map_product(p):
@@ -208,6 +222,22 @@ def probe():
         n = h.get("nutriments") or {}
         print(f"    ключи nutriments (первые 10): {sorted(n.keys())[:10]}")
         print(f"    map_product даёт: {map_product(h)}")
+
+        # Перепись сигналов матчинга по ВСЕЙ выдаче — какие поля реально выживают
+        print(f"\n    Наличие полей в {len(hits)} карточках выдачи:")
+        for key in ("product_name", "product_name_ru", "product_name_en",
+                    "brands", "completeness", "code", "_score"):
+            have = sum(1 for x in hits if x.get(key) not in (None, "", [], {}))
+            types = {type(x.get(key)).__name__ for x in hits if x.get(key) is not None}
+            t = "/".join(sorted(types)) if types else "—"
+            flag = "" if have == len(hits) else "   ⚠ не у всех"
+            print(f"      {key:18} {have:>2}/{len(hits)}  тип: {t}{flag}")
+        full = sum(1 for x in hits if map_product(x) is not None)
+        print(f"      {'полное КБЖУ':18} {full:>2}/{len(hits)}")
+        cyr = sum(1 for x in hits
+                  if any('а' <= c.lower() <= 'я' for c in _best_name(x)))
+        print(f"      {'имя кириллицей':18} {cyr:>2}/{len(hits)}"
+              f"   ← без product_name_ru это единственный источник рус. названия")
 
     time.sleep(3)
     print("\n  barcode /api/v2/product — отдельный путь:")
