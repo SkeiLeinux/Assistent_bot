@@ -1,0 +1,807 @@
+{
+  "provider": "openrouter",
+  "model": "google/gemma-4-31b-it:free",
+  "tier": "A",
+  "repeat": 1,
+  "timestamp": "2026-07-26T10:47:28",
+  "records": [
+    {
+      "id": "A-15",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": null,
+          "latency_s": 2.0,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-16",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "сыр мягкий творожный",
+              "brand": "УНАГРАНДЕ КОМПАНИ",
+              "fat_pct": 65.0,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 210.9,
+                "protein": 8.5,
+                "fat": 18.5,
+                "carbs": 2.6
+              },
+              "label_complete": true,
+              "confidence": 1.0
+            }
+          ],
+          "usage": {
+            "completion_tokens": 150,
+            "prompt_tokens": 631,
+            "total_tokens": 781,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost": 0,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            }
+          },
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"сыр мягкий творожный\",\n      \"brand\": \"УНАГРАНДЕ КОМПАНИ\",\n      \"fat_pct\": 65,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 210.9,\n        \"protein\": 8.5,\n        \"fat\": 18.5,\n        \"carbs\": 2.6\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 6.58,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-17",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"сыр мягкий творожный\",\n      \"brand\": \"УНАГРАНДЕ КОМПАНИ\",\n      \"fat_pct\": 65,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 210.9,\n        \"protein\": 8.5,\n        \"fat\": 18.5,\n        \"carbs\": 2.6\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.02,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-04",
+      "trap": "small-font-ru",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"сыр мягкий творожный\",\n      \"brand\": \"УНАГРАНДЕ КОМПАНИ\",\n      \"fat_pct\": 65,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 210.9,\n        \"protein\": 8.5,\n        \"fat\": 18.5,\n        \"carbs\": 2.6\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.22,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-05",
+      "trap": "small-font-ru",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "картофель отварной с укропом",
+              "brand": "ВкусВилл",
+              "fat_pct": null,
+              "portion_g": 500.0,
+              "barcode": "200100593513",
+              "per100g": {
+                "kcal": 72.5,
+                "protein": 2.0,
+                "fat": 0.9,
+                "carbs": 14.1
+              },
+              "label_complete": true,
+              "confidence": 1.0
+            }
+          ],
+          "usage": {
+            "completion_tokens": 160,
+            "prompt_tokens": 631,
+            "total_tokens": 791,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost": 0,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            }
+          },
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"картофель отварной с укропом\",\n      \"brand\": \"ВкусВилл\",\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": \"200100593513\",\n      \"per100g\": {\n        \"kcal\": 72.5,\n        \"protein\": 2.0,\n        \"fat\": 0.9,\n        \"carbs\": 14.1\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 7.23,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.6596244131455399,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-06",
+      "trap": "small-font-ru",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"картофель отварной с укропом\",\n      \"brand\": \"ВкусВилл\",\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": \"200100593513\",\n      \"per100g\": {\n        \"kcal\": 72.5,\n        \"protein\": 2.0,\n        \"fat\": 0.9,\n        \"carbs\": 14.1\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.16,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-07",
+      "trap": "glare-crumpled",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"картофель отварной с укропом\",\n      \"brand\": \"ВкусВилл\",\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": \"200100593513\",\n      \"per100g\": {\n        \"kcal\": 72.5,\n        \"protein\": 2.0,\n        \"fat\": 0.9,\n        \"carbs\": 14.1\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.2,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-09",
+      "trap": "per-portion",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "коктейль молочный со вкусом клубники",
+              "brand": "Чудо",
+              "fat_pct": 2.0,
+              "portion_g": 960.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 71.0,
+                "protein": 2.8,
+                "fat": 2.0,
+                "carbs": 10.5
+              },
+              "label_complete": true,
+              "confidence": 1.0
+            }
+          ],
+          "usage": {
+            "completion_tokens": 147,
+            "prompt_tokens": 631,
+            "total_tokens": 778,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost": 0,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            }
+          },
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"коктейль молочный со вкусом клубники\",\n      \"brand\": \"Чудо\",\n      \"fat_pct\": 2.0,\n      \"portion_g\": 960,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 71,\n        \"protein\": 2.8,\n        \"fat\": 2.0,\n        \"carbs\": 10.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 10.81,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.4892086330935252,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-13",
+      "trap": "composite-product",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"коктейль молочный со вкусом клубники\",\n      \"brand\": \"Чудо\",\n      \"fat_pct\": 2.0,\n      \"portion_g\": 960,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 71,\n        \"protein\": 2.8,\n        \"fat\": 2.0,\n        \"carbs\": 10.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.09,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-18",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"коктейль молочный со вкусом клубники\",\n      \"brand\": \"Чудо\",\n      \"fat_pct\": 2.0,\n      \"portion_g\": 960,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 71,\n        \"protein\": 2.8,\n        \"fat\": 2.0,\n        \"carbs\": 10.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 1.94,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-19",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"коктейль молочный со вкусом клубники\",\n      \"brand\": \"Чудо\",\n      \"fat_pct\": 2.0,\n      \"portion_g\": 960,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 71,\n        \"protein\": 2.8,\n        \"fat\": 2.0,\n        \"carbs\": 10.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.06,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-20",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"коктейль молочный со вкусом клубники\",\n      \"brand\": \"Чудо\",\n      \"fat_pct\": 2.0,\n      \"portion_g\": 960,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 71,\n        \"protein\": 2.8,\n        \"fat\": 2.0,\n        \"carbs\": 10.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.27,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-21",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"коктейль молочный со вкусом клубники\",\n      \"brand\": \"Чудо\",\n      \"fat_pct\": 2.0,\n      \"portion_g\": 960,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 71,\n        \"protein\": 2.8,\n        \"fat\": 2.0,\n        \"carbs\": 10.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 3.83,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-26",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"стейк свиной на кости\",\n      \"brand\": \"Черкизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 250,\n      \"barcode\": \"4605025063311\",\n      \"per100g\": {\n        \"kcal\": 221,\n        \"protein\": 17,\n        \"fat\": 17,\n        \"carbs\": null\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 7.83,
+          "error": "LLMError: Модель вернула некорректные данные | cause:  1 validation error for ExtractResult\nitems.0.per100g.carbs\n  Input should be a valid number [type=float_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.9/v/float_type"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-27",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"стейк свиной на кости\",\n      \"brand\": \"Черкизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 250,\n      \"barcode\": \"4605025063311\",\n      \"per100g\": {\n        \"kcal\": 221,\n        \"protein\": 17,\n        \"fat\": 17,\n        \"carbs\": null\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.06,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-28",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"стейк свиной на кости\",\n      \"brand\": \"Черкизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 250,\n      \"barcode\": \"4605025063311\",\n      \"per100g\": {\n        \"kcal\": 221,\n        \"protein\": 17,\n        \"fat\": 17,\n        \"carbs\": null\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.09,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-29",
+      "trap": "glare-crumpled",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"карпаччо из индейки сырокопченое\",\n      \"brand\": \"Черкизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 334,\n      \"barcode\": \"23272181003349\",\n      \"per100g\": {\n        \"kcal\": 150,\n        \"protein\": 24,\n        \"fat\": 7.5,\n        \"carbs\": null\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 7.66,
+          "error": "LLMError: Модель вернула некорректные данные | cause:  1 validation error for ExtractResult\nitems.0.per100g.carbs\n  Input should be a valid number [type=float_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.9/v/float_type"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-30",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"карпаччо из индейки сырокопченое\",\n      \"brand\": \"Черкизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 334,\n      \"barcode\": \"23272181003349\",\n      \"per100g\": {\n        \"kcal\": 150,\n        \"protein\": 24,\n        \"fat\": 7.5,\n        \"carbs\": null\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.38,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-31",
+      "trap": "dual-table",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"карпаччо из индейки сырокопченое\",\n      \"brand\": \"Черкизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 334,\n      \"barcode\": \"23272181003349\",\n      \"per100g\": {\n        \"kcal\": 150,\n        \"protein\": 24,\n        \"fat\": 7.5,\n        \"carbs\": null\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.11,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-32",
+      "trap": "dual-table",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "тортилья",
+              "brand": "MEX-FOODS",
+              "fat_pct": null,
+              "portion_g": null,
+              "barcode": "4607003",
+              "per100g": {
+                "kcal": 290.0,
+                "protein": 7.0,
+                "fat": 7.0,
+                "carbs": 48.0
+              },
+              "label_complete": true,
+              "confidence": 1.0
+            }
+          ],
+          "usage": {
+            "completion_tokens": 143,
+            "prompt_tokens": 631,
+            "total_tokens": 774,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost": 0,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            }
+          },
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"тортилья\",\n      \"brand\": \"MEX-FOODS\",\n      \"fat_pct\": null,\n      \"portion_g\": null,\n      \"barcode\": \"4607003\",\n      \"per100g\": {\n        \"kcal\": 290,\n        \"protein\": 7.0,\n        \"fat\": 7.0,\n        \"carbs\": 48.0\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 7.16,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-33",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"тортилья\",\n      \"brand\": \"MEX-FOODS\",\n      \"fat_pct\": null,\n      \"portion_g\": null,\n      \"barcode\": \"4607003\",\n      \"per100g\": {\n        \"kcal\": 290,\n        \"protein\": 7.0,\n        \"fat\": 7.0,\n        \"carbs\": 48.0\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.16,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-34",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"тортилья\",\n      \"brand\": \"MEX-FOODS\",\n      \"fat_pct\": null,\n      \"portion_g\": null,\n      \"barcode\": \"4607003\",\n      \"per100g\": {\n        \"kcal\": 290,\n        \"protein\": 7.0,\n        \"fat\": 7.0,\n        \"carbs\": 48.0\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.09,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-35",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "творог со сливками с черникой",
+              "brand": null,
+              "fat_pct": 5.0,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 140.4,
+                "protein": 10.8,
+                "fat": 4.0,
+                "carbs": 15.3
+              },
+              "label_complete": true,
+              "confidence": 1.0
+            }
+          ],
+          "usage": {
+            "completion_tokens": 145,
+            "prompt_tokens": 631,
+            "total_tokens": 776,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost": 0,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            }
+          },
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"творог со сливками с черникой\",\n      \"brand\": null,\n      \"fat_pct\": 5.0,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 140.4,\n        \"protein\": 10.8,\n        \"fat\": 4.0,\n        \"carbs\": 15.3\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 9.94,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-36",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "филе тунца в масле",
+              "brand": "TROPICAL FOOD MANUFACTURING (NINGBO) CO., LTD",
+              "fat_pct": null,
+              "portion_g": 120.0,
+              "barcode": "4607180663078",
+              "per100g": {
+                "kcal": 188.0,
+                "protein": 23.5,
+                "fat": 10.7,
+                "carbs": 1.2
+              },
+              "label_complete": true,
+              "confidence": 1.0
+            }
+          ],
+          "usage": {
+            "completion_tokens": 165,
+            "prompt_tokens": 631,
+            "total_tokens": 796,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": null,
+              "audio_tokens": 0,
+              "reasoning_tokens": 0,
+              "rejected_prediction_tokens": null,
+              "image_tokens": 0
+            },
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost": 0,
+            "is_byok": false,
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            }
+          },
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"филе тунца в масле\",\n      \"brand\": \"TROPICAL FOOD MANUFACTURING (NINGBO) CO., LTD\",\n      \"fat_pct\": null,\n      \"portion_g\": 120,\n      \"barcode\": \"4607180663078\",\n      \"per100g\": {\n        \"kcal\": 188,\n        \"protein\": 23.5,\n        \"fat\": 10.7,\n        \"carbs\": 1.2\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 7.23,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-37",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"филе тунца в масле\",\n      \"brand\": \"TROPICAL FOOD MANUFACTURING (NINGBO) CO., LTD\",\n      \"fat_pct\": null,\n      \"portion_g\": 120,\n      \"barcode\": \"4607180663078\",\n      \"per100g\": {\n        \"kcal\": 188,\n        \"protein\": 23.5,\n        \"fat\": 10.7,\n        \"carbs\": 1.2\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 3.56,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-38",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"филе тунца в масле\",\n      \"brand\": \"TROPICAL FOOD MANUFACTURING (NINGBO) CO., LTD\",\n      \"fat_pct\": null,\n      \"portion_g\": 120,\n      \"barcode\": \"4607180663078\",\n      \"per100g\": {\n        \"kcal\": 188,\n        \"protein\": 23.5,\n        \"fat\": 10.7,\n        \"carbs\": 1.2\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.41,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-39",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"филе тунца в масле\",\n      \"brand\": \"TROPICAL FOOD MANUFACTURING (NINGBO) CO., LTD\",\n      \"fat_pct\": null,\n      \"portion_g\": 120,\n      \"barcode\": \"4607180663078\",\n      \"per100g\": {\n        \"kcal\": 188,\n        \"protein\": 23.5,\n        \"fat\": 10.7,\n        \"carbs\": 1.2\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.03,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    },
+    {
+      "id": "A-40",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": null,
+          "usage": null,
+          "raw": "{\n  \"items\": [\n    {\n      \"name\": \"филе тунца в масле\",\n      \"brand\": \"TROPICAL FOOD MANUFACTURING (NINGBO) CO., LTD\",\n      \"fat_pct\": null,\n      \"portion_g\": 120,\n      \"barcode\": \"4607180663078\",\n      \"per100g\": {\n        \"kcal\": 188,\n        \"protein\": 23.5,\n        \"fat\": 10.7,\n        \"carbs\": 1.2\n      },\n      \"label_complete\": true,\n      \"confidence\": 1.0\n    }\n  ]\n}",
+          "latency_s": 2.48,
+          "error": "rate_limit: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'google/gemma-4-31b-it:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations', 'provider_name': 'Google AI Studio', 'is_byok': False, 'provider_error_code': '429'}}, 'user_id': 'user_3GzwQMBITc7OQEloXiJv8IZkMSL'}"
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": false
+        }
+      ]
+    }
+  ]
+}

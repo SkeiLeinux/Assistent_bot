@@ -18,17 +18,20 @@ import base64
 import logging
 from typing import Protocol, runtime_checkable
 
-from groq import APIError, RateLimitError
 from pydantic import ValidationError
 
 from app.config import settings
 from app.contexts.nutrition.resolve.ports import ExtractedItem, ExtractResult
 from app.contexts.nutrition.services.llm_service import (
+    _API_ERRORS,
+    _RATE_LIMIT_ERRORS,
     LLMError,
     LLMRateLimitError,
+    LLMTarget,
     _cap_images,
     _extract_json,
     _get_client,
+    make_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,36 +77,77 @@ class LLMExtractor:
     отключён Groq, см. ADR-0014).
     """
 
-    def __init__(self, model: str | None = None) -> None:
-        self.model = model or settings.groq_model
+    def __init__(
+        self, target: LLMTarget | None = None, model: str | None = None
+    ) -> None:
+        self._target = target
+        self._client = make_client(target) if target is not None else None
+        self.model = model or (target.model if target else settings.groq_model)
+        # Наблюдаемость для раннера eval (ТЗ §6.2): сырой ответ и usage последнего
+        # вызова. Прод их игнорирует — это только для замера цены/латентности.
+        self.last_raw: str | None = None
+        self.last_usage: dict | None = None
+
+    def _client_for(self):
+        return self._client if self._client is not None else _get_client()
+
+    def _reasoning_effort(self) -> str:
+        if self._target is not None:
+            return self._target.reasoning_effort
+        return settings.groq_reasoning_effort
+
+    def _max_images(self) -> int:
+        if self._target is not None:
+            return self._target.max_images
+        return settings.groq_max_images
+
+    def _max_tokens_param(self) -> str:
+        return self._target.max_tokens_param if self._target else "max_tokens"
+
+    def _output_budget(self, default: int) -> int:
+        if self._target is not None and self._target.max_output_tokens:
+            return self._target.max_output_tokens
+        return default
+
+    def _temperature(self) -> float | None:
+        return self._target.temperature if self._target is not None else 0.2
+
+    def _send_response_format(self) -> bool:
+        return self._target.send_response_format if self._target is not None else True
 
     async def _complete(self, user_content) -> list[ExtractedItem]:
         # См. llm_service._complete: у двухрежимных моделей без reasoning_effort
-        # включается thinking и reasoning-токены выедают max_tokens → пустой JSON.
-        extra: dict = {}
-        if settings.groq_reasoning_effort:
-            extra["reasoning_effort"] = settings.groq_reasoning_effort
+        # включается thinking и reasoning-токены выедают бюджет вывода → пустой JSON.
+        # temperature=None → не слать (reasoning-модели OpenAI принимают только 1).
+        # response_format — не для Anthropic (compat хочет json_schema).
+        extra: dict = {self._max_tokens_param(): self._output_budget(1500)}
+        if self._reasoning_effort():
+            extra["reasoning_effort"] = self._reasoning_effort()
+        if self._temperature() is not None:
+            extra["temperature"] = self._temperature()
+        if self._send_response_format():
+            extra["response_format"] = {"type": "json_object"}
         try:
-            response = await _get_client().chat.completions.create(
+            response = await self._client_for().chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": _EXTRACT_PROMPT},
                     {"role": "user", "content": user_content},
                 ],
-                response_format={"type": "json_object"},
-                temperature=0.2,
-                max_tokens=1500,
                 **extra,
             )
-        except RateLimitError as e:
+        except _RATE_LIMIT_ERRORS as e:
             raise LLMRateLimitError(
                 "Лимит запросов к модели исчерпан, попробуй позже"
             ) from e
-        except APIError as e:
-            logger.error(f"Groq API error (extract): {e}")
+        except _API_ERRORS as e:
+            logger.error(f"LLM API error (extract): {e}")
             raise LLMError("Сервис расчёта КБЖУ временно недоступен") from e
 
         raw = response.choices[0].message.content or ""
+        self.last_raw = raw
+        usage = getattr(response, "usage", None)
+        self.last_usage = usage.model_dump() if usage is not None else None
         data = _extract_json(raw)
         try:
             result = ExtractResult.model_validate(data)
@@ -131,7 +175,7 @@ class LLMExtractor:
                     or "Определи продукты на фото и оцени их КБЖУ.",
                 }
             ]
-            for image_bytes in _cap_images(images):  # кап модели (groq_max_images)
+            for image_bytes in _cap_images(images, self._max_images()):  # кап модели
                 b64 = base64.b64encode(image_bytes).decode()
                 parts.append(
                     {

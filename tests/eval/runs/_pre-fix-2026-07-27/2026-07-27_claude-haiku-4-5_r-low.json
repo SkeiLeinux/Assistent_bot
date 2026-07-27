@@ -1,0 +1,1382 @@
+{
+  "provider": "anthropic",
+  "model": "claude-haiku-4-5",
+  "tier": "A",
+  "repeat": 1,
+  "reasoning_effort": "low",
+  "timestamp": "2026-07-27T13:20:52",
+  "records": [
+    {
+      "id": "A-15",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "колбаса по-чёркизовски мясная",
+              "brand": "Чёркизово",
+              "fat_pct": null,
+              "portion_g": 352.0,
+              "barcode": "4603533352241",
+              "per100g": {
+                "kcal": 450.0,
+                "protein": 17.0,
+                "fat": 25.0,
+                "carbs": 2.5
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 159,
+            "prompt_tokens": 2023,
+            "total_tokens": 2182,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"колбаса по-чёркизовски мясная\",\n      \"brand\": \"Чёркизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 352,\n      \"barcode\": \"4603533352241\",\n      \"per100g\": {\n        \"kcal\": 450,\n        \"protein\": 17,\n        \"fat\": 25,\n        \"carbs\": 2.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.77,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 3.090909090909091,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 1,
+          "bju_total": 3,
+          "kj_confusion": true,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-16",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "сыр мягкий творожный",
+              "brand": "Унагранде компания",
+              "fat_pct": 65.0,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 210.0,
+                "protein": 8.5,
+                "fat": 18.7,
+                "carbs": 2.6
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 154,
+            "prompt_tokens": 2023,
+            "total_tokens": 2177,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"сыр мягкий творожный\",\n      \"brand\": \"Унагранде компания\",\n      \"fat_pct\": 65,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 210,\n        \"protein\": 8.5,\n        \"fat\": 18.7,\n        \"carbs\": 2.6\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.05,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0042674253200569254,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-17",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "яичный жидкий пастеризованный",
+              "brand": "ПКФ АгроГРУПП",
+              "fat_pct": null,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 56.0,
+                "protein": 13.0,
+                "fat": 1.0,
+                "carbs": 0.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 156,
+            "prompt_tokens": 2023,
+            "total_tokens": 2179,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"яичный жидкий пастеризованный\",\n      \"brand\": \"ПКФ АгроГРУПП\",\n      \"fat_pct\": null,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 56,\n        \"protein\": 13,\n        \"fat\": 1,\n        \"carbs\": 0\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.48,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 1,
+          "bju_total": 2,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-04",
+      "trap": "small-font-ru",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "пиво",
+              "brand": "Double Bastard",
+              "fat_pct": null,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 55.0,
+                "protein": 0.5,
+                "fat": 0.0,
+                "carbs": 3.5
+              },
+              "label_complete": false,
+              "confidence": 0.75
+            }
+          ],
+          "usage": {
+            "completion_tokens": 141,
+            "prompt_tokens": 2023,
+            "total_tokens": 2164,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"пиво\",\n      \"brand\": \"Double Bastard\",\n      \"fat_pct\": null,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 55,\n        \"protein\": 0.5,\n        \"fat\": 0,\n        \"carbs\": 3.5\n      },\n      \"label_complete\": false,\n      \"confidence\": 0.75\n    }\n  ]\n}\n```",
+          "latency_s": 2.27,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.7528089887640449,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 1,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-05",
+      "trap": "small-font-ru",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "картофель отварной",
+              "brand": "Ницца",
+              "fat_pct": null,
+              "portion_g": 500.0,
+              "barcode": "4606953253531",
+              "per100g": {
+                "kcal": 82.0,
+                "protein": 1.7,
+                "fat": 0.1,
+                "carbs": 17.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 150,
+            "prompt_tokens": 2023,
+            "total_tokens": 2173,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"картофель отварной\",\n      \"brand\": \"Ницца\",\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": \"4606953253531\",\n      \"per100g\": {\n        \"kcal\": 82,\n        \"protein\": 1.7,\n        \"fat\": 0.1,\n        \"carbs\": 17\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.28,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.6150234741784038,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-06",
+      "trap": "small-font-ru",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "масло сливочное",
+              "brand": "Алтайское",
+              "fat_pct": 82.5,
+              "portion_g": 200.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 661.0,
+                "protein": 0.5,
+                "fat": 82.5,
+                "carbs": 0.1
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 151,
+            "prompt_tokens": 2023,
+            "total_tokens": 2174,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"масло сливочное\",\n      \"brand\": \"Алтайское\",\n      \"fat_pct\": 82.5,\n      \"portion_g\": 200,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 661,\n        \"protein\": 0.5,\n        \"fat\": 82.5,\n        \"carbs\": 0.1\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.08,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 8.117241379310345,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-07",
+      "trap": "glare-crumpled",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "молоко питьевое пастеризованное",
+              "brand": null,
+              "fat_pct": 3.2,
+              "portion_g": 1400.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 61.0,
+                "protein": 3.0,
+                "fat": 3.2,
+                "carbs": 4.7
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 154,
+            "prompt_tokens": 2023,
+            "total_tokens": 2177,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"молоко питьевое пастеризованное\",\n      \"brand\": null,\n      \"fat_pct\": 3.2,\n      \"portion_g\": 1400,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 61,\n        \"protein\": 3.0,\n        \"fat\": 3.2,\n        \"carbs\": 4.7\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.03,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.8567402536402067,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-09",
+      "trap": "per-portion",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "коктейль молочный стерилизованный со вкусом клубники",
+              "brand": "CHUDO",
+              "fat_pct": 2.0,
+              "portion_g": 250.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 120.0,
+                "protein": 2.8,
+                "fat": 2.0,
+                "carbs": 10.5
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 164,
+            "prompt_tokens": 2023,
+            "total_tokens": 2187,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"коктейль молочный стерилизованный со вкусом клубники\",\n      \"brand\": \"CHUDO\",\n      \"fat_pct\": 2.0,\n      \"portion_g\": 250,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 120,\n        \"protein\": 2.8,\n        \"fat\": 2.0,\n        \"carbs\": 10.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.33,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.1366906474820144,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-13",
+      "trap": "composite-product",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "кефир",
+              "brand": "не определён",
+              "fat_pct": 3.2,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 50.0,
+                "protein": 3.0,
+                "fat": 3.2,
+                "carbs": 4.0
+              },
+              "label_complete": false,
+              "confidence": 0.85
+            }
+          ],
+          "usage": {
+            "completion_tokens": 145,
+            "prompt_tokens": 2023,
+            "total_tokens": 2168,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"кефир\",\n      \"brand\": \"не определён\",\n      \"fat_pct\": 3.2,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 50,\n        \"protein\": 3.0,\n        \"fat\": 3.2,\n        \"carbs\": 4.0\n      },\n      \"label_complete\": false,\n      \"confidence\": 0.85\n    }\n  ]\n}\n```",
+          "latency_s": 2.94,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.7160704145371948,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-18",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "картофельное пюре",
+              "brand": "BB",
+              "fat_pct": null,
+              "portion_g": 500.0,
+              "barcode": "4601005564426",
+              "per100g": {
+                "kcal": 139.0,
+                "protein": 2.0,
+                "fat": 7.8,
+                "carbs": 15.2
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 148,
+            "prompt_tokens": 2023,
+            "total_tokens": 2171,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"картофельное пюре\",\n      \"brand\": \"BB\",\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": \"4601005564426\",\n      \"per100g\": {\n        \"kcal\": 139,\n        \"protein\": 2,\n        \"fat\": 7.8,\n        \"carbs\": 15.2\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 1.95,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.9577464788732394,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-19",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "паста томатная концентрированная",
+              "brand": null,
+              "fat_pct": null,
+              "portion_g": 500.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 90.0,
+                "protein": 5.0,
+                "fat": 0.5,
+                "carbs": 18.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 147,
+            "prompt_tokens": 2023,
+            "total_tokens": 2170,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"паста томатная концентрированная\",\n      \"brand\": null,\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 90,\n        \"protein\": 5.0,\n        \"fat\": 0.5,\n        \"carbs\": 18.0\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 1.94,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 2,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-20",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "онигири с запечённым тунцом",
+              "brand": "Липетова",
+              "fat_pct": null,
+              "portion_g": 180.0,
+              "barcode": "4601946360302",
+              "per100g": {
+                "kcal": 145.0,
+                "protein": 5.2,
+                "fat": 3.8,
+                "carbs": 23.5
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 158,
+            "prompt_tokens": 2023,
+            "total_tokens": 2181,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"онигири с запечённым тунцом\",\n      \"brand\": \"Липетова\",\n      \"fat_pct\": null,\n      \"portion_g\": 180,\n      \"barcode\": \"4601946360302\",\n      \"per100g\": {\n        \"kcal\": 145,\n        \"protein\": 5.2,\n        \"fat\": 3.8,\n        \"carbs\": 23.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.3,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 1.543859649122807,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-21",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "колбаса вареная копченая",
+              "brand": null,
+              "fat_pct": null,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 280.0,
+                "protein": 12.0,
+                "fat": 25.0,
+                "carbs": 1.0
+              },
+              "label_complete": false,
+              "confidence": 0.75
+            }
+          ],
+          "usage": {
+            "completion_tokens": 140,
+            "prompt_tokens": 2023,
+            "total_tokens": 2163,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"колбаса вареная копченая\",\n      \"brand\": null,\n      \"fat_pct\": null,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 280,\n        \"protein\": 12,\n        \"fat\": 25,\n        \"carbs\": 1\n      },\n      \"label_complete\": false,\n      \"confidence\": 0.75\n    }\n  ]\n}\n```",
+          "latency_s": 2.56,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 3.6666666666666665,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-26",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "стейк на костях в пряных травах и специях",
+              "brand": "Черкизово",
+              "fat_pct": null,
+              "portion_g": 250.0,
+              "barcode": "4605251083311",
+              "per100g": {
+                "kcal": 221.0,
+                "protein": 17.0,
+                "fat": 17.0,
+                "carbs": 0.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 156,
+            "prompt_tokens": 2023,
+            "total_tokens": 2179,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"стейк на костях в пряных травах и специях\",\n      \"brand\": \"Черкизово\",\n      \"fat_pct\": null,\n      \"portion_g\": 250,\n      \"barcode\": \"4605251083311\",\n      \"per100g\": {\n        \"kcal\": 221,\n        \"protein\": 17,\n        \"fat\": 17,\n        \"carbs\": 0\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.23,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 2,
+          "bju_total": 2,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": true
+        }
+      ]
+    },
+    {
+      "id": "A-27",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "суп с куриными фрикадельками и пастой",
+              "brand": "Вкусвилл",
+              "fat_pct": null,
+              "portion_g": 500.0,
+              "barcode": "4601033380017",
+              "per100g": {
+                "kcal": 39.0,
+                "protein": 3.1,
+                "fat": 1.7,
+                "carbs": 3.3
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 165,
+            "prompt_tokens": 2023,
+            "total_tokens": 2188,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"суп с куриными фрикадельками и пастой\",\n      \"brand\": \"Вкусвилл\",\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": \"4601033380017\",\n      \"per100g\": {\n        \"kcal\": 39,\n        \"protein\": 3.1,\n        \"fat\": 1.7,\n        \"carbs\": 3.3\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.36,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.19631901840490792,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 1,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": true
+        }
+      ]
+    },
+    {
+      "id": "A-28",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "сметана с массовой долей жира",
+              "brand": "Зеленодольский молочный комбинат",
+              "fat_pct": 20.0,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 204.0,
+                "protein": 2.5,
+                "fat": 20.0,
+                "carbs": 2.7
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 160,
+            "prompt_tokens": 2023,
+            "total_tokens": 2183,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"сметана с массовой долей жира\",\n      \"brand\": \"Зеленодольский молочный комбинат\",\n      \"fat_pct\": 20,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 204,\n        \"protein\": 2.5,\n        \"fat\": 20,\n        \"carbs\": 2.7\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.76,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0019646365422397137,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 2,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-29",
+      "trap": "glare-crumpled",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "карпачо из индейки",
+              "brand": null,
+              "fat_pct": null,
+              "portion_g": 140.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 110.0,
+                "protein": 21.0,
+                "fat": 2.5,
+                "carbs": 0.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 141,
+            "prompt_tokens": 2023,
+            "total_tokens": 2164,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"карпачо из индейки\",\n      \"brand\": null,\n      \"fat_pct\": null,\n      \"portion_g\": 140,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 110,\n        \"protein\": 21,\n        \"fat\": 2.5,\n        \"carbs\": 0\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 1.92,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.26666666666666666,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 2,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-30",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "печенье шоколадное",
+              "brand": "Bombbar",
+              "fat_pct": null,
+              "portion_g": 50.0,
+              "barcode": "4660298500703",
+              "per100g": {
+                "kcal": 447.0,
+                "protein": 22.0,
+                "fat": 28.0,
+                "carbs": 14.8
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 149,
+            "prompt_tokens": 2023,
+            "total_tokens": 2172,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"печенье шоколадное\",\n      \"brand\": \"Bombbar\",\n      \"fat_pct\": null,\n      \"portion_g\": 50,\n      \"barcode\": \"4660298500703\",\n      \"per100g\": {\n        \"kcal\": 447,\n        \"protein\": 22,\n        \"fat\": 28,\n        \"carbs\": 14.8\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 3.47,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": true
+        }
+      ]
+    },
+    {
+      "id": "A-31",
+      "trap": "dual-table",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "печенье",
+              "brand": null,
+              "fat_pct": null,
+              "portion_g": 40.0,
+              "barcode": "4660298506101",
+              "per100g": {
+                "kcal": 432.0,
+                "protein": 6.0,
+                "fat": 13.0,
+                "carbs": 68.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 139,
+            "prompt_tokens": 2023,
+            "total_tokens": 2162,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"печенье\",\n      \"brand\": null,\n      \"fat_pct\": null,\n      \"portion_g\": 40,\n      \"barcode\": \"4660298506101\",\n      \"per100g\": {\n        \"kcal\": 432,\n        \"protein\": 6,\n        \"fat\": 13,\n        \"carbs\": 68\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.36,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-32",
+      "trap": "dual-table",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "макаронные изделия",
+              "brand": "Stupino",
+              "fat_pct": null,
+              "portion_g": 250.0,
+              "barcode": "4607003",
+              "per100g": {
+                "kcal": 1190.0,
+                "protein": 7.0,
+                "fat": 7.0,
+                "carbs": 48.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 151,
+            "prompt_tokens": 2023,
+            "total_tokens": 2174,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"макаронные изделия\",\n      \"brand\": \"Stupino\",\n      \"fat_pct\": null,\n      \"portion_g\": 250,\n      \"barcode\": \"4607003\",\n      \"per100g\": {\n        \"kcal\": 1190,\n        \"protein\": 7.0,\n        \"fat\": 7.0,\n        \"carbs\": 48.0\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.39,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 3.103448275862069,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": true,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-33",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "суп шавелевый с курицей и грудкой",
+              "brand": "BB в балансе",
+              "fat_pct": null,
+              "portion_g": 300.0,
+              "barcode": "2100100131029",
+              "per100g": {
+                "kcal": 62.0,
+                "protein": 4.2,
+                "fat": 1.7,
+                "carbs": 1.1
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 163,
+            "prompt_tokens": 2023,
+            "total_tokens": 2186,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"суп шавелевый с курицей и грудкой\",\n      \"brand\": \"BB в балансе\",\n      \"fat_pct\": null,\n      \"portion_g\": 300,\n      \"barcode\": \"2100100131029\",\n      \"per100g\": {\n        \"kcal\": 62,\n        \"protein\": 4.2,\n        \"fat\": 1.7,\n        \"carbs\": 1.1\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.23,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.4058956916099773,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 2,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": true
+        }
+      ]
+    },
+    {
+      "id": "A-34",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "творог мягкий высокобелковый",
+              "brand": "Пактис",
+              "fat_pct": 1.5,
+              "portion_g": 250.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 72.3,
+                "protein": 11.0,
+                "fat": 1.5,
+                "carbs": 3.7
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 156,
+            "prompt_tokens": 2023,
+            "total_tokens": 2179,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"творог мягкий высокобелковый\",\n      \"brand\": \"Пактис\",\n      \"fat_pct\": 1.5,\n      \"portion_g\": 250,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 72.3,\n        \"protein\": 11,\n        \"fat\": 1.5,\n        \"carbs\": 3.7\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.39,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.0,
+          "kcal_hit": true,
+          "kcal_diag": true,
+          "bju_hits": 3,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-35",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "творог со сливками с наполнителем черника",
+              "brand": null,
+              "fat_pct": 5.0,
+              "portion_g": null,
+              "barcode": null,
+              "per100g": {
+                "kcal": 108.0,
+                "protein": 10.8,
+                "fat": 5.0,
+                "carbs": 8.7
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 153,
+            "prompt_tokens": 2023,
+            "total_tokens": 2176,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"творог со сливками с наполнителем черника\",\n      \"brand\": null,\n      \"fat_pct\": 5.0,\n      \"portion_g\": null,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 108,\n        \"protein\": 10.8,\n        \"fat\": 5.0,\n        \"carbs\": 8.7\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.58,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.2307692307692308,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 1,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-36",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "консервы рыбные, филе тунца в масле",
+              "brand": "Tropical Food Manufacturing",
+              "fat_pct": null,
+              "portion_g": 85.0,
+              "barcode": "4607180663078",
+              "per100g": {
+                "kcal": 235.0,
+                "protein": 23.5,
+                "fat": 14.1,
+                "carbs": 1.2
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 162,
+            "prompt_tokens": 2023,
+            "total_tokens": 2185,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"консервы рыбные, филе тунца в масле\",\n      \"brand\": \"Tropical Food Manufacturing\",\n      \"fat_pct\": null,\n      \"portion_g\": 85,\n      \"barcode\": \"4607180663078\",\n      \"per100g\": {\n        \"kcal\": 235,\n        \"protein\": 23.5,\n        \"fat\": 14.1,\n        \"carbs\": 1.2\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.64,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.25,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 2,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-37",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "тунец консервированный",
+              "brand": null,
+              "fat_pct": null,
+              "portion_g": 107.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 448.0,
+                "protein": 24.0,
+                "fat": 1.4,
+                "carbs": 0.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 140,
+            "prompt_tokens": 2023,
+            "total_tokens": 2163,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"тунец консервированный\",\n      \"brand\": null,\n      \"fat_pct\": null,\n      \"portion_g\": 107,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 448,\n        \"protein\": 24,\n        \"fat\": 1.4,\n        \"carbs\": 0\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.77,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 3.1869158878504673,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 2,
+          "bju_total": 2,
+          "kj_confusion": true,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": null
+        }
+      ]
+    },
+    {
+      "id": "A-38",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "макаронные изделия спиральки",
+              "brand": "Макфа",
+              "fat_pct": null,
+              "portion_g": null,
+              "barcode": "31743",
+              "per100g": {
+                "kcal": 342.0,
+                "protein": 12.0,
+                "fat": 1.3,
+                "carbs": 70.5
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 153,
+            "prompt_tokens": 2023,
+            "total_tokens": 2176,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"макаронные изделия спиральки\",\n      \"brand\": \"Макфа\",\n      \"fat_pct\": null,\n      \"portion_g\": null,\n      \"barcode\": \"31743\",\n      \"per100g\": {\n        \"kcal\": 342,\n        \"protein\": 12.0,\n        \"fat\": 1.3,\n        \"carbs\": 70.5\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 4.97,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 2.42,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 2,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-39",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "паста томатная",
+              "brand": "Агро-инвест",
+              "fat_pct": null,
+              "portion_g": 500.0,
+              "barcode": null,
+              "per100g": {
+                "kcal": 90.0,
+                "protein": 5.0,
+                "fat": 0.5,
+                "carbs": 16.0
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 149,
+            "prompt_tokens": 2023,
+            "total_tokens": 2172,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"паста томатная\",\n      \"brand\": \"Агро-инвест\",\n      \"fat_pct\": null,\n      \"portion_g\": 500,\n      \"barcode\": null,\n      \"per100g\": {\n        \"kcal\": 90,\n        \"protein\": 5.0,\n        \"fat\": 0.5,\n        \"carbs\": 16.0\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 1.97,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.7368421052631579,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": false,
+          "brand_ok": false
+        }
+      ]
+    },
+    {
+      "id": "A-40",
+      "trap": "clean",
+      "runs": [
+        {
+          "items": [
+            {
+              "name": "сыр мягкий творожный",
+              "brand": "Унагранде",
+              "fat_pct": 65.0,
+              "portion_g": null,
+              "barcode": "47888810501502015",
+              "per100g": {
+                "kcal": 210.0,
+                "protein": 8.5,
+                "fat": 18.5,
+                "carbs": 2.6
+              },
+              "label_complete": true,
+              "confidence": 0.95
+            }
+          ],
+          "usage": {
+            "completion_tokens": 158,
+            "prompt_tokens": 2023,
+            "total_tokens": 2181,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "raw": "```json\n{\n  \"items\": [\n    {\n      \"name\": \"сыр мягкий творожный\",\n      \"brand\": \"Унагранде\",\n      \"fat_pct\": 65,\n      \"portion_g\": null,\n      \"barcode\": \"47888810501502015\",\n      \"per100g\": {\n        \"kcal\": 210,\n        \"protein\": 8.5,\n        \"fat\": 18.5,\n        \"carbs\": 2.6\n      },\n      \"label_complete\": true,\n      \"confidence\": 0.95\n    }\n  ]\n}\n```",
+          "latency_s": 2.31,
+          "error": null
+        }
+      ],
+      "scores": [
+        {
+          "json_valid": true,
+          "kcal_rel": 0.639344262295082,
+          "kcal_hit": false,
+          "kcal_diag": false,
+          "bju_hits": 0,
+          "bju_total": 3,
+          "kj_confusion": false,
+          "base_confused": false,
+          "name_ok": true,
+          "brand_ok": false
+        }
+      ]
+    }
+  ]
+}

@@ -8,7 +8,31 @@
 
 - `manifest.yaml` — SSOT: кейсы + эталоны + разметка. Схема — в шапке файла.
 - `images/` — фото, имя `<id>_<trap>.jpg` (например `A-01_kj-only.jpg`).
-- `runs/` — сюда раннер (`run_eval.py`, ещё не реализован) кладёт сырые ответы, usage/латентность и отчёты.
+- `runs/` — сюда раннер (`run_eval.py`) кладёт сырые ответы, usage/латентность и отчёты (`<дата>_<модель>.json`, `<дата>_report.md`).
+
+## Как прогнать раннер
+
+Раннер — НЕ pytest (делает живые сетевые вызовы). Гоняет ярус A через тот же путь,
+что прод (`LLMExtractor`), меняя лишь цель (провайдер/модель) — ADR-0017 §6.
+
+```
+# одна модель (из корня репо, в активном .venv):
+python -m tests.eval.run_eval run --provider groq       --model qwen/qwen3.6-27b
+python -m tests.eval.run_eval run --provider openrouter --model google/gemma-4-31b-it:free
+python -m tests.eval.run_eval run --provider openrouter --model <любая> --limit 5   # быстрая проба
+
+# свести все runs/*.json в markdown-таблицу:
+python -m tests.eval.run_eval report
+```
+
+Провайдеры и ключи — `PROVIDERS` в `run_eval.py`, ключи берутся из `settings`
+(`.env`: `GROQ_API_KEY` / `OPENROUTER_API_KEY` / `OPENAI_API_KEY`). Раннер повторяет
+клиентское сжатие фото прода (длинная сторона ≤1280, JPEG q82) — иначе кормит модель
+не тем, что видит прод, и упирается в 413 на больших PNG.
+
+**Free-тир OpenRouter (`:free`) ненадёжен для сплошного прогона:** модели отдают
+`429 "temporarily rate-limited upstream"` при насыщении общего пула (не личный лимит,
+не бюджет). Гонять с `--sleep 5+`, принимать частичные результаты, повторять позже.
 
 ## Как добавить кейс (сейчас — ярус A, этикетки)
 
@@ -21,4 +45,4 @@
 
 Ярус A закрыт (2026-07-25): 28 кейсов. clean/dual-table/small-font-ru/glare-crumpled перекрыты с запасом; per-portion и composite-product — по 1/2; kj-only — 0/3. Дефицит осознанный (редкие паттерны для этого домохозяйства — см. `llm-eval-dataset.md` §9), не недобор.
 
-Раннер (`run_eval.py`) не реализован — следующий шаг (ТЗ §7 шаг 5), нужны ключи OpenAI/Anthropic.
+Раннер (`run_eval.py`) реализован (2026-07-25). Замер кандидатов идёт на **бесплатных** моделях (карта временно недоступна): Groq `qwen3.6-27b` (прод-baseline) + free-модели OpenRouter. Платные кандидаты ADR-0017 §2 (Haiku/GPT) — когда вернётся оплата. Результаты — `runs/`.

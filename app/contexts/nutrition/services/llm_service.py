@@ -23,6 +23,7 @@
 import base64
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from groq import APIError, AsyncGroq, RateLimitError
@@ -31,6 +32,24 @@ from pydantic import BaseModel, ValidationError
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Прод ходит в Groq через AsyncGroq. Раннер eval гоняет другие OpenAI-совместимые
+# провайдеры (OpenRouter/OpenAI) — для них groq-SDK не годится: он хардкодит путь
+# `/openai/v1/chat/completions` и игнорирует версию в base_url (см. ADR-0017 §14.1).
+# Поэтому не-Groq цели обслуживает openai-SDK (уважает base_url с версией). openai —
+# опциональная зависимость: прод её не требует, только раннер. Отсюда — исключения
+# ловим кортежем обеих SDK, если вторая доступна.
+try:
+    from openai import APIError as _OpenAIAPIError
+    from openai import AsyncOpenAI as _AsyncOpenAI
+    from openai import RateLimitError as _OpenAIRateLimitError
+
+    _RATE_LIMIT_ERRORS: tuple = (RateLimitError, _OpenAIRateLimitError)
+    _API_ERRORS: tuple = (APIError, _OpenAIAPIError)
+except ImportError:  # прод-окружение без openai — работает только Groq-путь
+    _AsyncOpenAI = None
+    _RATE_LIMIT_ERRORS = (RateLimitError,)
+    _API_ERRORS = (APIError,)
 
 
 # ── Контракт данных ─────────────────────────────────────────────────────────
@@ -158,33 +177,98 @@ _COMBINED_PROMPT = (
 )
 
 
-# ── Клиент Groq (ленивый синглтон) ───────────────────────────────────────────
-# AsyncGroq держит httpx-клиент. Создаём один на процесс. Ленивость важна и для
-# тестов: импорт модуля не трогает сеть/ключ — клиент рождается только при вызове.
+# ── Провайдер-цель и клиент (ADR-0017 §6) ────────────────────────────────────
+# AsyncGroq — тонкий OpenAI-совместимый клиент; принимает base_url, поэтому один
+# и тот же класс ходит и в Groq, и в OpenRouter, и в OpenAI. Что различается
+# между провайдерами (URL, ключ, модель, reasoning_effort, лимит фото) собрано в
+# LLMTarget. Прод берёт цель из settings (дефолт = Groq → поведение не меняется);
+# раннер eval подставляет свою цель на провайдера, не покидая этот прод-путь.
 
-_client: AsyncGroq | None = None
+@dataclass
+class LLMTarget:
+    """Куда и чем ходит LLM-клиент (ADR-0017 §6)."""
+
+    base_url: str
+    api_key: str
+    model: str
+    # "" = не передавать reasoning_effort (параметр специфичен для двухрежимных
+    # моделей вроде qwen3.6; другие провайдеры на нём могут отдать 400).
+    reasoning_effort: str = ""
+    max_images: int = 5
+    # Имя параметра лимита вывода. Groq/OpenRouter — "max_tokens"; OpenAI GPT-5.x
+    # его отвергают и требуют "max_completion_tokens" (проверено 2026-07-27).
+    max_tokens_param: str = "max_tokens"
+    # Бюджет вывода. None → дефолт вызова (1024 текст / 1500 extract). Для reasoning
+    # нужен запас: reasoning-токены счётаются в этот лимит и без запаса выедают JSON.
+    max_output_tokens: int | None = None
+    # Температура. None → не передавать (взять дефолт модели). Нужно для reasoning-
+    # моделей OpenAI: они принимают ТОЛЬКО temperature=1 и дают 400 на 0.2.
+    temperature: float | None = 0.2
+    # Слать ли response_format={"type":"json_object"}. Anthropic-compat его отвергает
+    # (хочет json_schema) → False; _extract_json и так снимает ```-обёртку ответа.
+    send_response_format: bool = True
+    # OpenRouter опц. читает HTTP-Referer/X-Title для рейтинга; не обязательно.
+    extra_headers: dict = field(default_factory=dict)
 
 
-def _get_client() -> AsyncGroq:
-    global _client
+def default_target() -> LLMTarget:
+    """Прод-цель из settings (Groq по умолчанию)."""
     if not settings.groq_api_key:
         raise LLMNotConfiguredError(
             "Расчёт КБЖУ недоступен: не задан GROQ_API_KEY в .env"
         )
+    return LLMTarget(
+        base_url=settings.llm_base_url,
+        api_key=settings.groq_api_key,
+        model=settings.groq_model,
+        reasoning_effort=settings.groq_reasoning_effort,
+        max_images=settings.groq_max_images,
+    )
+
+
+def make_client(target: LLMTarget):
+    """Строит клиент под цель. Groq → AsyncGroq (его дефолтный base_url; SDK сам
+    дописывает /openai/v1). Прочие провайдеры → AsyncOpenAI, который уважает
+    base_url с версией пути (OpenRouter `/api/v1`, OpenAI `/v1`). Отдельный клиент
+    на каждую цель — раннер держит несколько провайдеров в одном процессе."""
+    if "api.groq.com" in target.base_url:
+        return AsyncGroq(
+            api_key=target.api_key,
+            default_headers=target.extra_headers or None,
+        )
+    if _AsyncOpenAI is None:
+        raise LLMNotConfiguredError(
+            "Для не-Groq провайдера нужен пакет openai (pip install openai)"
+        )
+    return _AsyncOpenAI(
+        api_key=target.api_key,
+        base_url=target.base_url,
+        default_headers=target.extra_headers or None,
+    )
+
+
+# Ленивый синглтон прод-клиента: импорт модуля не трогает сеть/ключ — клиент
+# рождается только при первом вызове.
+_client = None
+
+
+def _get_client():
+    global _client
     if _client is None:
-        _client = AsyncGroq(api_key=settings.groq_api_key)
+        _client = make_client(default_target())
     return _client
 
 
-def _cap_images(images: list) -> list:
-    """Режет список снимков до лимита модели (`settings.groq_max_images`).
+def _cap_images(images: list, cap: int | None = None) -> list:
+    """Режет список снимков до лимита модели (`cap`, по умолчанию из settings).
 
     Обрезка — деградация, а не ошибка: у пользователя уже есть 4-е фото в UI, и
     падать на этом хуже, чем посчитать по первым N. Но факт потери логируем —
     без этого «модель не увидела этикетку» выглядит как галлюцинация.
     Решение «ошибка vs обрезка vs два вызова» — открытый вопрос ADR-0014.
     """
-    cap = settings.groq_max_images
+    if cap is None:
+        cap = settings.groq_max_images
     if len(images) > cap:
         logger.warning(
             f"Изображений {len(images)} > лимита модели {cap} "
@@ -209,10 +293,43 @@ def _extract_json(content: str) -> dict:
 
 
 class LLMService:
-    """Groq-реализация контракта `NutritionLLM` (vision + text, строгий JSON)."""
+    """OpenAI-совместимая реализация контракта `NutritionLLM` (vision + text, JSON).
 
-    def __init__(self, model: str | None = None):
-        self.model = model or settings.groq_model
+    `target=None` → прод-цель из settings (Groq). Раннер eval передаёт свою цель на
+    провайдера, оставаясь на этом же пути (ADR-0017 §6).
+    """
+
+    def __init__(self, target: LLMTarget | None = None, model: str | None = None):
+        self._target = target
+        self._client = make_client(target) if target is not None else None
+        self.model = model or (target.model if target else settings.groq_model)
+
+    def _client_for(self):
+        return self._client if self._client is not None else _get_client()
+
+    def _reasoning_effort(self) -> str:
+        if self._target is not None:
+            return self._target.reasoning_effort
+        return settings.groq_reasoning_effort
+
+    def _max_images(self) -> int:
+        if self._target is not None:
+            return self._target.max_images
+        return settings.groq_max_images
+
+    def _max_tokens_param(self) -> str:
+        return self._target.max_tokens_param if self._target else "max_tokens"
+
+    def _output_budget(self, default: int) -> int:
+        if self._target is not None and self._target.max_output_tokens:
+            return self._target.max_output_tokens
+        return default
+
+    def _temperature(self) -> float | None:
+        return self._target.temperature if self._target is not None else 0.2
+
+    def _send_response_format(self) -> bool:
+        return self._target.send_response_format if self._target is not None else True
 
     async def _complete(
         self, user_content, system_prompt: str | None = None
@@ -220,30 +337,31 @@ class LLMService:
         """Общий вызов чата для текста и фото. user_content — str или список частей."""
         # reasoning_effort передаём только если задан: у двухрежимных моделей
         # (qwen3.6) без него включается thinking, и reasoning-токены выедают
-        # max_tokens до того, как модель дойдёт до JSON → пустой content.
-        extra: dict = {}
-        if settings.groq_reasoning_effort:
-            extra["reasoning_effort"] = settings.groq_reasoning_effort
+        # бюджет вывода до того, как модель дойдёт до JSON → пустой content.
+        # temperature=0.2 — под детерминизм JSON; None → не слать (reasoning-модели
+        # OpenAI принимают только дефолт 1). response_format — не для Anthropic.
+        extra: dict = {self._max_tokens_param(): self._output_budget(1024)}
+        if self._reasoning_effort():
+            extra["reasoning_effort"] = self._reasoning_effort()
+        if self._temperature() is not None:
+            extra["temperature"] = self._temperature()
+        if self._send_response_format():
+            extra["response_format"] = {"type": "json_object"}
         try:
-            response = await _get_client().chat.completions.create(
+            response = await self._client_for().chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt or _SYSTEM_PROMPT},
                     {"role": "user", "content": user_content},
                 ],
-                response_format={"type": "json_object"},
-                # 0.2 — под детерминизм JSON. Qwen для non-thinking рекомендует 0.7;
-                # если КБЖУ поедут, крутить здесь (замер — на реальных фото этикеток).
-                temperature=0.2,
-                max_tokens=1024,
                 **extra,
             )
-        except RateLimitError as e:
+        except _RATE_LIMIT_ERRORS as e:
             raise LLMRateLimitError(
                 "Лимит запросов к модели исчерпан, попробуй позже"
             ) from e
-        except APIError as e:
-            logger.error(f"Groq API error: {e}")
+        except _API_ERRORS as e:
+            logger.error(f"LLM API error: {e}")
             raise LLMError("Сервис расчёта КБЖУ временно недоступен") from e
 
         raw = response.choices[0].message.content or ""
@@ -271,7 +389,7 @@ class LLMService:
         (свойство модели, не домена). Промпт — прежний _SYSTEM_PROMPT: несколько
         продуктов на фото → несколько позиций.
         """
-        images = _cap_images(images)
+        images = _cap_images(images, self._max_images())
         parts: list[dict] = [
             {
                 "type": "text",
@@ -312,7 +430,7 @@ class LLMService:
                 ),
             }
         ]
-        for b64 in _cap_images(images_b64):
+        for b64 in _cap_images(images_b64, self._max_images()):
             parts.append(
                 {
                     "type": "image_url",
@@ -334,7 +452,7 @@ class LLMService:
                 ),
             }
         ]
-        for b64 in _cap_images(images_b64):
+        for b64 in _cap_images(images_b64, self._max_images()):
             parts.append(
                 {
                     "type": "image_url",
