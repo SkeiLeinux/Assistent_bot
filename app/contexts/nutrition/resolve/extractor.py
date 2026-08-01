@@ -8,7 +8,7 @@
 данные подставляет резолвер (OFF) на следующем.
 
 Направление зависимости (ADR-0004, §2): resolve → services — извлекатель
-переиспользует Groq-клиент и JSON-парсер из `services.llm_service` (тот же
+переиспользует LLM-клиент и JSON-парсер из `services.llm_service` (тот же
 провайдер/модель, контракт NutritionLLM сохраняется), но возвращает свой DTO
 `ExtractedItem`, поэтому это отдельный компонент, а не метод NutritionLLM
 (services НЕ импортирует resolve — цикла нет).
@@ -18,13 +18,12 @@ import base64
 import logging
 from typing import Protocol, runtime_checkable
 
+from openai import APIError, RateLimitError
 from pydantic import ValidationError
 
 from app.config import settings
 from app.contexts.nutrition.resolve.ports import ExtractedItem, ExtractResult
 from app.contexts.nutrition.services.llm_service import (
-    _API_ERRORS,
-    _RATE_LIMIT_ERRORS,
     LLMError,
     LLMRateLimitError,
     LLMTarget,
@@ -71,10 +70,10 @@ class Extractor(Protocol):
 
 
 class LLMExtractor:
-    """Groq-реализация извлекателя (vision + text, строгий JSON, §6).
+    """OpenAI-совместимая реализация извлекателя (vision + text, строгий JSON, §6).
 
-    Модель — `settings.groq_model` (с 2026-07-25 `qwen/qwen3.6-27b`: Scout
-    отключён Groq, см. ADR-0014).
+    Модель — `settings.llm_vision_model` (с 2026-07-27 `gpt-5.4-mini`: победитель
+    замера на 25 эталонах яруса A, ADR-0017 §16).
     """
 
     def __init__(
@@ -82,7 +81,7 @@ class LLMExtractor:
     ) -> None:
         self._target = target
         self._client = make_client(target) if target is not None else None
-        self.model = model or (target.model if target else settings.groq_model)
+        self.model = model or (target.model if target else settings.llm_vision_model)
         # Наблюдаемость для раннера eval (ТЗ §6.2): сырой ответ и usage последнего
         # вызова. Прод их игнорирует — это только для замера цены/латентности.
         self.last_raw: str | None = None
@@ -94,15 +93,17 @@ class LLMExtractor:
     def _reasoning_effort(self) -> str:
         if self._target is not None:
             return self._target.reasoning_effort
-        return settings.groq_reasoning_effort
+        return settings.llm_reasoning_effort
 
     def _max_images(self) -> int:
         if self._target is not None:
             return self._target.max_images
-        return settings.groq_max_images
+        return settings.llm_max_images
 
     def _max_tokens_param(self) -> str:
-        return self._target.max_tokens_param if self._target else "max_tokens"
+        if self._target is not None:
+            return self._target.max_tokens_param
+        return settings.llm_max_tokens_param
 
     def _output_budget(self, default: int) -> int:
         if self._target is not None and self._target.max_output_tokens:
@@ -110,7 +111,9 @@ class LLMExtractor:
         return default
 
     def _temperature(self) -> float | None:
-        return self._target.temperature if self._target is not None else 0.2
+        if self._target is not None:
+            return self._target.temperature
+        return settings.llm_temperature
 
     def _send_response_format(self) -> bool:
         return self._target.send_response_format if self._target is not None else True
@@ -136,11 +139,11 @@ class LLMExtractor:
                 ],
                 **extra,
             )
-        except _RATE_LIMIT_ERRORS as e:
+        except RateLimitError as e:
             raise LLMRateLimitError(
                 "Лимит запросов к модели исчерпан, попробуй позже"
             ) from e
-        except _API_ERRORS as e:
+        except APIError as e:
             logger.error(f"LLM API error (extract): {e}")
             raise LLMError("Сервис расчёта КБЖУ временно недоступен") from e
 

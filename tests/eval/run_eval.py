@@ -7,10 +7,14 @@
 до перевода прода.
 
 Запуск (из корня репо):
-    python -m tests.eval.run_eval run --provider groq       --model qwen/qwen3.6-27b
-    python -m tests.eval.run_eval run --provider openrouter --model google/gemma-4-31b-it:free
+    python -m tests.eval.run_eval run                       # дефолт = прод-цель
+    python -m tests.eval.run_eval run --provider openai     --model gpt-5.4
     python -m tests.eval.run_eval run --provider openrouter --model google/gemma-4-31b-it:free --limit 5
     python -m tests.eval.run_eval report      # свести все runs/*.json в markdown
+
+Дефолт раннера СОВПАДАЕТ с прод-целью (`openai` / `gpt-5.4-mini`, ADR-0017 §16) —
+это не удобство, а предусловие: пока прод и раннер смотрят в разные модели, любая
+правка промпта настраивается вслепую (ТЗ контракта §0.1).
 
 Метрики и пороги — docs/05_implementation/llm-eval-dataset.md §4 (SSOT).
 """
@@ -54,9 +58,10 @@ MANIFEST = EVAL_DIR / "manifest.yaml"
 RUNS_DIR = EVAL_DIR / "runs"
 
 # ── Реестр провайдеров (ADR-0017 §6/§8) ──────────────────────────────────────
-# base_url + откуда ключ + дефолты на провайдера. reasoning_effort пустой везде,
-# кроме Groq: qwen3.6 двухрежимная и без "none" уводит бюджет в thinking → пустой
-# JSON. У прочих провайдеров этот параметр может дать 400, поэтому не шлём.
+# base_url + откуда ключ + дефолты на провайдера. Прежний прод-провайдер убран
+# вместе с зависимостью (ADR-0017 §16): его vision-модель была в статусе preview
+# и дала в замере 76% kcal-hit при 21.9 с на вызов. Его ключ из конфига тоже
+# удалён, поэтому запись здесь всё равно перестала бы работать.
 
 
 class Provider:
@@ -75,11 +80,10 @@ class Provider:
         return getattr(settings, self.key_attr, None)
 
 
+DEFAULT_PROVIDER = "openai"
+DEFAULT_MODEL = "gpt-5.4-mini"
+
 PROVIDERS = {
-    "groq": Provider(
-        "https://api.groq.com", "groq_api_key",  # origin: make_client→AsyncGroq
-        reasoning_effort="none", max_images=3,
-    ),
     "openrouter": Provider(
         "https://openrouter.ai/api/v1", "openrouter_api_key",
         reasoning_effort="", max_images=5,
@@ -89,10 +93,14 @@ PROVIDERS = {
         },
     ),
     "openai": Provider(
+        # Прод-провайдер (ADR-0017 §16). Параметры обязаны совпадать с config.py:
+        # llm_base_url / llm_max_images / llm_max_tokens_param / llm_reasoning_effort.
+        # Расхождение = раннер меряет не то, что поедет в прод (ТЗ контракта §0.1);
+        # сходимость проверяется тестом test_eval_default_matches_prod_target.
         "https://api.openai.com/v1", "openai_api_key",
-        # GPT-5.x: max_tokens отвергается → max_completion_tokens; reasoning "none"
-        # выключает рассуждение (быстрее/дешевле, не выедает JSON-бюджет). temp=0.2 ок.
-        reasoning_effort="none", max_images=5,
+        # GPT-5.x: max_tokens отвергается → max_completion_tokens. reasoning не шлём:
+        # замер показал вред (100% → 94/88% при ×3 выходных токенов и ×2 задержке).
+        reasoning_effort="", max_images=5,
         max_tokens_param="max_completion_tokens",
     ),
     "anthropic": Provider(
@@ -110,7 +118,9 @@ PROVIDERS = {
 # словаре) → цену не считаем, показываем только токены. Значения GPT — из
 # ADR-0017 §8/G; уточнить по факту, если OpenAI сменит прайс.
 TARIFFS = {
-    "qwen/qwen3.6-27b": (0.0, 0.0),   # Groq free tier
+    # Провайдер ушёл (ADR-0017 §16), но тариф оставлен: `report` сводит и старые
+    # прогоны из runs/, а без записи они показали бы «—» вместо честного нуля.
+    "qwen/qwen3.6-27b": (0.0, 0.0),   # был бесплатный тир
     "gpt-5.4-nano": (0.20, 1.25),
     "gpt-5.6-luna": (1.0, 6.0),
     "claude-haiku-4-5": (1.0, 5.0),   # ADR-0017 §8/G
@@ -351,6 +361,300 @@ def score_case(case: dict, item: dict | None) -> dict:
         m["brand_ok"] = bool(_tokens(item.get("brand")) & _tokens(gt.get("brand")))
     else:
         m["brand_ok"] = None  # эталонного бренда нет — не оцениваем
+    return m
+
+
+# ── Метрики ярусов B и C (§3B.6, §3C.4) ──────────────────────────────────────
+# Заведены ДО данных — порядок из §7b: инструмент проверки первым. Обратный
+# порядок на ярусе A стоил 11 рассинхронных кейсов. Каждая метрика ниже имеет
+# негативный контроль в tests/eval/test_scoring.py; по правилу §3D.1 метрика без
+# него не считается введённой, поэтому добавлять сюда что-то без мутанта нельзя.
+#
+# Путь ПРОГОНА ярусов B/C (какие вызовы делать, в каком режиме) приходит вместе
+# с данными — §7b шаги 3–4. Здесь только оценка уже полученного ответа, и она
+# отделена от сети намеренно: так метрики тестируемы без единого живого вызова.
+
+MACROS = ("kcal", "protein", "fat", "carbs")
+
+C_PER100G_TOL = 0.02      # C3: тот же порог, что на ярусе A — это те же этикетки
+C_TOTAL_TOL = 0.005       # C4: 0.5%, не 5% — код считает точно, допуск на округление
+C_WEIGHT_MISMATCH = 0.30  # C6: порог расхождения «заявленный вес vs Σ граммовок»
+
+
+def _norm(s: str | None) -> str:
+    """Нормализация имени для сопоставления: регистр + пунктуация + пробелы."""
+    if not s:
+        return ""
+    return " ".join(
+        "".join(ch.lower() if ch.isalnum() else " " for ch in s).split()
+    )
+
+
+def _matches(model_name: str | None, names: list[str]) -> bool:
+    """Сопоставление имени позиции с именем/синонимами компонента.
+
+    Сначала точное совпадение нормализованных строк, затем — пересечение токенов
+    (модель говорит «пюре картофельное», разметка «картофельное пюре»). Синонимы
+    объявляются в кейсе (§3B.5): без них метрика мерила бы лексику, а не сегментацию.
+    """
+    got = _norm(model_name)
+    if not got:
+        return False
+    for n in names:
+        if got == _norm(n):
+            return True
+    got_tok = _tokens(model_name)
+    return any(got_tok & _tokens(n) for n in names if _tokens(n))
+
+
+def _component_names(comp: dict) -> list[str]:
+    return [comp.get("name", "")] + list(comp.get("synonyms") or [])
+
+
+def _cv(values: list[float]) -> float | None:
+    """Коэффициент вариации. None, если считать не на чем."""
+    vals = [v for v in values if v is not None]
+    if len(vals) < 2:
+        return None
+    mean = sum(vals) / len(vals)
+    if mean == 0:
+        return None
+    var = sum((v - mean) ** 2 for v in vals) / len(vals)
+    return (var ** 0.5) / abs(mean)
+
+
+def _jaccard(a: set, b: set) -> float:
+    return len(a & b) / len(a | b) if (a | b) else 1.0
+
+
+def _run_kcal_signature(items: list[dict]) -> float:
+    """Суммарный per100g.kcal ответа — величина для B6.
+
+    Почему именно она: по контракту на тарелке `portion_g = null` (§3B.1), а
+    граммовки есть только у взвешенной пятёрки. Значит «kcal ответа» в смысле
+    итога не определён на 10 кейсах из 15, и разброс между прогонами измерим
+    только по тому, что модель реально выдаёт — per100g позиций.
+    """
+    total = 0.0
+    for it in items:
+        v = (it.get("per100g") or {}).get("kcal")
+        if v is not None:
+            total += float(v)
+    return total
+
+
+def score_b_case(case: dict, runs: list[list[dict] | None]) -> dict:
+    """Метрики яруса B по одному кейсу (§3B.6).
+
+    `runs` — ответы по повторным прогонам: список позиций либо None, если ответ
+    не распарсился/не прошёл схему. Первый прогон считается основным (B2–B5, B8),
+    B6/B7 смотрят на все.
+    """
+    m: dict = {"b1_json_valid": all(r is not None for r in runs) and bool(runs)}
+    first = runs[0] if runs and runs[0] is not None else None
+    if first is None:
+        return m
+
+    # B2: на кадре без упаковки readout="label" — самозаявление, которое нечем
+    # подтвердить. Метрика имеет смысл только при package_in_frame=false.
+    m["b2_no_label"] = not any(it.get("readout") == "label" for it in first)
+    # B3: контракт запрещает выдумывать размер порции — вес вводит пользователь.
+    m["b3_portion_null"] = all(it.get("portion_g") is None for it in first)
+
+    comps = case.get("components") or []
+    matched_idx: dict[int, dict] = {}
+    used_positions: set[int] = set()
+    for ci, comp in enumerate(comps):
+        names = _component_names(comp)
+        for pi, it in enumerate(first):
+            if pi in used_positions:
+                continue
+            if _matches(it.get("name"), names):
+                matched_idx[ci] = it
+                used_positions.add(pi)
+                break
+    m["b4_recall"] = (len(matched_idx) / len(comps)) if comps else None
+    # B5: фантом — позиция, не сопоставленная ни с одним размеченным компонентом.
+    m["b5_has_phantom"] = len(used_positions) < len(first)
+
+    sig = [_run_kcal_signature(r) for r in runs if r is not None]
+    m["b6_cv"] = _cv(sig)
+    name_sets = [{_norm(it.get("name")) for it in r} for r in runs if r is not None]
+    if len(name_sets) >= 2:
+        m["b7_jaccard"] = min(
+            _jaccard(a, b)
+            for i, a in enumerate(name_sets)
+            for b in name_sets[i + 1:]
+        )
+    else:
+        m["b7_jaccard"] = None
+
+    # B8/B9 — только взвешенная пятёрка: без граммовок вычисленной истины нет.
+    weighed = [c for c in comps if c.get("g") is not None and c.get("per100g")]
+    if case.get("subset") == "B-w" and weighed:
+        truth = {k: 0.0 for k in MACROS}
+        model = {k: 0.0 for k in MACROS}
+        for ci, comp in enumerate(comps):
+            g = comp.get("g")
+            ref = comp.get("per100g") or {}
+            if g is None or not ref:
+                continue
+            for k in MACROS:
+                if ref.get(k) is not None:
+                    truth[k] += float(ref[k]) * float(g) / 100.0
+            got = matched_idx.get(ci)
+            if got is None:
+                continue  # пропущенный компонент штрафуется через B8 автоматически
+            gp = got.get("per100g") or {}
+            for k in MACROS:
+                if gp.get(k) is not None:
+                    model[k] += float(gp[k]) * float(g) / 100.0
+        m["b8_dev"] = (
+            abs(model["kcal"] - truth["kcal"]) / truth["kcal"] if truth["kcal"] else None
+        )
+        m["b8_truth_kcal"] = truth["kcal"]
+        m["b9"] = {
+            who: (
+                corr.get("kcal_lo") is not None
+                and corr.get("kcal_hi") is not None
+                and float(corr["kcal_lo"]) <= truth["kcal"] <= float(corr["kcal_hi"])
+            )
+            for who, corr in (case.get("corridor") or {}).items()
+        }
+    else:
+        m["b8_dev"] = m["b8_truth_kcal"] = None
+        m["b9"] = None
+    return m
+
+
+def c_expected_total(case: dict, a_index: dict) -> dict:
+    """Истина набора C: Σ per100g_эталона(A) × граммовка / 100 (§3C.6)."""
+    total = {k: 0.0 for k in MACROS}
+    for ing in case.get("ingredients") or []:
+        gt = a_index[ing["case"]]["ground_truth"]
+        g = float(ing["g"])
+        for k in MACROS:
+            v = gt.get(k)
+            if v is None:
+                raise ValueError(
+                    f"{case['id']}: у кейса {ing['case']} не заполнен макрос {k} — "
+                    "эталон набора неопределён (§3D.5 п.5)"
+                )
+            total[k] += float(v) * g / 100.0
+    return {k: round(v, 1) for k, v in total.items()}
+
+
+def c_weight_mismatch(case: dict, threshold: float = C_WEIGHT_MISMATCH) -> bool:
+    """C6: расходится ли заявленный вес блюда с Σ граммовок сверх порога."""
+    total_g = sum(float(i["g"]) for i in (case.get("ingredients") or []))
+    declared = case.get("declared_weight_g")
+    if not total_g or declared is None:
+        return False
+    return abs(float(declared) - total_g) / total_g > threshold
+
+
+def score_c_case(
+    case: dict,
+    a_index: dict,
+    items: list[dict] | None,
+    *,
+    dish_positions: int | None = None,
+) -> dict:
+    """Метрики яруса C по одному набору (§3C.4).
+
+    `items` — позиции, извлечённые моделью; у каждой ожидаются `name`, `g`
+    (граммовка, присвоенная из текста состава) и `per100g`. Итог НЕ берётся у
+    модели: по решению L2 его считает код — именно поэтому C4 с допуском 0.5%
+    работает детектором бага агрегации, а не оценкой модели.
+    """
+    m: dict = {"c_json_valid": items is not None}
+    if items is None:
+        return m
+
+    ings = case.get("ingredients") or []
+    # Сопоставляем позиции с ингредиентами по имени эталонного кейса A.
+    matched: dict[str, list[dict]] = {}
+    used: set[int] = set()
+    for ing in ings:
+        gt = a_index[ing["case"]]["ground_truth"]
+        names = [gt.get("name", "")]
+        for pi, it in enumerate(items):
+            if pi in used:
+                continue
+            if _matches(it.get("name"), names):
+                matched.setdefault(ing["case"], []).append(it)
+                used.add(pi)
+    missing = [i["case"] for i in ings if i["case"] not in matched]
+    phantom = [items[pi].get("name") for pi in range(len(items)) if pi not in used]
+    m["c1_missing"] = missing
+    m["c1_phantom"] = phantom
+    m["c1_ok"] = not missing and not phantom
+    m["c7_all_ingredients"] = not missing  # батчи §5.2: на границе ничего не потеряно
+
+    # C2 — граммовка каждой позиции взята из текста состава именно для неё.
+    bad_g = []
+    for ing in ings:
+        for it in matched.get(ing["case"], []):
+            if it.get("g") is None or abs(float(it["g"]) - float(ing["g"])) > 1e-9:
+                bad_g.append((ing["case"], it.get("g"), ing["g"]))
+    m["c2_bad_grams"] = bad_g
+    m["c2_ok"] = not bad_g
+
+    # C3 — per100g позиции против эталона яруса A (те же этикетки).
+    hits = misses = 0
+    devs = []
+    for ing in ings:
+        gt = a_index[ing["case"]]["ground_truth"]
+        for it in matched.get(ing["case"], []):
+            gp = it.get("per100g") or {}
+            worst = 0.0
+            for k in MACROS:
+                ref, got = gt.get(k), gp.get(k)
+                if ref in (None, 0) or got is None:
+                    continue
+                worst = max(worst, abs(float(got) - float(ref)) / abs(float(ref)))
+            devs.append(worst)
+            if worst <= C_PER100G_TOL:
+                hits += 1
+            else:
+                misses += 1
+    m["c3_share"] = (hits / (hits + misses)) if (hits + misses) else None
+    m["c3_max_dev"] = max(devs) if devs else None
+    m["c9_mean_dev"] = (sum(devs) / len(devs)) if devs else None  # C-text, без порога
+
+    # C4 — итог кода против вычисленной истины. Максимум по четырём макросам.
+    truth = c_expected_total(case, a_index)
+    got_total = {k: 0.0 for k in MACROS}
+    for it in items:
+        g = it.get("g")
+        gp = it.get("per100g") or {}
+        if g is None:
+            continue
+        for k in MACROS:
+            if gp.get(k) is not None:
+                got_total[k] += float(gp[k]) * float(g) / 100.0
+    m["c4_dev"] = max(
+        (abs(got_total[k] - truth[k]) / truth[k]) for k in MACROS if truth[k]
+    )
+    m["c4_ok"] = m["c4_dev"] <= C_TOTAL_TOL
+
+    # C5 — dish-режим обязан свести всё в одну итоговую позицию.
+    m["c5_ok"] = None if dish_positions is None else dish_positions == 1
+
+    # C8 — повторный кадр того же товара даёт ОДНУ позицию (дедуп §5.5 через
+    # границу батча). Известное ограничение §3C.2: дедуп нормализует только
+    # регистр и пробелы, поэтому отчёт обязан различать «дедуп не сработал» и
+    # «имена разошлись» — иначе метрика обвинит не тот механизм.
+    dupes = {cid: v for cid, v in matched.items() if len(v) > 1}
+    m["c8_ok"] = not dupes
+    m["c8_names_normalized_equal"] = {
+        cid: len({_norm(x.get("name")) for x in v}) == 1 for cid, v in dupes.items()
+    }
+
+    # C6 — свойство НАБОРА, а не ответа: положительный контроль (C-05) обязан
+    # срабатывать, отрицательные (C-01…C-04) — молчать.
+    m["c6_flag"] = c_weight_mismatch(case)
+    m["c6_ok"] = m["c6_flag"] == bool(case.get("expect_weight_mismatch"))
     return m
 
 
@@ -615,8 +919,10 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("run", help="прогнать одну модель")
-    r.add_argument("--provider", required=True, choices=list(PROVIDERS))
-    r.add_argument("--model", required=True)
+    # Дефолт = прод-цель (ADR-0017 §16). Сходимость с config.py проверяет
+    # tests/eval/test_manifest.py::test_eval_default_matches_prod_target.
+    r.add_argument("--provider", default=DEFAULT_PROVIDER, choices=list(PROVIDERS))
+    r.add_argument("--model", default=DEFAULT_MODEL)
     r.add_argument("--tier", default="A")
     r.add_argument("--repeat", type=int, default=1)
     r.add_argument("--limit", type=int, default=None, help="только первые N кейсов")

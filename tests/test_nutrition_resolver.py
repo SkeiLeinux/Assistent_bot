@@ -1,6 +1,6 @@
 """R1 retrieval-augmented разбор КБЖУ (ADR-0013 / spec-nutrition-retrieval §14).
 
-Без живых вызовов: извлекатель драйвится фейковым Groq-клиентом (канонический
+Без живых вызовов: извлекатель драйвится фейковым LLM-клиентом (канонический
 JSON), OFF — фейковым fetch на реальных JSON-фикстурах (`tests/fixtures/off_*.json`),
 лестница — фейковыми источниками. Покрытие: extractor (мульти), refine (label/off/
 estimate/таймаут), OFF маппинг+выбор, мульти-ввод, масштаб, кэш, бюджет, контракт.
@@ -43,7 +43,7 @@ def _fixture(name: str) -> dict:
     return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
 
 
-# ── Фейковый Groq-клиент для извлекателя (живых вызовов нет) ──────────────────
+# ── Фейковый LLM-клиент для извлекателя (живых вызовов нет) ───────────────────
 
 class _FakeCreate:
     """Подмена chat.completions.create: возвращает канонический content, ловит kwargs."""

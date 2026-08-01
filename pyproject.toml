@@ -106,7 +106,7 @@ forbidden_modules = ["app.contexts.finance.importing"]
 allow_indirect_imports = "true"
 
 # ADR-0013 / spec-nutrition-retrieval §2: резолвер `resolve` зависит от
-# services/models, НЕ наоборот. Цикла нет: extractor тянет Groq-клиент из
+# services/models, НЕ наоборот. Цикла нет: extractor тянет LLM-клиент из
 # services.llm_service (resolve→services), а домен (models/repositories/services/
 # read) НЕ импортирует resolve — резолвер собирается в композиционном корне (api).
 [[tool.importlinter.contracts]]

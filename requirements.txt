@@ -4,7 +4,7 @@ aiosqlite==0.20.0          # драйвер для SQLite (асинхронны�
 alembic==1.14.0            # миграции базы данных
 pydantic-settings==2.6.1   # загрузка конфига из .env
 python-dotenv==1.0.1
-groq==1.1.2                # SDK Groq для расчёта КБЖУ (vision + text, OpenAI-совместимый)
+openai==2.48.0             # SDK OpenAI-совместимого маршрута — расчёт КБЖУ (ADR-0017 §16)
 aiohttp==3.9.5             # HTTP-сервер мини-апы "Еда" (приходит и как зависимость aiogram)
 openpyxl==3.1.5            # чтение/запись xlsx — Import ACL Finance (заперт в contexts.finance.importing)
 tzdata==2026.2             # IANA-таймзоны для zoneinfo (обязателен на Windows; на Linux есть системные)
@@ -17,3 +17,5 @@ tzdata==2026.2             # IANA-таймзоны для zoneinfo (обязат
 import-linter==2.11        # контракт слоёв (ADR-0004), прогон lint-imports
 pytest==9.0.3              # тесты
 pytest-asyncio==1.4.0      # async-тесты (на будущее; S0 использует asyncio.run)
+PyYAML==6.0.2              # чтение tests/eval/manifest.yaml (раннер eval + test_manifest.py)
+Pillow==12.3.0             # сжатие фото в раннере eval как на прод-фронте (1280 px / q82)

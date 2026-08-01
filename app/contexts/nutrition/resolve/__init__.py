@@ -2,15 +2,15 @@
 
 Изолированный подпакет внутри Nutrition (границы — ADR-0004). Зависимость
 направленная: `resolve` зависит от `services`/`config`, НЕ наоборот (extractor
-переиспользует Groq-клиент из `services.llm_service`). Поэтому FoodService НЕ
+переиспользует LLM-клиент из `services.llm_service`). Поэтому FoodService НЕ
 импортирует resolve — резолвер/извлекатель собираются в композиционном корне
 (api-роут) и инжектятся в сервис; так цикл services↔resolve исключён и контракт
 import-linter «resolve — leaf внутри Nutrition» остаётся зелёным.
 
 Ключевой факт (фиксируем комментарием): LLM сам в интернет не ходит. Retrieval —
 отдельные адаптеры за портом `NutritionSource` (R1: только Open Food Facts).
-`extractor` (Scout) лишь сегментирует ввод и оценивает per100g; «estimate» — это
-та самая оценка, отдельного LLM-вызова на неё нет.
+`extractor` лишь сегментирует ввод и оценивает per100g; «estimate» — это та самая
+оценка, отдельного LLM-вызова на неё нет.
 """
 
 from app.contexts.nutrition.resolve.errors import SourceError
@@ -29,7 +29,10 @@ from app.contexts.nutrition.resolve.sources import EstimateSource, OpenFoodFacts
 
 
 def build_extractor() -> Extractor:
-    """Дефолтный извлекатель (Groq/Scout, §6). Композиционный корень — api-роут."""
+    """Дефолтный извлекатель (`settings.llm_vision_model`, §6).
+
+    Композиционный корень — api-роут.
+    """
     return LLMExtractor()
 
 

@@ -61,11 +61,11 @@ async def test_llm_analyze_photo_one_call_n_image_parts(monkeypatch):
 
 
 async def test_llm_analyze_photo_caps_at_model_limit(monkeypatch):
-    """Кап = лимит МОДЕЛИ (`settings.groq_max_images`), а не константа домена.
+    """Кап = лимит МОДЕЛИ (`settings.llm_max_images`), а не константа домена.
 
     Тест читает лимит из конфига намеренно: он переезжает при каждой смене
-    провайдера (scout=5 → qwen3.6=3, ADR-0014), и хардкод «5» здесь уже один раз
-    протух вместе с моделью.
+    провайдера (scout=5 → qwen3.6=3 → gpt-5.4-mini=5), и хардкод «5» здесь уже
+    один раз протух вместе с моделью.
     """
     from app.config import settings
 
@@ -80,7 +80,7 @@ async def test_llm_analyze_photo_caps_at_model_limit(monkeypatch):
 
     monkeypatch.setattr(svc, "_complete", fake_complete)
 
-    limit = settings.groq_max_images
+    limit = settings.llm_max_images
     await svc.analyze_photo([bytes([i]) for i in range(limit + 2)])
 
     image_parts = [p for p in cap["content"] if p["type"] == "image_url"]

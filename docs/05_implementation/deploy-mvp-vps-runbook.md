@@ -188,10 +188,30 @@ nano .env
 | `DATABASE_URL` | SQLite (async): `sqlite+aiosqlite:///./life_manager.db` — путь относительно корня репо (= `WorkingDirectory`). 🔎 сверь имя файла со старым |
 | `ALLOWED_USER_IDS_RAW` | ваши два Telegram ID через запятую |
 | `ADMIN_TELEGRAM_ID` | твой ID — туда идут алерты об ошибках |
-| `GROQ_API_KEY` | ключ Groq (модуль «Еда», КБЖУ) |
+| `LLM_API_KEY` | ключ LLM-провайдера (модуль «Еда», КБЖУ). Провайдер — OpenAI, модель `gpt-5.4-mini` (ADR-0017 §16) |
 | `WEBAPP_URL` | публичный HTTPS-URL мини-апы; **без него кнопка мини-апы в боте не появится** |
 
-`groq_model`, `webapp_host`, `webapp_port` имеют дефолты в `config.py` — можно не задавать.
+`llm_base_url`, `llm_vision_model`, `webapp_host`, `webapp_port` имеют дефолты
+в `config.py` — можно не задавать. Шаблон всех ключей — `.env.example` в корне репо.
+
+> ⚠ **`.env` на VPS обновляется РУКАМИ — `git pull` его не трогает** (файл в
+> `.gitignore`, секретов в репозитории нет). Отсюда правило: **любая правка имён
+> ключей в `app/config.py` требует ручного шага на сервере до рестарта.**
+>
+> **Смена провайдера LLM (2026-08-01, волна 1 блок 1) — как раз такой случай.**
+> Ключ `GROQ_API_KEY` из конфига удалён, вместо него читается `LLM_API_KEY`.
+> `pydantic-settings` запрещает лишние ключи в `.env` (`extra_forbidden`), поэтому
+> **старый `GROQ_API_KEY` нужно удалить, а не просто добавить новый** — иначе бот
+> не стартует вовсе:
+>
+> ```bash
+> nano /opt/Assistent_bot/.env
+> # -GROQ_API_KEY=gsk_...        ← строку удалить
+> # +LLM_API_KEY=sk-proj-...     ← ключ OpenAI
+> ```
+>
+> Плюс `pip install -r requirements.txt` (пакет `groq` ушёл, `openai` добавлен) —
+> без него старт упадёт на `ModuleNotFoundError: No module named 'openai'`.
 
 ---
 

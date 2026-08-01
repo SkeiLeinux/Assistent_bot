@@ -21,6 +21,44 @@
 #   confidence: high            # high | low — low, если эталон прочитан с самого тестового (нечитаемого) фото и не подтверждён отдельно
 #
 # Теги trap (§3): kj-only · small-font-ru · glare-crumpled · per-portion · dual-table · composite-product · clean
+#
+# Статусы: (нет) активный | missing_photo (эталон есть, фото нет) | unscorable (эталон получен вне снимка)
+# ЯРУС A ЗАМОРОЖЕН: 25 активных кейсов = регрессионный baseline волны 1. Кейсы не добавляются,
+# переснятое заводится новыми ID с A-41 и в baseline не входит (llm-eval-dataset.md §7c).
+#
+# Схема кейса яруса B (тарелки) — llm-eval-dataset.md §3B, §5:
+#
+# - id: B-03
+#   tier: B
+#   subset: B-w                  # B-w взвешенный | B-s простой | B-m многокомпонентный | B-a неоднозначный
+#   image: images/B-03_weighed.jpg
+#   package_in_frame: false      # обязано быть false, иначе readout="label" законен и метрика B2 мертва
+#   components:
+#     - name: гречка отварная
+#       synonyms: [каша гречневая, гречка]
+#       g: 180                              # только для B-w; взвешено "как подано"
+#       per100g: {kcal: 132, protein: 4.5, fat: 1.6, carbs: 25.0}
+#       ref_source: "USDA 20091, варёная"   # либо case: A-NN, если товар есть в ярусе A
+#   corridor:                    # глазомерные оценки; сверяются с вычисленной истиной (метрика B9)
+#     sergei: {kcal_lo: 380, kcal_hi: 520}
+#     katya:  {kcal_lo: 350, kcal_hi: 500}
+#
+# Схема набора яруса C (составное блюдо, "бумажное" — ничего не готовится и не снимается):
+#
+# - id: C-01
+#   tier: C
+#   dish_name: Паста с томатным соусом и сыром
+#   declared_weight_g: 170                 # Σ граммовок 180 → расхождение 5.9%, C6 молчит.
+#                                          # НЕ равен Σ: равенство не проверяет порог 0.30 вовсе
+#   expect_weight_mismatch: false          # C6: true только у набора с намеренным расхождением
+#   ingredients:
+#     - {case: A-39, g: 100}               # per100g берётся из ground_truth кейса A
+#     - {case: A-19, g: 50}                # ссылаться можно только на кейсы без status,
+#     - {case: A-16, g: 30}                # с basis: per100g и всеми четырьмя заполненными макросами
+#   extra_images: []                       # доп. кадры того же товара (C-04: из images/_quarantine/)
+#   expected_total: {kcal: 450.3, protein: 17.1, fat: 7.1, carbs: 79.3}
+#   # хранится И пересчитывается тестом из текущих записей A с допуском ±0.05: расхождение =
+#   # эталон A правили, а истина набора C молча уехала (llm-eval-dataset.md §3C.6)
 
 - id: A-15
   tier: A

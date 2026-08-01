@@ -186,8 +186,8 @@ class FoodService:
         self.shared_repo = SharedFoodRepository(session)
         self.goals_repo = GoalsRepository(session)
         self.dish_repo = DishIngredientRepository(session)
-        # I7: зависимость только от контракта NutritionLLM. Дефолт — Groq;
-        # тесты инжектят фейк, живых вызовов из pytest нет (GAP-6).
+        # I7: зависимость только от контракта NutritionLLM. Дефолт — прод-цель
+        # из settings; тесты инжектят фейк, живых вызовов из pytest нет (GAP-6).
         # llm используется только каталогом (/foods/analyze, расчётный путь).
         self.llm: NutritionLLM = llm or LLMService()
         # ADR-0013: извлекатель (сегментация+per100g) и резолвер (лестница источников)
