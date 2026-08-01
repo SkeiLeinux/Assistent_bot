@@ -44,7 +44,12 @@ MACROS = ("kcal", "protein", "fat", "carbs")
 # Файлы в images/, которым НЕ обязано соответствовать поле image: в манифесте.
 # Список явный: без него правило «каждый файл упомянут» красное с первого запуска,
 # а с неявными исключениями оно перестаёт что-либо гарантировать.
-IMAGE_EXEMPT_DIRS = ("_quarantine",)   # кадры вне зачёта; используются как extra_images в C-04
+#
+# `_quarantine/` из списка УБРАН 2026-08-01 (§3D.5 оговаривал исключение «до
+# заведения C-04»): оба карантинных кадра теперь адресуются из `extra_images`
+# набора C-04 как второй ракурс товара, то есть перестали быть вне зачёта.
+# Держать исключение дальше значило бы разрешить копить там что угодно.
+IMAGE_EXEMPT_DIRS: tuple[str, ...] = ()
 IMAGE_EXEMPT_NAMES = (".gitkeep",)
 
 # §3D.5 п.3: порог Атуотера здесь 15%, а НЕ 12% из ТЗ контракта §6.2.
@@ -240,6 +245,15 @@ def check_c_ingredients(cases: list[dict]) -> list[str]:
             for k in MACROS:
                 if gt.get(k) is None:
                     errs.append(f"{c['id']}: у {ref['id']} не заполнен макрос {k}")
+            # §3C.2 п.3: состав для dish_text формулируется явно, а не берётся с
+            # этикетки. «Макароны "Спиральки-экспресс"» не сообщают, что продукт
+            # сухой, и модель отдаст per100g варёных — метрика C9 запишет верное
+            # поведение как промах втрое. Требуем поле, а не полагаемся на заметку.
+            if not (ing.get("text_name") or "").strip():
+                errs.append(
+                    f"{c['id']}: у ингредиента {ing.get('case')} нет text_name — "
+                    "состав для dish_text не сформулирован"
+                )
     return errs
 
 
@@ -323,6 +337,82 @@ def test_tier_a_frozen_at_25_scorable(cases):
     assert len(active) == 25, [c["id"] for c in active]
 
 
+def test_tier_c_is_assembled(cases):
+    """Ярус C собран целиком — 5 наборов (§7b шаг 3, блокер волны 1)."""
+    sets = [c for c in cases if c.get("tier") == "C"]
+    assert len(sets) == 5, [c["id"] for c in sets]
+
+
+def test_tier_c_weight_controls_are_meaningful(cases):
+    """§3C.2 п.1 — отрицательные контроли стоят «около, но под порогом».
+
+    Заявить вес ровно равным Σ граммовок значит не проверить порог 0.30 вовсе.
+    Проверяем и то, что положительный контроль ровно один: два обязательных
+    срабатывания сделали бы неотличимыми «C6 работает» и «C6 всегда true».
+    """
+    from tests.eval.run_eval import C_WEIGHT_MISMATCH, c_weight_mismatch
+
+    sets = [c for c in cases if c.get("tier") == "C"]
+    positives = [c for c in sets if c.get("expect_weight_mismatch")]
+    assert len(positives) == 1, [c["id"] for c in positives]
+
+    for c in sets:
+        total_g = sum(float(i["g"]) for i in c["ingredients"])
+        ratio = abs(total_g - float(c["declared_weight_g"])) / float(c["declared_weight_g"])
+        assert c_weight_mismatch(c) is bool(c["expect_weight_mismatch"]), (c["id"], ratio)
+        if not c["expect_weight_mismatch"]:
+            # не ноль (порог нагружен) и не впритык к нему (случайно не переедет)
+            assert 0.03 < ratio < C_WEIGHT_MISMATCH - 0.10, (c["id"], ratio)
+        else:
+            assert ratio > C_WEIGHT_MISMATCH + 0.10, (c["id"], ratio)
+
+
+def test_tier_c_sets_are_separable(cases):
+    """§3C.2 п.2 — наборы различаются по итогу МНОГО сильнее допуска C4 (0.5%).
+
+    Требование не «различаться в разы», а «различаться много больше допуска», и оно
+    проверяемо. В первой редакции C-04 копировал состав C-03 с теми же граммовками:
+    эталоны совпадали точно, и требование нарушалось ровно для той пары, которую
+    вероятнее всего перепутать.
+    """
+    from tests.eval.run_eval import C_TOTAL_TOL
+
+    totals = {c["id"]: float(c["expected_total"]["kcal"])
+              for c in cases if c.get("tier") == "C"}
+    ordered = sorted(totals, key=totals.get)
+    gaps = {(a, b): abs(totals[b] - totals[a]) / totals[a]
+            for a, b in zip(ordered, ordered[1:])}
+    worst = min(gaps, key=gaps.get)
+    assert gaps[worst] > C_TOTAL_TOL * 10, (worst, gaps[worst])
+
+
+def test_tier_c_batch_and_dedup_material_present(cases):
+    """У яруса C есть чем нагрузить батчи (C7) и дедуп через границу батча (C8).
+
+    Оба свойства выражены числом кадров, а не намерением: если `llm_max_images`
+    когда-нибудь поднимут до 10 (блок 6 поднимает кап фронта), набор перестанет
+    быть тестом батчей молча — и тест это покажет.
+    """
+    from app.config import settings
+
+    sets = {c["id"]: c for c in cases if c.get("tier") == "C"}
+    photos = {cid: len(c["ingredients"]) + len(c.get("extra_images") or [])
+              for cid, c in sets.items()}
+
+    over = [cid for cid, n in photos.items() if n > settings.llm_max_images]
+    assert over, (photos, settings.llm_max_images)
+
+    dedup = [c for c in sets.values() if c.get("extra_images")]
+    assert dedup, "нет набора с повторным кадром товара — C8 непроверяем"
+    for c in dedup:
+        n = len(c["ingredients"]) + len(c["extra_images"])
+        assert n > settings.llm_max_images, (c["id"], n)
+        # повтор обязан быть кадром товара, который в наборе УЖЕ есть, — иначе это
+        # не дедуп, а лишний ингредиент
+        refs = {i["case"] for i in c["ingredients"]}
+        assert refs, c["id"]
+
+
 def test_eval_default_matches_prod_target():
     """Предусловие ТЗ контракта §0.1: дефолт раннера == прод-цель.
 
@@ -383,7 +473,10 @@ def _c_fixture() -> list[dict]:
         "id": "C-90", "tier": "C", "dish_name": "Синтетическое блюдо",
         "declared_weight_g": 190,   # Σ = 200 → 5% < 0.30, C6 обязан молчать
         "expect_weight_mismatch": False,
-        "ingredients": [{"case": "A-90", "g": 100}, {"case": "A-91", "g": 100}],
+        "ingredients": [
+            {"case": "A-90", "g": 100, "text_name": "продукт девяносто"},
+            {"case": "A-91", "g": 100, "text_name": "продукт девяносто один"},
+        ],
         "extra_images": [],
         "expected_total": {"kcal": 300.0, "protein": 30.0, "fat": 12.0, "carbs": 15.0},
     }
@@ -447,7 +540,12 @@ def test_check_images_catches_orphan_file(tmp_path):
 
 
 def test_check_images_exemptions_are_explicit(tmp_path):
-    """Карантин и .gitkeep исключены списком — но только они."""
+    """Исключение ровно одно — `.gitkeep`. Карантин больше не исключён.
+
+    Незанятый кадр в `_quarantine/` обязан краснеть: с 2026-08-01 такие кадры
+    адресуются из `extra_images` набора C-04, и «папка, куда можно складывать
+    что угодно» перестала быть частью схемы.
+    """
     images = tmp_path / "images"
     (images / "_quarantine").mkdir(parents=True)
     cases = _c_fixture()
@@ -455,7 +553,13 @@ def test_check_images_exemptions_are_explicit(tmp_path):
         if c.get("image"):
             (tmp_path / c["image"]).write_bytes(b"x")
     (images / ".gitkeep").write_bytes(b"")
+    assert check_images(cases, images) == []
+
     (images / "_quarantine" / "A-90_dup.jpg").write_bytes(b"x")
+    assert any("файл-сирота" in e for e in check_images(cases, images))
+
+    # ...но тот же кадр, адресованный из extra_images, снова легален.
+    cases[2]["extra_images"] = ["images/_quarantine/A-90_dup.jpg"]
     assert check_images(cases, images) == []
 
 
@@ -513,8 +617,10 @@ def test_check_c_links_tolerates_rounding_half():
         (lambda cs: cs[0].update(status="missing_photo"), "в наборы не годится"),
         (lambda cs: cs[0]["ground_truth"].update(carbs=None), "не заполнен макрос carbs"),
         (lambda cs: cs[0]["ground_truth"].update(basis="per_portion"), "нужен per100g"),
-        (lambda cs: cs[2]["ingredients"].append({"case": "A-999", "g": 10}),
-         "несуществующий кейс"),
+        (lambda cs: cs[2]["ingredients"].append(
+            {"case": "A-999", "g": 10, "text_name": "х"}), "несуществующий кейс"),
+        (lambda cs: cs[2]["ingredients"][0].pop("text_name"), "нет text_name"),
+        (lambda cs: cs[2]["ingredients"][0].update(text_name="  "), "нет text_name"),
     ],
 )
 def test_check_c_ingredients_catches(mutate, expect_in):

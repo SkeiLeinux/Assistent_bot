@@ -545,12 +545,21 @@ def c_expected_total(case: dict, a_index: dict) -> dict:
 
 
 def c_weight_mismatch(case: dict, threshold: float = C_WEIGHT_MISMATCH) -> bool:
-    """C6: расходится ли заявленный вес блюда с Σ граммовок сверх порога."""
+    """C6: расходится ли Σ граммовок с заявленным весом блюда сверх порога.
+
+    Формула — дословно из ТЗ контракта §6.4:
+        |Σ portion_g_i − weight_g| / weight_g > 0.30
+    Знаменатель — **заявленный вес**, а не Σ граммовок. Разница не косметическая:
+    на C-05 (Σ 500 г, заявлено 350 г) Σ-знаменатель даёт ровно 30.0% и НЕ проходит
+    строгое `>`, то есть положительный контроль C6+ молча не сработал бы. Поймано
+    пересчётом процентов из §3C.2 при сборке яруса C, а не тестом — тесты
+    проходили при обеих формулах, потому что синтетика была далеко от границы.
+    """
     total_g = sum(float(i["g"]) for i in (case.get("ingredients") or []))
     declared = case.get("declared_weight_g")
-    if not total_g or declared is None:
+    if not declared:
         return False
-    return abs(float(declared) - total_g) / total_g > threshold
+    return abs(total_g - float(declared)) / float(declared) > threshold
 
 
 def score_c_case(

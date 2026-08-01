@@ -397,14 +397,32 @@ def test_m16_removed_mismatch_kills_positive_control():
 # ── Мутант 17: в отрицательном контроле вес сдвинут за порог → C6− ─────────
 
 def test_m17_shifted_weight_breaks_negative_control():
-    case, idx = c_case(), a_index()                 # Σ=200, заявлено 190 → 5%
+    case, idx = c_case(), a_index()                 # Σ=200, заявлено 190 → 5.3%
     assert c_weight_mismatch(case) is False
     assert score_c_case(case, idx, c_answer(case, idx))["c6_ok"]
 
-    case["declared_weight_g"] = 280                 # 40% > 0.30
+    case["declared_weight_g"] = 300                 # |200−300|/300 = 33.3% > 0.30
     got = score_c_case(case, idx, c_answer(case, idx))
     assert got["c6_flag"] is True
     assert got["c6_ok"] is False, "молчание отрицательного контроля нарушено"
+
+
+def test_c6_denominator_is_declared_weight_not_sum():
+    """Знаменатель C6 — заявленный вес блюда (ТЗ контракта §6.4), а не Σ граммовок.
+
+    Пин формулы, а не поведения. Обе версии совпадают почти везде и расходятся у
+    границы — на реальном C-05 (Σ 500, заявлено 350) Σ-знаменатель даёт ровно
+    30.0%, что НЕ проходит строгое `>`, и обязательное срабатывание исчезает без
+    единого красного теста. Первая реализация была именно такой.
+    """
+    near = {"declared_weight_g": 350,
+            "ingredients": [{"case": "A-90", "g": 500}]}     # 150/350=42.9% vs 150/500=30.0%
+    assert c_weight_mismatch(near) is True
+
+    # И зеркальный случай: Σ-знаменатель сработал бы там, где ТЗ велит молчать.
+    other = {"declared_weight_g": 280,
+             "ingredients": [{"case": "A-90", "g": 200}]}    # 80/280=28.6% vs 80/200=40%
+    assert c_weight_mismatch(other) is False
 
 
 def test_c6_threshold_is_actually_exercised():
@@ -414,7 +432,7 @@ def test_c6_threshold_is_actually_exercised():
     """
     case = c_case()
     total_g = sum(i["g"] for i in case["ingredients"])
-    ratio = abs(case["declared_weight_g"] - total_g) / total_g
+    ratio = abs(total_g - case["declared_weight_g"]) / case["declared_weight_g"]
     assert 0 < ratio < C_WEIGHT_MISMATCH
 
 
