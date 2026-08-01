@@ -10,10 +10,15 @@ from app.contexts.nutrition.resolve.ports import ResolvedNutrition, ResolveQuery
 
 
 class EstimateSource:
-    """Последняя ступень лестницы. Никогда не возвращает None."""
+    """Последняя ступень лестницы. `None` только когда чисел нет в самой позиции."""
 
     name = "estimate"
     timeout_s = 0.0  # без сети
 
-    async def lookup(self, q: ResolveQuery) -> ResolvedNutrition:
+    async def lookup(self, q: ResolveQuery) -> ResolvedNutrition | None:
+        # readout="unreadable" (ТЗ §3.1): модель отказалась выдумывать числа, и
+        # оценке взяться неоткуда. Вернуть нули значило бы превратить честный
+        # отказ в данные — позиция уходит в `unresolved` (§6.6).
+        if q.fallback_per100g is None:
+            return None
         return ResolvedNutrition(per100g=q.fallback_per100g, source="estimate")

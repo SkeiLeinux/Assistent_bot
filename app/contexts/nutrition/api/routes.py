@@ -209,6 +209,9 @@ def _item(it: NutritionItem) -> dict:
         "source_ref": it.source_ref,
         "matched_name": it.matched_name,
     }
+    # Флаги проверок §6 — только когда есть: фронт рисует текст по коду.
+    if it.warnings:
+        out["warnings"] = it.warnings
     # per100g (опция C): confirm-экран пересчитывает КБЖУ при правке веса.
     if it.kcal_100g is not None:
         out["per100g"] = {
@@ -312,7 +315,19 @@ async def analyze(request: web.Request) -> web.Response:
     else:
         raise InvalidInput("Неизвестный тип запроса")
 
-    return _json({"items": [_item(it) for it in result.items]})
+    # `unresolved` (ТЗ §6.6): позиции без чисел не блокируют остальные и НЕ
+    # приезжают нулями в items — запись с нулевым КБЖУ выглядит как данные и
+    # портит итоги дня, прогресс к целям и дайджест. Пустой items при непустом
+    # unresolved — это 200 (частичный успех), а не 502.
+    return _json(
+        {
+            "items": [_item(it) for it in result.items],
+            "unresolved": [
+                {"name": u.name, "note": u.note, "reason": u.reason}
+                for u in result.unresolved
+            ],
+        }
+    )
 
 
 # ── Записи дневника ──────────────────────────────────────────────────────────
@@ -618,19 +633,24 @@ async def post_food_analyze(request: web.Request) -> web.Response:
     else:
         result = await svc.analyze_dish_photos(images_b64, name, weight_g)
 
+    if not result.items:
+        raise InvalidInput("Не удалось разобрать состав блюда")
+
+    # items[0] — итог, посчитанный КОДОМ (L2, ТЗ §5.4); дальше идут позиции,
+    # не вошедшие в него (без граммовки). Провенанс блюда всегда estimate:
+    # каталог — расчётный путь (ADR-0013 §17), резолвер не вызывается.
     item = result.items[0]
-    # Каталог — расчётный путь (ADR-0013 §17): резолвер НЕ вызывается, провенанс
-    # всегда estimate (числа — оценка модели по составу).
-    return _json(
-        {
-            "kcal": round(item.kcal, 1),
-            "protein": round(item.protein, 1),
-            "fat": round(item.fat, 1),
-            "carbs": round(item.carbs, 1),
-            "source": "estimate",
-            "source_ref": None,
-        }
-    )
+    out = {
+        "kcal": round(item.kcal, 1),
+        "protein": round(item.protein, 1),
+        "fat": round(item.fat, 1),
+        "carbs": round(item.carbs, 1),
+        "source": "estimate",
+        "source_ref": None,
+    }
+    if item.warnings:
+        out["warnings"] = item.warnings
+    return _json(out)
 
 
 # ── Монтаж ───────────────────────────────────────────────────────────────────

@@ -15,12 +15,12 @@ import pytest
 from app.kernel import Viewer
 from app.kernel.models import Family, Membership, User
 
-import app.contexts.nutrition.resolve.extractor as extractor_mod
 from app.contexts.nutrition.resolve import (
     EstimateSource,
     LLMExtractor,
     OpenFoodFactsSource,
     ResolverPipeline,
+    prompts,
 )
 from app.contexts.nutrition.resolve.errors import SourceError
 from app.contexts.nutrition.resolve.ports import (
@@ -48,22 +48,31 @@ def _fixture(name: str) -> dict:
 class _FakeCreate:
     """Подмена chat.completions.create: возвращает канонический content, ловит kwargs."""
 
-    def __init__(self, content: str) -> None:
+    def __init__(self, content: str, finish_reason: str = "stop") -> None:
         self.content = content
+        self.finish_reason = finish_reason
         self.kwargs: dict | None = None
+        self.calls = 0
 
     async def __call__(self, **kwargs):
         self.kwargs = kwargs
+        self.calls += 1
         msg = SimpleNamespace(content=self.content)
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=msg, finish_reason=self.finish_reason)],
+            usage=None,
+        )
 
 
 def _patch_extractor(monkeypatch, content: str) -> _FakeCreate:
+    """Клиент патчится в llm_service: транспорт теперь один на весь домен (§5.3)."""
+    import app.contexts.nutrition.services.llm_service as llm_mod
+
     create = _FakeCreate(content)
     client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))
     )
-    monkeypatch.setattr(extractor_mod, "_get_client", lambda: client)
+    monkeypatch.setattr(llm_mod, "_get_client", lambda: client)
     return create
 
 
@@ -106,10 +115,9 @@ def _macros(kcal=100.0, protein=5.0, fat=2.0, carbs=10.0) -> Macros:
     return Macros(kcal=kcal, protein=protein, fat=fat, carbs=carbs)
 
 
-def _extracted(name="гречка", portion_g=200.0, label_complete=False, **kw) -> ExtractedItem:
+def _extracted(name="гречка", portion_g=200.0, readout="estimate", **kw) -> ExtractedItem:
     return ExtractedItem(
-        name=name, portion_g=portion_g, per100g=_macros(**kw),
-        label_complete=label_complete,
+        name=name, portion_g=portion_g, per100g=_macros(**kw), readout=readout,
     )
 
 
@@ -126,9 +134,9 @@ async def test_extractor_text_two_items(monkeypatch):
     content = json.dumps(
         {
             "items": [
-                {"name": "гречка", "portion_g": 200, "label_complete": False,
+                {"name": "гречка", "portion_g": 200, "readout": "estimate",
                  "per100g": {"kcal": 340, "protein": 13, "fat": 3, "carbs": 70}},
-                {"name": "курица", "portion_g": 150, "label_complete": False,
+                {"name": "курица", "portion_g": 150, "readout": "estimate",
                  "per100g": {"kcal": 165, "protein": 31, "fat": 3.6, "carbs": 0}},
             ]
         }
@@ -140,15 +148,16 @@ async def test_extractor_text_two_items(monkeypatch):
     assert items[0].name == "гречка" and items[0].portion_g == 200
     assert items[0].per100g.kcal == 340
     assert items[1].name == "курица" and items[1].portion_g == 150
-    # промпт извлечения — дословно §6
-    assert create.kwargs["messages"][0]["content"] == extractor_mod._EXTRACT_PROMPT
+    # системный промпт — один на все пять путей (ТЗ §4.1); режим задаёт user-часть
+    assert create.kwargs["messages"][0]["content"] == prompts.SYSTEM_PROMPT_V2
+    assert create.kwargs["messages"][1]["content"] == "гречка 200, курица 150"
 
 
 async def test_extractor_single_with_brand_and_fat(monkeypatch):
     """«200гр молоко Домик в деревне 3.2%» → 1 item с brand/fat_pct/portion."""
     content = json.dumps(
         {"items": [{"name": "молоко питьевое", "brand": "Домик в деревне",
-                    "fat_pct": 3.2, "portion_g": 200, "label_complete": False,
+                    "fat_pct": 3.2, "portion_g": 200, "readout": "estimate",
                     "per100g": {"kcal": 60, "protein": 3, "fat": 3.2, "carbs": 4.7}}]}
     )
     _patch_extractor(monkeypatch, content)
@@ -160,46 +169,107 @@ async def test_extractor_single_with_brand_and_fat(monkeypatch):
     assert it.portion_g == 200
 
 
-async def test_extractor_photo_label_complete(monkeypatch):
-    """Фото этикетки → одна запись label_complete=true (per100g точные)."""
+async def test_extractor_photo_readout_label(monkeypatch):
+    """Фото этикетки → одна запись readout="label" (per100g списаны с таблицы)."""
     content = json.dumps(
-        {"items": [{"name": "йогурт", "label_complete": True, "portion_g": 125,
+        {"items": [{"name": "йогурт", "readout": "label", "portion_g": 125,
                     "per100g": {"kcal": 90, "protein": 4, "fat": 3, "carbs": 12}}]}
     )
     create = _patch_extractor(monkeypatch, content)
     items = await LLMExtractor().extract(images=[b"\xff\xd8jpeg"], caption="этикетка")
 
-    assert len(items) == 1 and items[0].label_complete is True
+    assert len(items) == 1 and items[0].readout == "label"
     # vision-вход: текст + image-часть, один вызов
     content_parts = create.kwargs["messages"][1]["content"]
     assert any(p["type"] == "image_url" for p in content_parts)
 
 
 async def test_extractor_photo_plate_multi_estimate(monkeypatch):
-    """Фото тарелки → N записей label_complete=false (оценка)."""
+    """Фото тарелки → N записей readout="estimate" (оценка)."""
     content = json.dumps(
         {"items": [
-            {"name": "рис", "label_complete": False, "portion_g": 150,
+            {"name": "рис", "readout": "estimate", "portion_g": 150,
              "per100g": {"kcal": 130, "protein": 2.7, "fat": 0.3, "carbs": 28}},
-            {"name": "котлета", "label_complete": False, "portion_g": 100,
+            {"name": "котлета", "readout": "estimate", "portion_g": 100,
              "per100g": {"kcal": 250, "protein": 18, "fat": 18, "carbs": 5}},
         ]}
     )
     _patch_extractor(monkeypatch, content)
     items = await LLMExtractor().extract(images=[b"a", b"b"])
-    assert len(items) == 2 and all(not it.label_complete for it in items)
+    assert len(items) == 2 and all(it.readout == "estimate" for it in items)
+
+
+async def test_extractor_accepts_legacy_label_complete(monkeypatch):
+    """Промпт v1 отвечает `label_complete` — раннер обязан уметь прогнать обе версии.
+
+    Совместимость нужна ровно для сравнения версий промпта (ТЗ §12.3): без неё
+    baseline-прогон падал бы на схеме, и утверждение «не хуже baseline» стало бы
+    непроверяемым.
+    """
+    content = json.dumps(
+        {"items": [{"name": "йогурт", "label_complete": True, "portion_g": 125,
+                    "per100g": {"kcal": 90, "protein": 4, "fat": 3, "carbs": 12}}]}
+    )
+    create = _patch_extractor(monkeypatch, content)
+    items = await LLMExtractor(prompt_version="v1").extract(images=[b"x"])
+
+    assert items[0].readout == "label"
+    assert create.kwargs["messages"][0]["content"] == prompts.SYSTEM_PROMPT_V1
 
 
 # ════════════════════════ REFINE — ЛЕСТНИЦА (§4) ════════════════════════════
 
-async def test_refine_label_short_circuit():
-    """label_complete → source=label, сеть не трогаем."""
+async def test_refine_label_without_brand_skips_network():
+    """readout=label БЕЗ бренда → source=label, сеть не трогаем (§7.2).
+
+    Прежнее правило коротило лестницу на любой этикетке; теперь короткое
+    замыкание осталось только там, где сверять не с чем: без бренда шанс найти
+    товар в источнике близок к нулю, а запрос стоит времени (§7.3).
+    """
     off = FakeSource(name="off", result=ResolvedNutrition(per100g=_macros(), source="off"))
     pipe = _pipeline([off])
-    item = _extracted(label_complete=True, kcal=90)
+    item = _extracted(readout="label", kcal=90)
     r = await pipe.refine(item)
     assert r.source == "label" and r.per100g.kcal == 90
-    assert off.calls == 0  # поиск не нужен
+    assert off.calls == 0  # сверять не с чем
+
+
+async def test_refine_label_with_brand_queries_source_but_keeps_label():
+    """readout=label + бренд → источник спрашивается, но числа этикетки остаются.
+
+    Гейт §7.1a (блок 10) сейчас закрыт — `match_confidence` ступень не сообщает,
+    поэтому расхождение НЕ показывается: при матчинге 36% оно было бы ложным в
+    двух случаях из трёх. Числа не подменяются в любом случае (§2.4).
+    """
+    off = FakeSource(
+        name="off", result=ResolvedNutrition(per100g=_macros(kcal=500), source="off")
+    )
+    item = _extracted(readout="label", kcal=90, name="молоко")
+    item = item.model_copy(update={"brand": "Домик в деревне"})
+    r = await _pipeline([off]).refine(item)
+
+    assert off.calls == 1                       # сверка запрошена
+    assert r.source == "label" and r.per100g.kcal == 90   # числа не подменены
+    assert "label_disagrees_with_source" not in r.warnings  # гейт закрыт
+
+
+async def test_refine_label_downgraded_by_checks_goes_to_ladder():
+    """Проваленные проверки понизили readout → обычный проход лестницы (§6.2).
+
+    Это и есть маршрутная роль проверок: они не отклоняют ответ, а отправляют
+    позицию искать числа во внешнем источнике.
+    """
+    from app.contexts.nutrition.resolve.checks import apply_checks
+
+    off = FakeSource(
+        name="off", result=ResolvedNutrition(per100g=_macros(kcal=60), source="off")
+    )
+    # kcal 900 при БЖУ 5/2/10 — Атуотер даёт 78, расхождение больше 20%.
+    item = apply_checks(_extracted(readout="label", kcal=900))
+    assert item.readout == "estimate"
+
+    r = await _pipeline([off]).refine(item)
+    assert r.source == "off" and off.calls == 1
 
 
 async def test_refine_off_hit():
@@ -330,7 +400,8 @@ class FakeExtractor:
         self.items = items
         self.calls = 0
 
-    async def extract(self, *, text=None, images=None, caption="", mime_type="image/jpeg"):
+    async def extract(self, *, mode="diary", text=None, images=None, caption="",
+                      mime_type="image/jpeg", dish_name=None, weight_g=None):
         self.calls += 1
         return self.items
 

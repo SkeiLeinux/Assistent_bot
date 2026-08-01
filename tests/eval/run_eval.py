@@ -7,10 +7,19 @@
 до перевода прода.
 
 Запуск (из корня репо):
-    python -m tests.eval.run_eval run                       # дефолт = прод-цель
+    python -m tests.eval.run_eval run                       # дефолт = прод-цель, ярус A
     python -m tests.eval.run_eval run --provider openai     --model gpt-5.4
-    python -m tests.eval.run_eval run --provider openrouter --model google/gemma-4-31b-it:free --limit 5
+    python -m tests.eval.run_eval run --prompt v1           # прежний промпт, для сравнения
+    python -m tests.eval.run_eval run --tier C --mode dish_combined
+    python -m tests.eval.run_eval run --tier C --mode dish_text     # C9, без единого кадра
     python -m tests.eval.run_eval report      # свести все runs/*.json в markdown
+
+Ярус C гоняется через ПРОД-агрегацию (`services.food_service.aggregate_dish`), а не
+через свою копию расчёта: смысл метрики C4 (допуск 0.5%) — быть детектором бага
+именно в коде агрегации, и своя копия этот смысл уничтожила бы.
+
+`--prompt` существует ради требования приёмки ТЗ §12.3: промпт меняется, значит
+«не хуже baseline» доказуемо только прогоном ОБЕИХ версий на одних и тех же кейсах.
 
 Дефолт раннера СОВПАДАЕТ с прод-целью (`openai` / `gpt-5.4-mini`, ADR-0017 §16) —
 это не удобство, а предусловие: пока прод и раннер смотрят в разные модели, любая
@@ -46,7 +55,10 @@ import yaml  # noqa: E402
 from PIL import Image, ImageOps  # noqa: E402
 
 from app.config import settings  # noqa: E402
+from app.contexts.nutrition.resolve import prompts  # noqa: E402
+from app.contexts.nutrition.resolve.checks import FLAG_WEIGHT_MISMATCH  # noqa: E402
 from app.contexts.nutrition.resolve.extractor import LLMExtractor  # noqa: E402
+from app.contexts.nutrition.services.food_service import aggregate_dish  # noqa: E402
 from app.contexts.nutrition.services.llm_service import (  # noqa: E402
     LLMError,
     LLMRateLimitError,
@@ -146,11 +158,24 @@ _STOP = {"с", "и", "в", "на", "по", "из", "для", "мясной", "п
 
 # ── Загрузка датасета ────────────────────────────────────────────────────────
 
-def load_cases(tier: str | None) -> list[dict]:
+def load_all() -> list[dict]:
     data = yaml.safe_load(MANIFEST.read_text(encoding="utf-8"))
-    cases = [c for c in data if isinstance(c, dict) and "id" in c]
+    return [c for c in data if isinstance(c, dict) and "id" in c]
+
+
+def a_index() -> dict:
+    """Все записи яруса A по id — истина ингредиентов набора C (§3C.6)."""
+    return {c["id"]: c for c in load_all() if c.get("tier") == "A"}
+
+
+def load_cases(tier: str | None) -> list[dict]:
+    cases = load_all()
     if tier:
         cases = [c for c in cases if c.get("tier") == tier]
+    if tier == "C":
+        # У наборов C своего кадра нет: фотографии — ссылки на файлы яруса A
+        # (§3C.1). Правила исключения ниже к ним неприменимы по построению.
+        return cases
     # Из прогона исключаются два вида кейсов — оба остаются в манифесте, потому что
     # эталон дорого восстанавливать, а причина исключения важна как запись:
     #   missing_photo — снимка нет (продукт надо переснять);
@@ -169,6 +194,38 @@ def load_cases(tier: str | None) -> list[dict]:
         print("Исключены из прогона: "
               + ", ".join(f"{i} ({r})" for i, r in skipped))
     return [c for c in cases if not skip_reason(c)]
+
+
+def load_refusal_cases(tier: str | None) -> list[dict]:
+    """Кейсы под метрику «отказ вместо выдумки» (ТЗ §12.3, ADR-0017 §17).
+
+    Это `status: unscorable` — снимок есть, но эталон из него НЕ выводится, потому
+    что этикетка физически нечитаема (A-07: обёртка перекручена, числа продиктованы
+    извне). Мерить на таком точность чтения бессмысленно — это тест человека, а не
+    модели, поэтому из основного зачёта кейс исключён. Но ровно он и есть материал
+    для новой метрики: правильный ответ здесь — `readout ∈ {estimate, unreadable}`,
+    то есть признание, а не правдоподобные числа. Все три финалиста замера
+    2026-07-27 промахнулись именно тут, объявив прочитанным то, что не читается.
+    """
+    return [
+        c for c in load_all()
+        if (tier is None or c.get("tier") == tier)
+        and c.get("status") == "unscorable"
+        and c.get("image")
+    ]
+
+
+def score_refusal(items: list[dict] | None) -> dict:
+    """Метрика отказа: модель обязана НЕ заявлять «label» на нечитаемой этикетке."""
+    if not items:
+        return {"json_valid": False, "refusal_ok": False, "readout": None}
+    readout = items[0].get("readout")
+    return {
+        "json_valid": True,
+        "readout": readout,
+        "note": items[0].get("note"),
+        "refusal_ok": readout in ("estimate", "unreadable"),
+    }
 
 
 def check_desync(cases: list[dict], records: list[dict]) -> list[dict]:
@@ -667,6 +724,223 @@ def score_c_case(
     return m
 
 
+# ── Прогон яруса C: сборка ввода из «бумажного» набора (§3C.1) ───────────────
+
+def c_image_paths(case: dict, index: dict) -> list[Path]:
+    """Кадры набора: этикетки ингредиентов + повторные ракурсы, В ЭТОМ порядке.
+
+    Порядок обязателен и не перемешивается: C-04 рассчитан на то, что оригиналы
+    попадут в ПЕРВЫЙ батч, а дубли тех же товаров — во второй, и только так дедуп
+    (§5.5 ТЗ) проверяется через границу батча, а не внутри одного вызова.
+    """
+    paths = []
+    for ing in case.get("ingredients") or []:
+        image = index[ing["case"]].get("image")
+        if image:
+            paths.append(EVAL_DIR / image)
+    for extra in case.get("extra_images") or []:
+        paths.append(EVAL_DIR / extra)
+    return paths
+
+
+def c_composition_text(case: dict) -> str:
+    """Состав словами: «макароны сухие 100 г, паста томатная 50 г».
+
+    Берём `text_name`, а не имя с этикетки: «Спиральки-экспресс» не сообщают, что
+    макароны СУХИЕ, и модель по умолчанию отдаст per100g варёных (~130 против 342)
+    — метрика C9 записала бы верное поведение как промах втрое (§3C.2 п.3).
+    """
+    return ", ".join(
+        f"{ing['text_name']} {ing['g']} г" for ing in case.get("ingredients") or []
+    )
+
+
+def c_items_view(extracted: list) -> list[dict]:
+    """ExtractedItem → форма, которую ждут метрики C (`name`/`g`/`per100g`)."""
+    out = []
+    for it in extracted:
+        per = it.per100g
+        out.append({
+            "name": it.name,
+            "g": it.portion_g,
+            "readout": it.readout,
+            "per100g": None if per is None else {
+                "kcal": per.kcal, "protein": per.protein,
+                "fat": per.fat, "carbs": per.carbs,
+            },
+            "warnings": list(it.warnings),
+        })
+    return out
+
+
+async def run_c_case(
+    extractor: LLMExtractor, case: dict, index: dict, mode: str, retries: int
+) -> dict:
+    """Один набор C через прод-путь: извлечение + ПРОД-агрегация."""
+    images = []
+    if mode in (prompts.MODE_DISH_PHOTOS, prompts.MODE_DISH_COMBINED):
+        images = [prep_image(p) for p in c_image_paths(case, index)]
+    text = None
+    if mode in (prompts.MODE_DISH_TEXT, prompts.MODE_DISH_COMBINED):
+        text = c_composition_text(case)
+
+    attempt = 0
+    while True:
+        t0 = time.monotonic()
+        try:
+            extracted = await extractor.extract(
+                mode=mode, text=text, images=images or None,
+                dish_name=case["dish_name"], weight_g=case["declared_weight_g"],
+            )
+            agg = aggregate_dish(
+                extracted,
+                name=case["dish_name"],
+                weight_g=case["declared_weight_g"],
+                single=(mode == prompts.MODE_DISH_PHOTOS),
+            )
+            return {
+                "items": c_items_view(extracted),
+                "total": agg.item.model_dump(),
+                # Чистый гейт КОДА: итог прод-агрегации против независимого
+                # пересчёта из ТЕХ ЖЕ позиций. Нужен отдельно от C4, потому что
+                # C4 сравнивает с эталоном и потому смешивает две разные вещи —
+                # ошибку арифметики кода и ошибку per100g модели (последняя по
+                # C3 допустима до 2%, то есть C4 с допуском 0.5% не может быть
+                # «детектором бага в коде», как заявлено в §3C.4 датасета).
+                "agg_self_dev": _agg_self_dev(extracted, agg, mode, case),
+                "dish_positions": len(agg.positions),
+                # C6 глазами КОДА: флаг, который реально подняла проверка на
+                # граммовках из ответа модели. Отличается от свойства набора,
+                # если модель перепутала граммовки — и это честный сигнал.
+                "weight_mismatch": FLAG_WEIGHT_MISMATCH in agg.item.warnings,
+                "calls": extractor.last_call_count,
+                "usage": extractor.last_usage,
+                "raw": extractor.last_raw,
+                "latency_s": round(time.monotonic() - t0, 2),
+                "error": None,
+            }
+        except LLMRateLimitError as e:
+            if attempt >= retries:
+                return _c_failure(extractor, t0, f"rate_limit: {e}")
+            wait = 10 * (2 ** attempt)
+            print(f"    429 — жду {wait}s (попытка {attempt + 1}/{retries})")
+            await asyncio.sleep(wait)
+            attempt += 1
+        except LLMError as e:
+            cause = getattr(e, "__cause__", None)
+            detail = f"{type(e).__name__}: {e}"
+            if cause is not None:
+                detail += f" | cause: {getattr(cause, 'status_code', '')} {cause}"
+            return _c_failure(extractor, t0, detail)
+        except Exception as e:  # noqa: BLE001 — раннер не падает на одном наборе
+            return _c_failure(extractor, t0, f"unexpected {type(e).__name__}: {e}")
+
+
+def _agg_self_dev(extracted, agg, mode: str, case: dict) -> float | None:
+    """Насколько прод-агрегация расходится с независимым пересчётом ТЕХ ЖЕ позиций.
+
+    Это и есть детектор бага в коде агрегации в чистом виде: эталон здесь не
+    участвует вовсе, поэтому ошибки модели в него не протекают. Ноль ожидается
+    всегда, кроме округления последнего знака.
+    """
+    single = mode == prompts.MODE_DISH_PHOTOS
+    weight = float(case["declared_weight_g"])
+    expected = {k: 0.0 for k in MACROS}
+    for it in extracted:
+        if it.per100g is None:
+            continue
+        factor = weight / 100.0 if single else (
+            (it.portion_g / 100.0) if it.portion_g else None
+        )
+        if factor is None:
+            continue
+        for k in MACROS:
+            expected[k] += getattr(it.per100g, k) * factor
+    got = agg.item.model_dump()
+    devs = [
+        abs(got[k] - expected[k]) / expected[k]
+        for k in MACROS if expected[k]
+    ]
+    return max(devs) if devs else None
+
+
+def _c_failure(extractor: LLMExtractor, t0: float, error: str) -> dict:
+    return {
+        "items": None, "total": None, "agg_self_dev": None, "dish_positions": None,
+        "weight_mismatch": None, "calls": extractor.last_call_count,
+        "usage": extractor.last_usage, "raw": extractor.last_raw,
+        "latency_s": round(time.monotonic() - t0, 2), "error": error,
+    }
+
+
+def print_c_summary(records: list[dict]) -> None:
+    """Сводка яруса C. Гейт модели и гейт кода печатаются РАЗДЕЛЬНО (§4 датасета).
+
+    C4 и C6 не различают ни моделей, ни версий промпта — они про арифметику и
+    про порог в коде. Смешать их со средним по модели значило бы получить число,
+    которое ни на один вопрос не отвечает.
+    """
+    print("\n── Сводка ярус C ──")
+    print("  набор  C1   C2   C3        C4(эталон) агрег.  C5  C6(код)  C7  C8  вызовов")
+    for rec in records:
+        s = rec.get("scores") or {}
+        if not s:
+            print(f"  {rec['id']:<6} — прогон не состоялся: {rec.get('error')}")
+            continue
+
+        def m(flag):
+            return "—" if flag is None else ("✓" if flag else "✗")
+
+        c3 = "—" if s.get("c3_share") is None else f"{s['c3_share'] * 100:.0f}%"
+        c4 = "—" if s.get("c4_dev") is None else f"{s['c4_dev'] * 100:.2f}%"
+        sd = s.get("agg_self_dev")
+        agg = "—" if sd is None else f"{sd * 100:.3f}%"
+        print(
+            f"  {rec['id']:<6} {m(s.get('c1_ok'))}    {m(s.get('c2_ok'))}    "
+            f"{c3:<9} {c4:<10} {agg:<7} {m(s.get('c5_ok'))}   "
+            f"{m(s.get('c6_code_ok'))}       "
+            f"{m(s.get('c7_all_ingredients'))}   {m(s.get('c8_ok'))}   {rec.get('calls')}"
+        )
+    print("\n  C1/C2/C3/C5/C7/C8 — гейт МОДЕЛИ; C6 — гейт КОДА.")
+    print("  «агрег.» — прод-агрегация против независимого пересчёта ТЕХ ЖЕ позиций:")
+    print("  чистый гейт кода, эталон в него не входит. Ожидается ~0.")
+    print("  C4 сравнивает с ЭТАЛОНОМ и потому смешивает ошибку кода с ошибкой")
+    print("  per100g модели (по C3 допустимой до 2%) — см. отчёт волны 1.")
+    print("  C9 (режим dish_text) — калибруется, порога нет: c9_mean_dev по кейсам.")
+
+
+async def run_tier_c(extractor: LLMExtractor, mode: str, limit, sleep_s, retries):
+    index = a_index()
+    cases = load_cases("C")
+    if limit:
+        cases = cases[:limit]
+    records = []
+    for i, case in enumerate(cases, 1):
+        res = await run_c_case(extractor, case, index, mode, retries)
+        scores = score_c_case(
+            case, index, res["items"], dish_positions=res["dish_positions"]
+        )
+        if res["items"] is not None:
+            scores["agg_self_dev"] = res["agg_self_dev"]
+            scores["c6_code_flag"] = res["weight_mismatch"]
+            scores["c6_code_ok"] = res["weight_mismatch"] == bool(
+                case.get("expect_weight_mismatch")
+            )
+        tag = "ok " if res["items"] is not None else "ERR"
+        print(
+            f"  [{i}/{len(cases)}] {case['id']:<6} {tag} "
+            f"позиций={len(res['items'] or [])} вызовов={res['calls']} "
+            f"{res['error'] or ''}"
+        )
+        records.append({
+            "id": case["id"], "mode": mode, "calls": res["calls"],
+            "run": res, "scores": scores, "error": res["error"],
+        })
+        if sleep_s:
+            await asyncio.sleep(sleep_s)
+    return records
+
+
 # ── Прогон ────────────────────────────────────────────────────────────────────
 
 async def run_case(extractor: LLMExtractor, img_path: Path, retries: int) -> dict:
@@ -715,7 +989,9 @@ async def run_case(extractor: LLMExtractor, img_path: Path, retries: int) -> dic
 
 async def run_model(provider: str, model: str, tier: str, repeat: int,
                     limit: int | None, sleep_s: float, retries: int,
-                    reasoning: str | None = None) -> Path:
+                    reasoning: str | None = None,
+                    prompt_version: str = prompts.DEFAULT_PROMPT_VERSION,
+                    mode: str = prompts.MODE_DIARY) -> Path:
     prov = PROVIDERS[provider]
     key = prov.key()
     if not key:
@@ -738,13 +1014,24 @@ async def run_model(provider: str, model: str, tier: str, repeat: int,
         max_output_tokens=out_budget, temperature=temperature,
         send_response_format=prov.send_response_format,
     )
-    extractor = LLMExtractor(target=target)
+    extractor = LLMExtractor(target=target, prompt_version=prompt_version)
+
+    if tier == "C":
+        print(f"\n{'=' * 66}\n{provider} · {model} · ярус C · режим {mode} · "
+              f"промпт {prompt_version}\n{'=' * 66}")
+        records = await run_tier_c(extractor, mode, limit, sleep_s, retries)
+        out = _write_run(
+            provider, model, tier, repeat, reasoning_effort, prompt_version,
+            records, alerts=[], mode=mode,
+        )
+        print_c_summary(records)
+        return out
 
     cases = load_cases(tier)
     if limit:
         cases = cases[:limit]
-    print(f"\n{'=' * 66}\n{provider} · {model} · ярус {tier} · {len(cases)} кейсов "
-          f"× {repeat}\n{'=' * 66}")
+    print(f"\n{'=' * 66}\n{provider} · {model} · ярус {tier} · промпт "
+          f"{prompt_version} · {len(cases)} кейсов × {repeat}\n{'=' * 66}")
 
     records = []
     for i, case in enumerate(cases, 1):
@@ -777,29 +1064,64 @@ async def run_model(provider: str, model: str, tier: str, repeat: int,
         records.append({"id": case["id"], "trap": case.get("trap"),
                         "runs": runs, "scores": scores})
 
-    RUNS_DIR.mkdir(exist_ok=True)
-    slug = model.replace("/", "_").replace(":", "_")
-    # Тег reasoning в имени, чтобы none/low-прогоны одной модели не затирали друг друга.
-    if reasoning is not None:
-        slug += f"_r-{reasoning or 'none'}"
+    # Метрика «отказ вместо выдумки» (ТЗ §12.3): кейсы, исключённые из зачёта по
+    # числам, возвращаются в оценку по признанию нечитаемости. Считается отдельно
+    # и в знаменатель точности НЕ входит — иначе одно смешалось бы с другим.
+    refusal = []
+    for case in load_refusal_cases(tier):
+        img = EVAL_DIR / case["image"]
+        if not img.exists():
+            continue
+        res = await run_case(extractor, img, retries)
+        sc = score_refusal(res["items"])
+        refusal.append({"id": case["id"], "run": res, "scores": sc})
+        print(f"  [отказ] {case['id']:<6} readout={sc.get('readout')} "
+              f"{'✓' if sc['refusal_ok'] else '✗ выдумал числа'}")
+        if sleep_s:
+            await asyncio.sleep(sleep_s)
+
     # Проверку целостности данных делаем ДО метрик: если фото и эталон разъехались,
     # любые проценты ниже бессмысленны, и это надо увидеть первым, а не в конце.
     alerts = check_desync(cases, records)
 
-    out = RUNS_DIR / f"{date.today().isoformat()}_{slug}.json"
-    out.write_text(json.dumps({
-        "provider": provider, "model": model, "tier": tier, "repeat": repeat,
-        "reasoning_effort": reasoning_effort,
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "desync_alerts": alerts,
-        "records": records,
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nСырьё → {out}")
+    out = _write_run(provider, model, tier, repeat, reasoning_effort,
+                     prompt_version, records, alerts, refusal=refusal)
     print_desync(alerts)
     _print_summary(provider, model, records)
+    if refusal:
+        ok = sum(1 for r in refusal if r["scores"]["refusal_ok"])
+        print(f"  отказ вместо выдумки: {ok}/{len(refusal)}  (порог: все)")
     if alerts:
         print("⚠ Напоминание: выше есть подозрения на рассинхрон — цифры сводки "
               "считать предварительными.")
+    return out
+
+
+def _write_run(provider, model, tier, repeat, reasoning_effort, prompt_version,
+               records, alerts, *, refusal=None, mode=None) -> Path:
+    RUNS_DIR.mkdir(exist_ok=True)
+    slug = model.replace("/", "_").replace(":", "_")
+    # Теги в имени файла, чтобы прогоны одной модели не затирали друг друга:
+    # версия промпта — ровно то, что сравнивается на приёмке.
+    if prompt_version != prompts.DEFAULT_PROMPT_VERSION:
+        slug += f"_p-{prompt_version}"
+    if reasoning_effort:
+        slug += f"_r-{reasoning_effort}"
+    if tier != "A":
+        slug += f"_tier{tier}"
+    if mode and mode != prompts.MODE_DIARY:
+        slug += f"_{mode}"
+    out = RUNS_DIR / f"{date.today().isoformat()}_{slug}.json"
+    out.write_text(json.dumps({
+        "provider": provider, "model": model, "tier": tier, "repeat": repeat,
+        "reasoning_effort": reasoning_effort, "prompt_version": prompt_version,
+        "mode": mode,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "desync_alerts": alerts,
+        "refusal": refusal or [],
+        "records": records,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\nСырьё → {out}")
     return out
 
 
@@ -864,42 +1186,57 @@ def build_report() -> Path:
     if not runs:
         sys.exit("Нет прогонов в tests/eval/runs/ — сначала `run`.")
 
-    rows, traps_all = [], {}
+    rows, c_rows = [], []
     for p in runs:
         d = json.loads(p.read_text(encoding="utf-8"))
+        if d.get("tier") == "C":
+            # У яруса C своя форма записей и свой гейт — в таблицу A он не ложится.
+            c_rows.append(d)
+            continue
         a = _aggregate(d["records"])
         model = d["model"]
-        # Тег reasoning, чтобы none/low одной модели не сливались в одну строку.
+        # Теги, чтобы прогоны одной модели не сливались в одну строку. Версия
+        # промпта — главный из них: ради этого сравнения флаг и заводился.
         reff = d.get("reasoning_effort")
         if reff and reff != "none":
             model += f" (r={reff})"
-        rows.append((d["provider"], model, a, d["records"]))
+        pv = d.get("prompt_version")
+        if pv:
+            model += f" [{pv}]"
+        rows.append((d["provider"], model, a, d["records"], d.get("refusal") or []))
 
     lines = [f"# Eval ярус A — сводка ({date.today().isoformat()})", ""]
     lines.append("Пороги приёмки — llm-eval-dataset.md §4. Прочерк = метрика не считалась.")
     lines.append("")
-    lines.append("| провайдер | модель | JSON | kcal≤2% | kcal≤10% | БЖУ≤2% | кДж-конф | name | brand | lat med | ток in/out | $/прогон |")
-    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
-    for prov, model, a, _ in rows:
+    lines.append("| провайдер | модель | JSON | kcal≤2% | kcal≤10% | БЖУ≤2% | кДж-конф | отказ | name | brand | lat med | ток in/out | $/прогон |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for prov, model, a, _, refusal in rows:
         tin, tout = a["tokens_in"], a["tokens_out"]
         if model in TARIFFS:
             pin, pout = TARIFFS[model]
             cost = f"${(tin * pin + tout * pout) / 1e6:.4f}"
         else:
             cost = "—"  # тариф неизвестен → цену считать по токенам
+        ref = (
+            f"{sum(1 for r in refusal if r['scores']['refusal_ok'])}/{len(refusal)}"
+            if refusal else "—"
+        )
         lines.append(
             f"| {prov} | `{model}` | {_pct(a['json_valid'])} | {_pct(a['kcal_hit'])} | "
             f"{_pct(a['kcal_diag'])} | {_pct(a['bju_hit'])} | {a['kj_confusion_n']} | "
-            f"{_pct(a['name_ok'])} | {_pct(a['brand_ok'])} | {a['lat_med']}s | "
+            f"{ref} | {_pct(a['name_ok'])} | {_pct(a['brand_ok'])} | {a['lat_med']}s | "
             f"{tin}/{tout} | {cost} |"
         )
     lines += ["", "**Гейт §4:** JSON=100%, kcal≤2%≥90%, БЖУ≤2%≥85%, кДж-конфузий=0.",
-              "Провал любого = модель не в прод.", ""]
+              "Провал любого = модель не в прод.",
+              "«отказ» — метрика «отказ вместо выдумки» на `status: unscorable` "
+              "(ТЗ §12.3): `readout ∈ {estimate, unreadable}` на физически "
+              "нечитаемой этикетке. В знаменатель точности НЕ входит.", ""]
 
     # Разбивка по ловушкам (важнее среднего: «90% в среднем, но 0% на кДж» = провал)
     lines.append("## По ловушкам (kcal-hit ≤2% / кДж-конфузии, первый прогон)")
     lines.append("")
-    for prov, model, a, records in rows:
+    for prov, model, a, records, _ in rows:
         by_trap: dict[str, list] = {}
         for rec in records:
             if not rec.get("scores"):
@@ -914,6 +1251,29 @@ def build_report() -> Path:
             parts.append(f"{trap}: {hit}/{len(ss)}" + (f" ⚠кДж×{kj}" if kj else ""))
         lines.append(f"- **{model}** — " + "; ".join(parts))
     lines.append("")
+
+    # Ярус C — отдельной таблицей: его гейт делится на модельный (C1–C3, C5, C7, C8)
+    # и кодовый (C4, C6), и смешивать их со средним по ярусу A нельзя.
+    if c_rows:
+        lines += ["## Ярус C (составное блюдо)", "",
+                  "| прогон | набор | C1 | C2 | C3 | C4 (код) | C5 | C6 (код) | C7 | C8 |",
+                  "|---|---|---|---|---|---|---|---|---|---|"]
+        for d in c_rows:
+            tag = f"`{d['model']}` [{d.get('prompt_version')}] {d.get('mode')}"
+            for rec in d["records"]:
+                s = rec.get("scores") or {}
+
+                def m(v):
+                    return "—" if v is None else ("✓" if v else "✗")
+
+                c3 = "—" if s.get("c3_share") is None else f"{s['c3_share'] * 100:.0f}%"
+                c4 = "—" if s.get("c4_dev") is None else f"{s['c4_dev'] * 100:.2f}%"
+                lines.append(
+                    f"| {tag} | {rec['id']} | {m(s.get('c1_ok'))} | {m(s.get('c2_ok'))} | "
+                    f"{c3} | {c4} | {m(s.get('c5_ok'))} | {m(s.get('c6_code_ok'))} | "
+                    f"{m(s.get('c7_all_ingredients'))} | {m(s.get('c8_ok'))} |"
+                )
+        lines.append("")
 
     out = RUNS_DIR / f"{date.today().isoformat()}_report.md"
     out.write_text("\n".join(lines), encoding="utf-8")
@@ -940,6 +1300,11 @@ def main():
     r.add_argument("--reasoning", default=None,
                    help="переопределить reasoning_effort (none/low/medium/high); "
                         "тег попадёт в имя файла прогона")
+    r.add_argument("--prompt", default=prompts.DEFAULT_PROMPT_VERSION,
+                   choices=list(prompts.SYSTEM_PROMPTS),
+                   help="версия системного промпта; приёмка требует обе (ТЗ §12.3)")
+    r.add_argument("--mode", default=prompts.MODE_DIARY, choices=list(prompts.MODES),
+                   help="режим разбора; ярус C гоняется dish_* режимами")
 
     sub.add_parser("report", help="свести все runs/*.json в markdown")
 
@@ -948,7 +1313,8 @@ def main():
         build_report()
         return
     asyncio.run(run_model(args.provider, args.model, args.tier, args.repeat,
-                          args.limit, args.sleep, args.retries, args.reasoning))
+                          args.limit, args.sleep, args.retries, args.reasoning,
+                          args.prompt, args.mode))
 
 
 if __name__ == "__main__":

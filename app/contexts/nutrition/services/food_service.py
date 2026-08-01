@@ -6,10 +6,18 @@ Telegram-агностичен. Транзакцией владеет вызыв�
 commit) — здесь только flush через репозитории + commit на мутациях.
 
 Разделение ответственности (I5):
-  - LLM (`NutritionLLM`) считает КБЖУ (text/photo) — но НЕ сохраняет.
-  - FoodService решает что и как сохранить, агрегирует по дням, делает выгрузку.
+  - Извлекатель (`Extractor`, инъекция) ЧИТАЕТ ввод: сегментирует на позиции и
+    даёт `per100g` + граммовки. Он не считает и не сохраняет.
+  - FoodService СЧИТАЕТ (L2, ТЗ контракта §5.4: умножение на порцию и сложение
+    ингредиентов — здесь, не в промпте), решает что и как сохранить, агрегирует
+    по дням, делает выгрузку.
   - Шаг подтверждения («так? поправь порцию») живёт в UI: сначала analyze_*,
     показали позиции, пользователь подтвердил — потом save_entries.
+
+I7 после консолидации (ТЗ §4.3): пять путей разбора отличаются РЕЖИМОМ одного
+извлечения, а не пятью контрактами. Поэтому единственная LLM-зависимость сервиса —
+инжектируемый извлекатель; вендора он не знает (тесты подставляют фейк, живых
+вызовов из pytest нет — GAP-6).
 
 Видимость (ТЗ §6 I4): дневник (`FoodEntry`) PERSONAL — фильтр по `viewer.id`;
 каталог (`SharedFood`) FAMILY — фильтр по `viewer.family_id`; цели
@@ -19,6 +27,7 @@ commit) — здесь только flush через репозитории + co
 переводя локальные границы суток в UTC перед запросом.
 """
 
+import base64
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from time import monotonic
@@ -37,13 +46,25 @@ from app.contexts.nutrition.repositories import (
 )
 from app.contexts.nutrition.services.errors import FamilyRequired, InvalidInput
 from app.contexts.nutrition.services.llm_service import (
-    LLMService,
+    LLMError,
     NutritionItem,
-    NutritionLLM,
     NutritionResult,
+    UnresolvedItem,
 )
 
 _DEFAULT_TZ = "Europe/Amsterdam"
+
+# Режимы разбора. Значения обязаны совпадать с `resolve.prompts.MODE_*`, но
+# импортировать их сюда нельзя: services не зависит от resolve (границы ADR-0004,
+# контракт import-linter). Извлекатель принимает режим строкой и духом утиной
+# типизации — как и весь остальной шов с resolve в этом файле.
+MODE_DIARY = "diary"
+MODE_DISH_TEXT = "dish_text"
+MODE_DISH_PHOTOS = "dish_photos"
+MODE_DISH_COMBINED = "dish_combined"
+
+# Флаг агрегации (§5.4.b): позиция без граммовки не вошла в итог блюда.
+FLAG_PORTION_MISSING = "portion_missing"
 
 # Порядок приёмов пищи для группировки дня. meal_type=None → "other" в конце.
 MEAL_ORDER = ["breakfast", "lunch", "dinner", "snack"]
@@ -173,11 +194,140 @@ _DEFAULT_RESOLVER_BUDGET_S = 12.0
 _CACHEABLE_SOURCES = {"label", "off", "web"}
 
 
+# ── Агрегация блюда: L2 «арифметику делает код» (ТЗ контракта §5.4) ───────────
+
+@dataclass
+class DishAggregate:
+    """Итог блюда + позиции, не вошедшие в него, + нераспознанные.
+
+    Модуль-левел функция, а не метод: тот же расчёт гоняет раннер eval на ярусе C
+    (метрика C4, допуск 0.5%). Смысл C4 — детектор бага ИМЕННО в этом коде, поэтому
+    раннер обязан звать его, а не свою копию; сессия и видимость для этого не нужны.
+    """
+
+    item: NutritionItem
+    extras: list[NutritionItem] = field(default_factory=list)
+    unresolved: list[UnresolvedItem] = field(default_factory=list)
+
+    @property
+    def positions(self) -> list[NutritionItem]:
+        """Итог первым, затем всё, что в него не вошло (§5.4.b: «показана отдельно»)."""
+        return [self.item, *self.extras]
+
+
+def _macros_of(ext) -> tuple[float, float, float, float] | None:
+    per = getattr(ext, "per100g", None)
+    if per is None:
+        return None
+    return (per.kcal, per.protein, per.fat, per.carbs)
+
+
+def _unresolved_of(ext) -> UnresolvedItem:
+    return UnresolvedItem(
+        name=getattr(ext, "name", None),
+        note=getattr(ext, "note", None),
+        reason="unreadable" if getattr(ext, "readout", "") == "unreadable" else "no_source",
+    )
+
+
+def aggregate_dish(
+    extracted: list,
+    *,
+    name: str,
+    weight_g: float,
+    single: bool = False,
+) -> DishAggregate:
+    """Складывает позиции в ОДНО блюдо. Модель к этому не привлекается (L2).
+
+    `single=True` — режим `dish_photos` (§5.4.c): позиция одна, её `per100g`
+    масштабируется заявленным весом (граммовки по контракту нет).
+    Иначе (§5.4.b): `Σ per100g_i × portion_g_i / 100`, вес блюда — ЗАЯВЛЕННЫЙ
+    пользователем, а не сумма граммовок. Усушка не моделируется намеренно: при
+    выпаривании воды КБЖУ не теряется, теряется масса — расхождение ловит C6.
+
+    **Округление ровно одно, в самом конце.** Раньше округлялась каждая позиция,
+    и на пяти ингредиентах ошибка копилась систематически; после L2 итог обязан
+    сходиться с ручным расчётом до 0.5% (метрика C4 яруса C), а накопленное
+    округление съедало бы этот допуск само по себе.
+    """
+    totals = [0.0, 0.0, 0.0, 0.0]
+    extras: list[NutritionItem] = []
+    unresolved: list[UnresolvedItem] = []
+    warnings: list[str] = []
+
+    for ext in extracted:
+        for flag in getattr(ext, "warnings", ()) or ():
+            if flag not in warnings:
+                warnings.append(flag)
+        macros = _macros_of(ext)
+        if macros is None:
+            unresolved.append(_unresolved_of(ext))
+            continue
+        factor = (weight_g or 0.0) / 100.0 if single else _factor(ext)
+        if factor is None:
+            # Позиция без граммовки в составном режиме — ошибка извлечения:
+            # вклад 0, но позиция показана, иначе пользователь не поймёт, почему
+            # итог меньше ожидаемого (§5.4.b).
+            extras.append(
+                _position(
+                    ext, macros, portion=None,
+                    warnings=[*(getattr(ext, "warnings", ()) or ()), FLAG_PORTION_MISSING],
+                )
+            )
+            if FLAG_PORTION_MISSING not in warnings:
+                warnings.append(FLAG_PORTION_MISSING)
+            continue
+        for i, value in enumerate(macros):
+            totals[i] += value * factor
+
+    item = NutritionItem(
+        description=name,
+        weight_g=weight_g,
+        kcal=round(totals[0], 1),
+        protein=round(totals[1], 1),
+        fat=round(totals[2], 1),
+        carbs=round(totals[3], 1),
+        # Каталог — расчётный путь (ADR-0013 §17): резолвер не вызывается,
+        # провенанс блюда всегда estimate, даже если этикетки отдельных
+        # ингредиентов прочитаны точно.
+        source="estimate",
+        warnings=warnings,
+    )
+    return DishAggregate(item=item, extras=extras, unresolved=unresolved)
+
+
+def _factor(ext) -> float | None:
+    """Множитель «на порцию» из граммовки позиции; None — граммовки нет."""
+    portion = getattr(ext, "portion_g", None)
+    if portion and portion > 0:
+        return portion / 100.0
+    return None
+
+
+def _position(ext, macros, *, portion: float | None, warnings: list[str]) -> NutritionItem:
+    """Позиция для показа: числа = per100g × доля порции (или сами per100g)."""
+    factor = (portion / 100.0) if (portion and portion > 0) else 1.0
+    kcal, protein, fat, carbs = macros
+    return NutritionItem(
+        description=FoodService._compose_name(ext),
+        weight_g=portion,
+        kcal=round(kcal * factor, 1),
+        protein=round(protein * factor, 1),
+        fat=round(fat * factor, 1),
+        carbs=round(carbs * factor, 1),
+        source="estimate",
+        warnings=list(dict.fromkeys(warnings)),
+        kcal_100g=round(kcal, 2),
+        protein_100g=round(protein, 2),
+        fat_100g=round(fat, 2),
+        carbs_100g=round(carbs, 2),
+    )
+
+
 class FoodService:
     def __init__(
         self,
         session: AsyncSession,
-        llm: NutritionLLM | None = None,
         extractor=None,
         resolver=None,
     ) -> None:
@@ -186,13 +336,10 @@ class FoodService:
         self.shared_repo = SharedFoodRepository(session)
         self.goals_repo = GoalsRepository(session)
         self.dish_repo = DishIngredientRepository(session)
-        # I7: зависимость только от контракта NutritionLLM. Дефолт — прод-цель
-        # из settings; тесты инжектят фейк, живых вызовов из pytest нет (GAP-6).
-        # llm используется только каталогом (/foods/analyze, расчётный путь).
-        self.llm: NutritionLLM = llm or LLMService()
-        # ADR-0013: извлекатель (сегментация+per100g) и резолвер (лестница источников)
-        # для дневникового /analyze. Собираются в композиционном корне (api-роут)
-        # или инжектятся тестами — FoodService НЕ импортирует resolve (границы §2).
+        # ADR-0013: извлекатель (сегментация + per100g, все пять режимов) и
+        # резолвер (лестница источников, только дневник). Собираются в
+        # композиционном корне (api-роут) или инжектятся тестами — FoodService
+        # НЕ импортирует resolve (границы §2, контракт import-linter).
         self.extractor = extractor
         self.resolver = resolver
 
@@ -224,19 +371,22 @@ class FoodService:
 
     async def analyze_text(self, text: str) -> NutritionResult:
         """1 LLM-вызов сегментирует ввод → СПИСОК позиций; резолвер уточняет каждую."""
-        extracted = await self._require_extractor().extract(text=text)
+        extracted = await self._require_extractor().extract(
+            mode=MODE_DIARY, text=text
+        )
         return await self._resolve_extracted(extracted)
 
     async def analyze_photo(
         self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
     ) -> NutritionResult:
-        """До 5 снимков дневника одним вызовом → позиции с КБЖУ + провенанс.
+        """Снимки дневника → позиции с КБЖУ + провенанс.
 
         Этикетка читается → label (per100g точные); иначе резолвер ищет в OFF, в
-        пределе — estimate (оценка модели). Мультифото-аплоадер уже на проде (#2).
+        пределе — estimate (оценка модели). Снимков больше лимита модели →
+        батчи, а не обрезка (§5.2) — решает извлекатель, домену это не видно.
         """
         extracted = await self._require_extractor().extract(
-            images=images, caption=caption, mime_type=mime_type
+            mode=MODE_DIARY, images=images, caption=caption, mime_type=mime_type
         )
         return await self._resolve_extracted(extracted)
 
@@ -262,11 +412,20 @@ class FoodService:
         )
         deadline = monotonic() + budget
         items: list[NutritionItem] = []
+        unresolved: list[UnresolvedItem] = []
         for ext in extracted:
             allow_network = monotonic() < deadline
             resolved = await self.resolver.refine(ext, allow_network=allow_network)
+            if resolved is None:
+                # Чисел нет ни у модели, ни у источников (§6.6). Позиция не
+                # попадает в items и НЕ блокирует сохранение остальных.
+                unresolved.append(_unresolved_of(ext))
+                continue
             items.append(self._to_item(ext, resolved))
-        return NutritionResult(items=items)
+        if not items and not unresolved:
+            # Модель не вернула ничего — это отказ разбора, а не частичный успех.
+            raise LLMError("Не удалось распознать продукты")
+        return NutritionResult(items=items, unresolved=unresolved)
 
     @staticmethod
     def _compose_name(ext) -> str:
@@ -295,29 +454,70 @@ class FoodService:
             source=resolved.source,
             source_ref=resolved.source_ref,
             matched_name=resolved.matched_name,
+            warnings=list(resolved.warnings),
             kcal_100g=round(per.kcal, 2),
             protein_100g=round(per.protein, 2),
             fat_100g=round(per.fat, 2),
             carbs_100g=round(per.carbs, 2),
         )
 
+    # ── Анализ блюда каталога: тот же извлекатель, другой режим (ТЗ §4.3) ─────
+    # Резолвер здесь НЕ вызывается (расчётный путь, ADR-0013 §17): блюдо целиком
+    # во внешней базе не ищется. Итог считает код (§5.4), не модель.
+
+    @staticmethod
+    def _decode(images_b64: list[str]) -> list[bytes]:
+        """base64 из тела запроса → байты для извлекателя (его контракт — bytes)."""
+        out: list[bytes] = []
+        for b64 in images_b64 or []:
+            raw = b64.split(",", 1)[-1] if b64.startswith("data:") else b64
+            try:
+                decoded = base64.b64decode(raw)
+            except (ValueError, TypeError):
+                raise InvalidInput("Не удалось прочитать фото")
+            if decoded:
+                out.append(decoded)
+        return out
+
+    async def _analyze_dish(
+        self, *, mode: str, name: str, weight_g: float, text: str | None = None,
+        images_b64: list[str] | None = None, single: bool = False,
+    ) -> NutritionResult:
+        extracted = await self._require_extractor().extract(
+            mode=mode,
+            text=text,
+            images=self._decode(images_b64 or []) or None,
+            dish_name=name,
+            weight_g=weight_g,
+        )
+        agg = aggregate_dish(extracted, name=name, weight_g=weight_g, single=single)
+        return NutritionResult(items=agg.positions, unresolved=agg.unresolved)
+
     async def analyze_dish_text(
         self, description: str, name: str, weight_g: float
     ) -> NutritionResult:
         """Текстовый состав блюда → суммарное КБЖУ (для создания SharedFood)."""
-        return await self.llm.analyze_dish_text(description, name, weight_g)
+        return await self._analyze_dish(
+            mode=MODE_DISH_TEXT, name=name, weight_g=weight_g, text=description
+        )
 
     async def analyze_dish_photos(
         self, images_b64: list[str], name: str, weight_g: float
     ) -> NutritionResult:
         """Несколько фото блюда → суммарное КБЖУ (для создания SharedFood)."""
-        return await self.llm.analyze_dish_photos(images_b64, name, weight_g)
+        return await self._analyze_dish(
+            mode=MODE_DISH_PHOTOS, name=name, weight_g=weight_g,
+            images_b64=images_b64, single=True,
+        )
 
     async def analyze_dish_combined(
         self, text: str, images_b64: list[str], name: str, weight_g: float
     ) -> NutritionResult:
         """Текст с граммовками + фото этикеток → суммарное КБЖУ."""
-        return await self.llm.analyze_dish_combined(text, images_b64, name, weight_g)
+        return await self._analyze_dish(
+            mode=MODE_DISH_COMBINED, name=name, weight_g=weight_g,
+            text=text, images_b64=images_b64,
+        )
 
     # ── Сохранение ───────────────────────────────────────────────────────────
 

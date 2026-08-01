@@ -41,70 +41,10 @@ def _today() -> date:
     return datetime.now(ZoneInfo(TZ)).date()
 
 
-# ── Фейковые LLM за интерфейсом NutritionLLM (I7, GAP-6) ──────────────────────
-
-class FakeLLM:
-    """Фейк-провайдер: канонический результат, считает вызовы. Сети нет."""
-
-    def __init__(self, result: NutritionResult | None = None) -> None:
-        self.result = result or NutritionResult(
-            items=[
-                NutritionItem(
-                    description="гречка", weight_g=200,
-                    kcal=680, protein=25, fat=6, carbs=140,
-                ),
-                NutritionItem(
-                    description="курица", weight_g=150,
-                    kcal=240, protein=45, fat=6, carbs=0,
-                ),
-            ]
-        )
-        self.calls = 0
-        self.last_images = None
-
-    async def parse_text(self, text):
-        self.calls += 1
-        return self.result
-
-    async def analyze_photo(self, images, caption="", mime_type="image/jpeg"):
-        self.calls += 1
-        self.last_images = images
-        return self.result
-
-    async def analyze_dish_text(self, description, name, weight_g):
-        self.calls += 1
-        return NutritionResult(items=[self.result.items[0]])
-
-    async def analyze_dish_photos(self, images_b64, name, weight_g):
-        self.calls += 1
-        return NutritionResult(items=[self.result.items[0]])
-
-    async def analyze_dish_combined(self, text, images_b64, name, weight_g):
-        self.calls += 1
-        return NutritionResult(items=[self.result.items[0]])
-
-
-class RaisingLLM:
-    """Фейк, имитирующий сбой провайдера (невалидный ответ / 429) — A5/I6."""
-
-    def __init__(self, exc: Exception) -> None:
-        self.exc = exc
-
-    async def parse_text(self, text):
-        raise self.exc
-
-    async def analyze_photo(self, images, caption="", mime_type="image/jpeg"):
-        raise self.exc
-
-    async def analyze_dish_text(self, description, name, weight_g):
-        raise self.exc
-
-    async def analyze_dish_photos(self, images_b64, name, weight_g):
-        raise self.exc
-
-    async def analyze_dish_combined(self, text, images_b64, name, weight_g):
-        raise self.exc
-
+# ── Фейковый извлекатель — единственный LLM-шов сервиса (I7, GAP-6) ───────────
+# До волны 1 их было два: `NutritionLLM` для каталога и `Extractor` для дневника,
+# в двух несовместимых контрактных моделях (абсолют за порцию vs per100g). После
+# консолидации (ТЗ §4.3) шов один, режим — параметр, поэтому фейков тоже один.
 
 # ── Фейковые извлекатель/резолвер дневникового /analyze (ADR-0013, без сети) ───
 
@@ -127,9 +67,14 @@ class FakeExtractor:
     def __init__(self, items: list[ExtractedItem] | None = None) -> None:
         self.items = items if items is not None else _default_extracted()
         self.calls = 0
+        self.last_mode = None
+        self.last_weight_g = None
 
-    async def extract(self, *, text=None, images=None, caption="", mime_type="image/jpeg"):
+    async def extract(self, *, mode="diary", text=None, images=None, caption="",
+                      mime_type="image/jpeg", dish_name=None, weight_g=None):
         self.calls += 1
+        self.last_mode = mode
+        self.last_weight_g = weight_g
         return self.items
 
 
@@ -182,10 +127,9 @@ async def _family(session):
     )
 
 
-def _svc(session, llm=None, extractor=None, resolver=None) -> FoodService:
+def _svc(session, extractor=None, resolver=None) -> FoodService:
     return FoodService(
         session,
-        llm=llm or FakeLLM(),
         extractor=extractor or FakeExtractor(),
         resolver=resolver or PassthroughResolver(),
     )
@@ -411,22 +355,35 @@ async def test_llm_rate_limit_propagates(session):
 
 
 async def test_dish_llm_error_propagates(session):
-    """A5/I6: каталог (/foods/analyze) — расчётный путь LLM; сбой → LLMError."""
+    """A5/I6: каталог (/foods/analyze) — расчётный путь LLM; сбой → LLMError.
+
+    Раньше сбой приходил из отдельного LLM-шва каталога; теперь шов один, но
+    свойство прежнее: ошибка провайдера доходит до пользователя понятной, а не
+    прикидывается пустым разбором.
+    """
     _, _, _, v1, _ = await _family(session)
-    svc = _svc(session, llm=RaisingLLM(LLMError("Сервис недоступен")))
+    svc = _svc(session, extractor=RaisingExtractor(LLMError("Сервис недоступен")))
     with pytest.raises(LLMError):
-        await svc.analyze_dish_combined("состав", ["b64"], "блюдо", 200)
+        await svc.analyze_dish_combined("состав", ["Yg=="], "блюдо", 200)
 
 
 async def test_llm_is_injectable_provider_agnostic(session):
-    """A5/I7: оба шва инъектируемы — извлекатель (дневник) и LLM (каталог); без сети."""
+    """A5/I7: LLM-шов инъектируем и один на все пять путей; вендора сервис не знает.
+
+    Прежняя версия проверяла ДВА шва (извлекатель для дневника, `NutritionLLM`
+    для каталога). Проверка не потеряна, а усилена: теперь тот же тест требует,
+    чтобы оба пути шли через один и тот же контракт и различались только режимом
+    (ТЗ §4.3) — раньше это невозможно было выразить.
+    """
     _, _, _, v1, _ = await _family(session)
-    fake = FakeLLM()
     ext = FakeExtractor()
-    svc = FoodService(session, llm=fake, extractor=ext, resolver=PassthroughResolver())
-    await svc.analyze_text("гречка")                          # → извлекатель
-    await svc.analyze_dish_combined("состав", ["b64"], "блюдо", 200)  # → LLM
-    assert ext.calls == 1 and fake.calls == 1  # каждый шов вызван своим путём
+    svc = FoodService(session, extractor=ext, resolver=PassthroughResolver())
+
+    await svc.analyze_text("гречка")
+    assert ext.last_mode == "diary"
+    await svc.analyze_dish_combined("состав", ["Yg=="], "блюдо", 200)
+    assert ext.last_mode == "dish_combined" and ext.last_weight_g == 200
+    assert ext.calls == 2  # один и тот же шов, два режима
 
 
 # ── A6 / read-модуль: КБЖУ по дням для Analytics (visibility-фильтр) ──────────

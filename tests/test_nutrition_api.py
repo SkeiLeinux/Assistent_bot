@@ -1,17 +1,27 @@
 """FIX-2 (партия 1) — мультифото в фото-режиме дневника (REST /api/v1/nutrition/analyze).
 
 Два уровня:
-  - LLMService.analyze_photo собирает N image-частей в ОДИН вызов (cap = лимит модели) — промпт
-    не меняется (монкипатчим _complete, сети нет).
+  - извлекатель собирает N снимков в ОДИН вызов, пока их не больше лимита модели,
+    и режет на БАТЧИ, когда больше (ТЗ контракта §5.2) — сети нет, клиент фейковый;
   - роут analyze (type=photo) читает список images (dataURL/raw), режет до 5,
     обратно совместим с одиночным `image`, пустой ввод → 422 (InvalidInput).
 
 Хендлер драйвим напрямую через лёгкий FakeRequest (как в test_analytics_api) —
-аутентификация/сессия снаружи; LLM подменяем фейком за контрактом NutritionLLM.
+аутентификация/сессия снаружи; извлекатель подменяем фейком за контрактом
+`Extractor` (I7 после консолидации ТЗ §4.3).
+
+**Что здесь изменилось в волне 1.** Прежний тест `..._caps_at_model_limit`
+фиксировал молчаливую обрезку `images[:cap]` и читал порог из конфига. Обрезки
+больше нет — она теряла ровно тот снимок, ради которого пользователь его прислал
+(оборот упаковки с таблицей). Тест не удалён, а переписан на новое поведение:
+тот же ввод «снимков больше лимита» теперь обязан дать батчи и не потерять
+ничего. Порог по-прежнему читается из конфига — хардкод «5» здесь один раз уже
+протух вместе с моделью (scout=5 → qwen3.6=3 → gpt-5.4-mini=5).
 """
 
 import base64
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,72 +29,83 @@ from app.kernel import Viewer
 from app.kernel.models import Family, Membership, User
 
 from app.contexts.nutrition.api import routes as nutri_routes
+from app.contexts.nutrition.resolve.extractor import LLMExtractor
 from app.contexts.nutrition.resolve.ports import ExtractedItem, Macros, ResolvedNutrition
 from app.contexts.nutrition.services import (
     FoodService,
     InvalidInput,
     NutritionItem,
-    NutritionResult,
 )
-from app.contexts.nutrition.services.llm_service import LLMService
 
 
 def _b64(raw: bytes) -> str:
     return base64.b64encode(raw).decode()
 
 
-# ── Уровень LLMService: один вызов, N image-частей, cap = лимит модели ────────
+# ── Уровень извлекателя: один вызов до лимита, батчи сверх лимита (§5.2) ──────
 
-async def test_llm_analyze_photo_one_call_n_image_parts(monkeypatch):
-    svc = LLMService()
-    cap: dict = {"calls": 0, "content": None, "system": "sentinel"}
+class _FakeChat:
+    """Фейковый chat.completions.create: канонический ответ, запись всех вызовов."""
 
-    async def fake_complete(user_content, system_prompt=None):
-        cap["calls"] += 1
-        cap["content"] = user_content
-        cap["system"] = system_prompt
-        return NutritionResult(
-            items=[NutritionItem(description="x", weight_g=100, kcal=1, protein=1, fat=1, carbs=1)]
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.calls: list[dict] = []
+
+    async def __call__(self, **kwargs):
+        self.calls.append(kwargs)
+        msg = SimpleNamespace(content=self.content)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=msg, finish_reason="stop")], usage=None
         )
 
-    monkeypatch.setattr(svc, "_complete", fake_complete)
 
-    await svc.analyze_photo([b"a", b"b", b"c"], caption="тарелка")
+def _patch_llm(monkeypatch, content: str) -> _FakeChat:
+    import app.contexts.nutrition.services.llm_service as llm_mod
 
-    assert cap["calls"] == 1  # все снимки — одним вызовом
-    text_parts = [p for p in cap["content"] if p["type"] == "text"]
-    image_parts = [p for p in cap["content"] if p["type"] == "image_url"]
+    chat = _FakeChat(content)
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=chat))
+    )
+    monkeypatch.setattr(llm_mod, "_get_client", lambda: client)
+    return chat
+
+
+def _one_item(name="x") -> str:
+    return json.dumps({"items": [{
+        "name": name, "portion_g": 100, "readout": "estimate",
+        "per100g": {"kcal": 1, "protein": 1, "fat": 1, "carbs": 1},
+    }]})
+
+
+async def test_extractor_photo_one_call_n_image_parts(monkeypatch):
+    chat = _patch_llm(monkeypatch, _one_item())
+
+    await LLMExtractor().extract(images=[b"a", b"b", b"c"], caption="тарелка")
+
+    assert len(chat.calls) == 1  # все снимки — одним вызовом
+    parts = chat.calls[0]["messages"][1]["content"]
+    text_parts = [p for p in parts if p["type"] == "text"]
+    image_parts = [p for p in parts if p["type"] == "image_url"]
     assert len(text_parts) == 1 and len(image_parts) == 3
     assert text_parts[0]["text"] == "тарелка"
-    # промпт дневника не меняется → системный остаётся дефолтным (_SYSTEM_PROMPT)
-    assert cap["system"] is None
 
 
-async def test_llm_analyze_photo_caps_at_model_limit(monkeypatch):
-    """Кап = лимит МОДЕЛИ (`settings.llm_max_images`), а не константа домена.
-
-    Тест читает лимит из конфига намеренно: он переезжает при каждой смене
-    провайдера (scout=5 → qwen3.6=3 → gpt-5.4-mini=5), и хардкод «5» здесь уже
-    один раз протух вместе с моделью.
-    """
+async def test_extractor_photo_over_limit_goes_to_batches(monkeypatch):
+    """Снимков больше лимита модели → батчи, и ни один снимок не потерян (§5.2)."""
     from app.config import settings
 
-    svc = LLMService()
-    cap: dict = {"content": None}
-
-    async def fake_complete(user_content, system_prompt=None):
-        cap["content"] = user_content
-        return NutritionResult(
-            items=[NutritionItem(description="x", weight_g=100, kcal=1, protein=1, fat=1, carbs=1)]
-        )
-
-    monkeypatch.setattr(svc, "_complete", fake_complete)
-
+    chat = _patch_llm(monkeypatch, _one_item())
     limit = settings.llm_max_images
-    await svc.analyze_photo([bytes([i]) for i in range(limit + 2)])
+    n = limit + 2
 
-    image_parts = [p for p in cap["content"] if p["type"] == "image_url"]
-    assert len(image_parts) == limit
+    await LLMExtractor().extract(images=[bytes([i]) for i in range(n)])
+
+    assert len(chat.calls) == 2  # limit + остаток, а не «первые limit»
+    sent = [
+        p for call in chat.calls
+        for p in call["messages"][1]["content"] if p["type"] == "image_url"
+    ]
+    assert len(sent) == n  # ничего не обрезано молча
 
 
 # ── Уровень роута: парсинг images, cap, обратная совместимость, 0 → 422 ───────
@@ -92,17 +113,20 @@ async def test_llm_analyze_photo_caps_at_model_limit(monkeypatch):
 # фиксируем, что роут довёл изображения до извлекателя (парсинг/cap/back-compat — в роуте).
 
 class RecordingExtractor:
-    """Фейк-извлекатель — фиксирует, что пришло в extract(images=...)."""
+    """Фейк-извлекатель — фиксирует, что пришло в extract(...)."""
 
     def __init__(self) -> None:
         self.calls = 0
         self.last_images = None
+        self.last_mode = None
 
-    async def extract(self, *, text=None, images=None, caption="", mime_type="image/jpeg"):
+    async def extract(self, *, mode="diary", text=None, images=None, caption="",
+                      mime_type="image/jpeg", dish_name=None, weight_g=None):
         self.calls += 1
         self.last_images = images
+        self.last_mode = mode
         return [
-            ExtractedItem(name="блюдо", portion_g=100, label_complete=False,
+            ExtractedItem(name="блюдо", portion_g=100, readout="estimate",
                           per100g=Macros(kcal=1, protein=1, fat=1, carbs=1))
         ]
 

@@ -1,35 +1,37 @@
-"""services/llm_service.py — провайдер-агностичная обёртка над LLM для КБЖУ (ТЗ §I6/I7).
+"""services/llm_service.py — транспорт к LLM + доменные DTO расчёта КБЖУ (I6/I7).
 
-Зачем отдельный сервис: FoodService и delivery не знают, какой провайдер считает
-калории. Здесь спрятан выбор модели (`settings.llm_vision_model`) и маршрута
-(`settings.llm_base_url`) — контракт `NutritionLLM` от них не зависит (I7).
+**Что здесь есть и чего здесь больше нет.** До волны 1 файл держал и транспорт, и
+три собственных промпта, и класс `LLMService` с пятью путями, каждый из которых
+заставлял модель считать за порцию. Промпты и пути уехали в `resolve` (единый
+системный промпт + режимные преамбулы, ТЗ §4), арифметика — в `FoodService`
+(L2, §5.4). Здесь осталось ровно то, что не знает ни про КБЖУ, ни про промпты:
 
-Провайдер (ADR-0017 §16, решение от 2026-07-27): OpenAI `gpt-5.4-mini`, клиент —
-`AsyncOpenAI`. Прежняя оговорка «клиент жёстко привязан к вендорскому SDK,
-агностичность заявлена только на уровне контракта» снята: победитель замера и
-вторичный таргет ADR-0018 ходят по
-OpenAI-совместимому маршруту нативно, поэтому смена цели = правка конфига
-(`llm_base_url` + `llm_api_key` + модель), а не этого файла. Раннер eval
+  - `NutritionItem` / `NutritionResult` / `UnresolvedItem` — доменные DTO ответа;
+  - семейство `LLMError` — понятные пользователю ошибки (I6, REST 502);
+  - `LLMTarget` / `make_client` / `default_target` — КУДА и ЧЕМ ходим;
+  - `LLMClient` — один сырой вызов чата: собрать запрос, поймать `finish_reason`,
+    вернуть текст и usage. Разбор ответа — не его дело (это C1 в `resolve/checks`).
+
+**Направление зависимости не изменилось:** `resolve` → `services`, не наоборот.
+Транспорт и DTO — низ, извлечение и лестница — верх. Поэтому контракт
+import-linter «resolve — leaf внутри Nutrition» остался нетронутым: код подгонять
+под контракт не пришлось, потому что слои и так лежат в эту сторону.
+
+**I7 (провайдер-агностичность):** FoodService зависит от инжектируемого
+извлекателя, а не от вендора; вся вендорская специфика собрана в `LLMTarget`,
+поэтому смена цели — правка конфига, а не этого файла. Раннер eval
 (`tests/eval/run_eval.py`) — первый потребитель этой абстракции: он подставляет
-свою `LLMTarget`, оставаясь на прод-пути.
+свою цель, оставаясь на прод-пути. Живых вызовов провайдера из pytest нет (GAP-6).
 
-Контракт (`NutritionLLM`): все методы возвращают `NutritionResult` (список
-`NutritionItem`), т.к. одна строка/тарелка может содержать несколько продуктов.
-Невалидный ответ / 429 → понятная `LLMError` (I6). Тесты подменяют реализацию
-фейком за этим интерфейсом — живых вызовов провайдера из pytest нет (GAP-6).
-
-Почему НЕ regex: локальной базы состава продуктов нет — числа КБЖУ даёт только
-модель (и для текста, и для фото).
+Провайдер (ADR-0017 §16): OpenAI `gpt-5.4-mini`, клиент `AsyncOpenAI`.
 """
 
-import base64
-import json
 import logging
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Literal
 
 from openai import APIError, AsyncOpenAI, RateLimitError
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field
 
 from app.config import settings
 
@@ -42,9 +44,9 @@ class NutritionItem(BaseModel):
     """Одна позиция: продукт/блюдо с КБЖУ уже для съеденной порции (абсолют, I1).
 
     Провенанс (ADR-0013, §5): `source`/`source_ref` происходят от резолвера и
-    сохраняются в FoodEntry. `matched_name` — только транспорт analyze→confirm
-    (как назван матч в источнике, для доверия/UI); в БД не пишется. `source=None`
-    на «голой» позиции (ручной ввод) → save_entries подставит дефолт вызова.
+    сохраняются в FoodEntry. `matched_name` и `warnings` — только транспорт
+    analyze→confirm (в БД не пишутся). `source=None` на «голой» позиции (ручной
+    ввод) → save_entries подставит дефолт вызова.
     """
 
     description: str
@@ -56,6 +58,10 @@ class NutritionItem(BaseModel):
     source: str | None = None        # провенанс: label/off/web/estimate/db/manual
     source_ref: str | None = None    # URL/код товара/цитата (off/web)
     matched_name: str | None = None  # как назван матч в источнике (не персистится)
+    # Коды флагов проверок §6 и маршрута §7 (arith_mismatch, kj_suspected,
+    # weight_mismatch, label_disagrees_with_source, ...). Человекочитаемый текст
+    # рисует фронт по коду — так один и тот же флаг не расходится по формулировкам.
+    warnings: list[str] = Field(default_factory=list)
     # per100g — транспорт для confirm-экрана (пересчёт КБЖУ при правке веса, ADR-0013
     # опция C). НЕ персистится (FoodEntry хранит абсолют за порцию, I1).
     kcal_100g: float | None = None
@@ -64,10 +70,26 @@ class NutritionItem(BaseModel):
     carbs_100g: float | None = None
 
 
+class UnresolvedItem(BaseModel):
+    """Позиция без чисел (ТЗ §6.6): ни модель, ни источники не смогли ответить.
+
+    Отдельный массив, а не nullable-КБЖУ внутри `items`: сделать `kcal`
+    опциональным значит заставить каждого потребителя (фронт, save_entries,
+    аналитику, дайджест) проверять на null в пути, где числа есть почти всегда.
+    Сохранение такой позиции запрещено — запись с нулями выглядит как данные и
+    портит дневные итоги, прогресс к целям и дайджест.
+    """
+
+    name: str | None = None
+    note: str | None = None
+    reason: Literal["unreadable", "no_source"] = "unreadable"
+
+
 class NutritionResult(BaseModel):
     """Обёртка-объект (JSON-режим требует объект на верхнем уровне, не массив)."""
 
     items: list[NutritionItem]
+    unresolved: list[UnresolvedItem] = Field(default_factory=list)
 
 
 # ── Ошибки ──────────────────────────────────────────────────────────────────
@@ -82,83 +104,6 @@ class LLMNotConfiguredError(LLMError):
 
 class LLMRateLimitError(LLMError):
     """Превышен лимит запросов к модели (429) — стоит повторить позже."""
-
-
-# ── Провайдер-агностичный интерфейс (I7) ─────────────────────────────────────
-
-@runtime_checkable
-class NutritionLLM(Protocol):
-    """Контракт LLM-расчёта КБЖУ. FoodService зависит ТОЛЬКО от него (I7)."""
-
-    async def parse_text(self, text: str) -> NutritionResult: ...
-
-    async def analyze_photo(
-        self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
-    ) -> NutritionResult: ...
-
-    async def analyze_dish_text(
-        self, description: str, name: str, weight_g: float
-    ) -> NutritionResult: ...
-
-    async def analyze_dish_photos(
-        self, images_b64: list[str], name: str, weight_g: float
-    ) -> NutritionResult: ...
-
-    async def analyze_dish_combined(
-        self, text: str, images_b64: list[str], name: str, weight_g: float
-    ) -> NutritionResult: ...
-
-
-# ── Промпты ──────────────────────────────────────────────────────────────────
-
-_SYSTEM_PROMPT = (
-    "Ты — нутрициолог-калькулятор. По описанию еды или фото оцени КБЖУ.\n"
-    "Верни СТРОГО JSON-объект вида:\n"
-    '{"items": [{"description": "...", "weight_g": <число|null>, '
-    '"kcal": <число>, "protein": <число>, "fat": <число>, "carbs": <число>}]}\n'
-    "Правила:\n"
-    "- Одна позиция на каждый отдельный продукт/блюдо.\n"
-    "- КБЖУ — ИТОГ для съеденной порции, НЕ на 100 г.\n"
-    "  Если на этикетке значения на 100 г — умножь каждое на (вес_порции / 100).\n"
-    "  Пример: белки 7.8 г/100 г, порция 125 г → белки = 7.8 × 1.25 = 9.75 г.\n"
-    "- kcal — КИЛОКАЛОРИИ (ккал). Если на этикетке есть и кДж, и ккал — бери только ккал.\n"
-    "  кДж и ккал различаются в ~4.18 раза: 496 кДж ≠ 496 ккал, это ≈ 119 ккал.\n"
-    "- Если вес не указан — прикинь типичную порцию и проставь её в weight_g.\n"
-    "- description — короткое название на русском.\n"
-    "- Числа без единиц измерения. Никакого текста вне JSON."
-)
-
-# Анализ целого блюда по нескольким фото → ровно одна позиция (суммарное КБЖУ).
-_DISH_PROMPT = (
-    "Ты — нутрициолог-калькулятор. По одному или нескольким фото оцени КБЖУ ВСЕГО блюда.\n"
-    "Верни СТРОГО JSON-объект вида:\n"
-    '{"items": [{"description": "<название>", "weight_g": <число>, '
-    '"kcal": <число>, "protein": <число>, "fat": <число>, "carbs": <число>}]}\n'
-    "Правила:\n"
-    "- Верни ровно ОДНУ позицию — итого для всей порции.\n"
-    "- description — точно то название блюда, которое передано в запросе.\n"
-    "- weight_g — точно тот вес порции, который передан в запросе.\n"
-    "- КБЖУ — суммарно для всей порции, не на 100 г.\n"
-    "- Числа без единиц измерения. Никакого текста вне JSON."
-)
-
-# Совмещённый режим: текст с граммовками + фото этикеток.
-_COMBINED_PROMPT = (
-    "Ты — нутрициолог-калькулятор. Тебе дан состав блюда с граммовками (текст) "
-    "и фото этикеток ингредиентов (изображения).\n"
-    "Для каждого ингредиента из текста найди его этикетку на фото, прочитай КБЖУ на 100 г "
-    "и вычисли КБЖУ для указанной граммовки. Если этикетки нет — используй типичные значения.\n"
-    "Сложи результаты всех ингредиентов в одну итоговую позицию.\n"
-    "Верни СТРОГО JSON-объект вида:\n"
-    '{"items": [{"description": "<название>", "weight_g": <число>, '
-    '"kcal": <число>, "protein": <число>, "fat": <число>, "carbs": <число>}]}\n'
-    "Правила:\n"
-    "- Верни ровно ОДНУ позицию — итого для всей порции.\n"
-    "- description — точно то название блюда, которое передано в запросе.\n"
-    "- weight_g — точно тот вес порции, который передан в запросе.\n"
-    "- КБЖУ — суммарно для всей порции, не на 100 г.\n"
-    "- Числа без единиц измерения. Никакого текста вне JSON."
-)
 
 
 # ── Провайдер-цель и клиент (ADR-0017 §6) ────────────────────────────────────
@@ -176,21 +121,21 @@ class LLMTarget:
     api_key: str
     model: str
     # "" = не передавать reasoning_effort (параметр специфичен для двухрежимных
-    # моделей вроде qwen3.6; другие провайдеры на нём могут отдать 400).
+    # моделей; другие провайдеры на нём могут отдать 400).
     reasoning_effort: str = ""
     max_images: int = 5
     # Имя параметра лимита вывода. OpenAI GPT-5.x требуют "max_completion_tokens"
     # и отвергают "max_tokens" (проверено 2026-07-27); OpenRouter/Anthropic-compat
     # — наоборот. Дефолт = под прод-провайдера.
     max_tokens_param: str = "max_completion_tokens"
-    # Бюджет вывода. None → дефолт вызова (1024 текст / 1500 extract). Для reasoning
-    # нужен запас: reasoning-токены счётаются в этот лимит и без запаса выедают JSON.
+    # Бюджет вывода. None → считается от числа снимков (§5.3). Для reasoning нужен
+    # запас: reasoning-токены счётаются в этот лимит и без запаса выедают JSON.
     max_output_tokens: int | None = None
     # Температура. None → не передавать (взять дефолт модели). Нужно для reasoning-
     # моделей OpenAI: они принимают ТОЛЬКО temperature=1 и дают 400 на 0.2.
     temperature: float | None = 0.2
     # Слать ли response_format={"type":"json_object"}. Anthropic-compat его отвергает
-    # (хочет json_schema) → False; _extract_json и так снимает ```-обёртку ответа.
+    # (хочет json_schema) → False; снятие ```-обёртки в checks.extract_json это чинит.
     send_response_format: bool = True
     # OpenRouter опц. читает HTTP-Referer/X-Title для рейтинга; не обязательно.
     extra_headers: dict = field(default_factory=dict)
@@ -240,53 +185,32 @@ def _get_client():
     return _client
 
 
-def _cap_images(images: list, cap: int | None = None) -> list:
-    """Режет список снимков до лимита модели (`cap`, по умолчанию из settings).
+# ── Сырой вызов чата ─────────────────────────────────────────────────────────
 
-    Обрезка — деградация, а не ошибка: у пользователя уже есть 4-е фото в UI, и
-    падать на этом хуже, чем посчитать по первым N. Но факт потери логируем —
-    без этого «модель не увидела этикетку» выглядит как галлюцинация.
+@dataclass
+class LLMCall:
+    """Результат одного вызова: текст ответа + всё, по чему судят о его качестве."""
 
-    ВРЕМЕННОЕ СОСТОЯНИЕ: развилка «ошибка vs обрезка vs батчи» решена в пользу
-    батчей (ТЗ контракта §5.2), но они приходят блоком 6 волны 1. До тех пор
-    обрезка сохраняется — просто на пороге 5 вместо 3 (лимит ушедшей qwen3.6).
-    """
-    if cap is None:
-        cap = settings.llm_max_images
-    if len(images) > cap:
-        logger.warning(
-            f"Изображений {len(images)} > лимита модели {cap} "
-            f"({settings.llm_vision_model}) — в запрос уйдут первые {cap}"
-        )
-    return images[:cap]
+    text: str
+    finish_reason: str | None = None
+    usage: dict | None = None
+    retries: int = 0
 
 
-def _extract_json(content: str) -> dict:
-    """Достаёт JSON из ответа модели (срезает ```-ограждения, берёт внешние скобки)."""
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.split("```", 2)[1] if "```" in text[3:] else text
-        text = text.lstrip("json").strip().strip("`").strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
-        raise LLMError("Модель вернула ответ не в формате JSON")
-    try:
-        return json.loads(text[start : end + 1])
-    except json.JSONDecodeError as e:
-        raise LLMError("Не удалось разобрать ответ модели") from e
+class LLMClient:
+    """Один вызов чата. Не знает ни про КБЖУ, ни про промпты, ни про JSON.
 
-
-class LLMService:
-    """OpenAI-совместимая реализация контракта `NutritionLLM` (vision + text, JSON).
-
-    `target=None` → прод-цель из settings (ADR-0017 §16). Раннер eval передаёт свою
-    цель на провайдера, оставаясь на этом же пути (ADR-0017 §6).
+    Раньше этот код существовал в ДВУХ копиях — в `LLMService._complete` и в
+    `LLMExtractor._complete` — и копии успели разойтись по бюджету вывода
+    (1024 против 1500). Свод в одно место закрывает D7 из ТЗ §1.
     """
 
     def __init__(self, target: LLMTarget | None = None, model: str | None = None):
         self._target = target
         self._client = make_client(target) if target is not None else None
         self.model = model or (target.model if target else settings.llm_vision_model)
+
+    # ── параметры цели (target перекрывает settings) ────────────────────────
 
     def _client_for(self):
         return self._client if self._client is not None else _get_client()
@@ -296,7 +220,8 @@ class LLMService:
             return self._target.reasoning_effort
         return settings.llm_reasoning_effort
 
-    def _max_images(self) -> int:
+    @property
+    def max_images(self) -> int:
         if self._target is not None:
             return self._target.max_images
         return settings.llm_max_images
@@ -306,11 +231,6 @@ class LLMService:
             return self._target.max_tokens_param
         return settings.llm_max_tokens_param
 
-    def _output_budget(self, default: int) -> int:
-        if self._target is not None and self._target.max_output_tokens:
-            return self._target.max_output_tokens
-        return default
-
     def _temperature(self) -> float | None:
         if self._target is not None:
             return self._target.temperature
@@ -319,16 +239,46 @@ class LLMService:
     def _send_response_format(self) -> bool:
         return self._target.send_response_format if self._target is not None else True
 
-    async def _complete(
-        self, user_content, system_prompt: str | None = None
-    ) -> NutritionResult:
-        """Общий вызов чата для текста и фото. user_content — str или список частей."""
-        # reasoning_effort передаём только если задан: у двухрежимных моделей
-        # (qwen3.6) без него включается thinking, и reasoning-токены выедают
-        # бюджет вывода до того, как модель дойдёт до JSON → пустой content.
-        # temperature=0.2 — под детерминизм JSON; None → не слать (reasoning-модели
-        # OpenAI принимают только дефолт 1). response_format — не для Anthropic.
-        extra: dict = {self._max_tokens_param(): self._output_budget(1024)}
+    def output_budget(self, n_images: int = 0) -> int:
+        """Бюджет вывода под размер ввода (ТЗ §5.3).
+
+        `base + per_item × N`, но не ниже `llm_output_tokens_min`. Основание —
+        фактический расход на ярусе A: 1802–2174 токена на вызов, прогноз ~1950
+        сошёлся с точностью <8%. Цель у батча своя, потому что число позиций в
+        ответе линейно по числу снимков в ЭТОМ вызове, а не во всём вводе.
+        """
+        if self._target is not None and self._target.max_output_tokens:
+            return self._target.max_output_tokens
+        computed = (
+            settings.llm_output_tokens_base
+            + settings.llm_output_tokens_per_item * max(0, n_images)
+        )
+        return max(computed, settings.llm_output_tokens_min)
+
+    # ── сам вызов ───────────────────────────────────────────────────────────
+
+    async def complete(
+        self,
+        *,
+        system: str,
+        user_content,
+        n_images: int = 0,
+        budget: int | None = None,
+        _attempt: int = 0,
+    ) -> LLMCall:
+        """Вызов чата. `finish_reason="length"` → один ретрай с ×2 бюджетом (§5.3).
+
+        Обрезка по лимиту вывода без этой проверки неотличима от «модель вернула
+        не JSON»: пользователь видит «не удалось разобрать ответ», а причина —
+        что ответ не поместился. Второй раз подряд — честная ошибка с внятным
+        текстом, а не третья попытка.
+        """
+        budget = budget if budget is not None else self.output_budget(n_images)
+        # reasoning_effort передаём только если задан: у двухрежимных моделей без
+        # него включается thinking, и reasoning-токены выедают бюджет вывода до
+        # того, как модель дойдёт до JSON → пустой content. temperature=0.2 — под
+        # детерминизм JSON; None → не слать. response_format — не для Anthropic.
+        extra: dict = {self._max_tokens_param(): budget}
         if self._reasoning_effort():
             extra["reasoning_effort"] = self._reasoning_effort()
         if self._temperature() is not None:
@@ -339,7 +289,7 @@ class LLMService:
             response = await self._client_for().chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system_prompt or _SYSTEM_PROMPT},
+                    {"role": "system", "content": system},
                     {"role": "user", "content": user_content},
                 ],
                 **extra,
@@ -352,99 +302,29 @@ class LLMService:
             logger.error(f"LLM API error: {e}")
             raise LLMError("Сервис расчёта КБЖУ временно недоступен") from e
 
-        raw = response.choices[0].message.content or ""
-        data = _extract_json(raw)
-        try:
-            result = NutritionResult.model_validate(data)
-        except ValidationError as e:
-            logger.warning(f"LLM returned invalid schema: {e}\nraw: {raw}")
-            raise LLMError("Модель вернула некорректные данные") from e
-
-        if not result.items:
-            raise LLMError("Не удалось распознать продукты")
-        return result
-
-    async def parse_text(self, text: str) -> NutritionResult:
-        """Ручной ввод: 'гречка 200, куриная грудка 150' -> позиции с КБЖУ."""
-        return await self._complete(text)
-
-    async def analyze_photo(
-        self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
-    ) -> NutritionResult:
-        """Одно или несколько фото блюда/упаковки (+ опц. описание) -> позиции с КБЖУ.
-
-        Все снимки уходят ОДНИМ вызовом; кап — `settings.llm_max_images`
-        (свойство модели, не домена). Промпт — прежний _SYSTEM_PROMPT: несколько
-        продуктов на фото → несколько позиций.
-        """
-        images = _cap_images(images, self._max_images())
-        parts: list[dict] = [
-            {
-                "type": "text",
-                "text": caption.strip() or "Определи продукты на фото и оцени их КБЖУ.",
-            }
-        ]
-        for image_bytes in images:
-            b64 = base64.b64encode(image_bytes).decode()
-            parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:{mime_type};base64,{b64}"},
-                }
-            )
-        return await self._complete(parts)
-
-    async def analyze_dish_text(
-        self, description: str, name: str, weight_g: float
-    ) -> NutritionResult:
-        """Текстовый состав блюда + название + вес → суммарное КБЖУ одной порции."""
-        text = (
-            f'Блюдо: "{name}", вес порции: {weight_g} г. '
-            f"Состав: {description}. "
-            "Рассчитай суммарное КБЖУ для всей этой порции."
+        choice = response.choices[0]
+        finish_reason = getattr(choice, "finish_reason", None)
+        usage = getattr(response, "usage", None)
+        call = LLMCall(
+            text=choice.message.content or "",
+            finish_reason=finish_reason,
+            usage=usage.model_dump() if usage is not None else None,
+            retries=_attempt,
         )
-        return await self._complete(text, system_prompt=_DISH_PROMPT)
-
-    async def analyze_dish_photos(
-        self, images_b64: list[str], name: str, weight_g: float
-    ) -> NutritionResult:
-        """Фото блюда (кап `llm_max_images`) + название + вес → КБЖУ порции."""
-        parts: list[dict] = [
-            {
-                "type": "text",
-                "text": (
-                    f'Блюдо: "{name}", вес порции: {weight_g} г. '
-                    "Рассчитай суммарное КБЖУ для всей этой порции."
-                ),
-            }
-        ]
-        for b64 in _cap_images(images_b64, self._max_images()):
-            parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                }
+        if finish_reason == "length":
+            if _attempt == 0:
+                logger.warning(
+                    "LLM ответ обрезан по лимиту вывода (%s токенов) — ретрай с ×2",
+                    budget,
+                )
+                return await self.complete(
+                    system=system,
+                    user_content=user_content,
+                    n_images=n_images,
+                    budget=budget * 2,
+                    _attempt=1,
+                )
+            raise LLMError(
+                "Ответ модели не помещается в лимит — пришли меньше снимков за раз"
             )
-        return await self._complete(parts, system_prompt=_DISH_PROMPT)
-
-    async def analyze_dish_combined(
-        self, text: str, images_b64: list[str], name: str, weight_g: float
-    ) -> NutritionResult:
-        """Текст с граммовками + фото этикеток → суммарное КБЖУ. Самый точный режим."""
-        parts: list[dict] = [
-            {
-                "type": "text",
-                "text": (
-                    f'Блюдо: "{name}", вес порции: {weight_g} г.\n'
-                    f"Состав с граммовками: {text}."
-                ),
-            }
-        ]
-        for b64 in _cap_images(images_b64, self._max_images()):
-            parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                }
-            )
-        return await self._complete(parts, system_prompt=_COMBINED_PROMPT)
+        return call

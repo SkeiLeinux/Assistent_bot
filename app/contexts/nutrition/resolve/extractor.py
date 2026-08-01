@@ -1,190 +1,349 @@
-"""resolve/extractor.py — сегментация + идентификация одним LLM-вызовом (§6).
+"""resolve/extractor.py — единственная точка вызова LLM в домене питания (ТЗ §4–§6).
 
-Один извлекатель, два входа (текст / фото) → `list[ExtractedItem]` (строгий JSON,
-1 вызов). Заменяет прямой `_SYSTEM_PROMPT`-путь в `/analyze`: теперь модель не
-только сегментирует ввод на продукты, но и заполняет поля идентификации
-(brand/fat_pct/portion_g/barcode) и per100g (с этикетки → label_complete=true,
-иначе оценка) для КАЖДОЙ позиции. Числа на этом шаге — оценка модели; точные
-данные подставляет резолвер (OFF) на следующем.
+**Что изменилось в волне 1.** Раньше извлекатель обслуживал только дневниковый
+`/analyze`, а каталог (`/foods/analyze`) ходил в LLM своим путём с тремя другими
+промптами, требовавшими от модели арифметики. Теперь путь один: все ПЯТЬ путей
+(дневник текст/фото, блюдо по составу/по фото/совмещённо) идут сюда, отличаясь
+только режимной преамбулой (§4.3). Модель везде отвечает одним контрактом —
+`per100g` + граммовки; умножение и сложение делает код (L2, §5.4).
 
-Направление зависимости (ADR-0004, §2): resolve → services — извлекатель
-переиспользует LLM-клиент и JSON-парсер из `services.llm_service` (тот же
-провайдер/модель, контракт NutritionLLM сохраняется), но возвращает свой DTO
-`ExtractedItem`, поэтому это отдельный компонент, а не метод NutritionLLM
-(services НЕ импортирует resolve — цикла нет).
+Порядок обработки ответа:
+  1. вызов (батчами, если снимков больше лимита модели — §5.2);
+  2. C1: снятие ```-обёртки и разбор JSON; невалидно → один ретрай с ужесточающей
+     строкой, повторно → `LLMError` (единственный источник отказа, §2.2);
+  3. схема `ExtractedItem` (§3.1): отказ модели («unreadable») выражается явно;
+  4. C2–C5 (§6): флаги + возможное понижение `readout` — числа не трогаются;
+  5. дедуп позиций после батчей (§5.5);
+  6. C6 для составных режимов: сходимость Σ граммовок с заявленным весом.
+
+**Почему проверки применяются здесь, а не в `pipeline.refine`** (где они стоят в
+псевдокоде ТЗ §7.2): режимы блюда лестницу не проходят вовсе (расчётный путь,
+ADR-0013 §17), и при размещении в `refine` половина путей осталась бы без
+проверок. Результат для лестницы тот же — она читает уже понижённый `readout`,
+что эквивалентно `label_ok = readout=="label" and not checks.downgraded`.
+
+Направление зависимости (ADR-0004): resolve → services (транспорт и DTO), не
+наоборот. FoodService получает извлекатель инъекцией из композиционного корня.
 """
 
+import asyncio
 import base64
 import logging
 from typing import Protocol, runtime_checkable
 
-from openai import APIError, RateLimitError
 from pydantic import ValidationError
 
 from app.config import settings
-from app.contexts.nutrition.resolve.ports import ExtractedItem, ExtractResult
-from app.contexts.nutrition.services.llm_service import (
-    LLMError,
-    LLMRateLimitError,
-    LLMTarget,
-    _cap_images,
-    _extract_json,
-    _get_client,
-    make_client,
+from app.contexts.nutrition.resolve import prompts
+from app.contexts.nutrition.resolve.cache import normalize_name
+from app.contexts.nutrition.resolve.checks import (
+    FLAG_WEIGHT_MISMATCH,
+    apply_checks,
+    extract_json,
+    weight_mismatch,
 )
+from app.contexts.nutrition.resolve.ports import ExtractedItem, ExtractResult
+from app.contexts.nutrition.services.llm_service import LLMClient, LLMError, LLMTarget
 
 logger = logging.getLogger(__name__)
 
-# Промпт извлечения — дословно по spec-nutrition-retrieval §6 (целевой).
-_EXTRACT_PROMPT = (
-    "Ты — парсер дневника питания. Раздели запрос (текст и/или фото) на ОТДЕЛЬНЫЕ "
-    "продукты/блюда и для КАЖДОГО верни запись.\n"
-    "Верни СТРОГО JSON-объект:\n"
-    '{"items": [ {"name":"<родовое название без бренда, рус.>","brand":<строка|null>,'
-    '"fat_pct":<число|null>,"portion_g":<число|null>,"barcode":<строка цифр|null>,'
-    '"per100g":{"kcal":<ч>,"protein":<ч>,"fat":<ч>,"carbs":<ч>},'
-    '"label_complete":<true|false>,"confidence":<0..1>}, ... ]}\n'
-    "Правила:\n"
-    "- Одна запись на каждый отдельный продукт/блюдо. Пример: «гречка 200, курица 150» → ДВЕ записи.\n"
-    "- per100g — ВСЕГДА заполни, значения на 100 г: если на фото читается этикетка — "
-    "точные значения с неё и label_complete=true; иначе — твоя оценка и label_complete=false.\n"
-    "- name — без бренда и жирности («молоко питьевое»); brand — отдельно («Домик в деревне»); fat_pct — если указан.\n"
-    "- portion_g — масса именно этой порции, если понятна из запроса; иначе null.\n"
-    "- barcode — только если цифры штрихкода явно видны; иначе null.\n"
-    "- Числа без единиц. Никакого текста вне JSON."
-)
+# Приоритет при слиянии дублей (§5.5): чем выше, тем «надёжнее» происхождение.
+_READOUT_RANK = {"label": 2, "estimate": 1, "unreadable": 0}
 
 
 @runtime_checkable
 class Extractor(Protocol):
-    """Контракт извлекателя. FoodService зависит только от него (тесты инжектят фейк)."""
+    """Контракт извлекателя. FoodService зависит только от него (тесты инжектят фейк).
+
+    Это и есть шов I7 после консолидации: единственная операция — извлечение в
+    одном из режимов, а не пять методов, каждый со своей контрактной моделью.
+    Агрегация за пределами контракта намеренно (§5.4): считает код домена.
+    """
 
     async def extract(
         self,
         *,
+        mode: str = prompts.MODE_DIARY,
         text: str | None = None,
         images: list[bytes] | None = None,
         caption: str = "",
         mime_type: str = "image/jpeg",
+        dish_name: str | None = None,
+        weight_g: float | None = None,
     ) -> list[ExtractedItem]: ...
 
 
+def _merge(base: ExtractedItem, other: ExtractedItem) -> ExtractedItem:
+    """Слияние двух записей об одном продукте (§5.5).
+
+    Побеждает более надёжный `readout`; при равенстве — большая `confidence`.
+    `portion_g` берётся ненулевой, `note` конкатенируются, флаги объединяются.
+    """
+    base_rank = (_READOUT_RANK.get(base.readout, 0), base.confidence)
+    other_rank = (_READOUT_RANK.get(other.readout, 0), other.confidence)
+    winner, loser = (base, other) if base_rank >= other_rank else (other, base)
+    # Note проигравшего-отказника не переносим: «этикетку не видно» — утверждение
+    # о конкретном снимке, и на позиции, которую другой снимок прочитал, оно
+    # превратилось бы в ложное предупреждение пользователю.
+    loser_note = None if loser.readout == "unreadable" else loser.note
+    notes = [n for n in (winner.note, loser_note) if n and n.strip()]
+    seen: dict[str, None] = {}
+    for flag in (*base.warnings, *other.warnings):
+        seen[flag] = None
+    return winner.model_copy(
+        update={
+            "portion_g": winner.portion_g if winner.portion_g else loser.portion_g,
+            "brand": winner.brand or loser.brand,
+            "fat_pct": winner.fat_pct if winner.fat_pct is not None else loser.fat_pct,
+            "barcode": winner.barcode or loser.barcode,
+            "note": "; ".join(dict.fromkeys(notes)) or None,
+            "warnings": list(seen),
+        }
+    )
+
+
+def dedup(items: list[ExtractedItem], *, by_name_only: bool = False) -> list[ExtractedItem]:
+    """Схлопывает повторы по ключу `(normalize(name), brand, fat_pct)` (§5.5).
+
+    `by_name_only=True` — составные режимы блюда (`dish_text`/`dish_combined`).
+    Там множество позиций ЗАДАНО составом, который модель получает дословно в
+    каждом батче, поэтому две записи с одним именем — заведомо одна и та же
+    строка состава, а не два похожих товара. Полный ключ в этом режиме вредит:
+    батч, увидевший этикетку, сообщает бренд, а батч без неё — нет, и ключи
+    расходятся. Замерено на C-04 (`tierC_dish_combined`, 2026-08-01): итог
+    получался 384.7 вместо 208.7 — ингредиенты складывались дважды.
+    На дневниковом пути ключ прежний: там разные бренды — это разные товары.
+
+    **Принятый риск (OQ-5, решение С.):** два одинаковых продукта, съеденных
+    дважды, схлопнутся в один. Пользователь видит это на экране подтверждения и
+    правит вес. Обратная ошибка — дубль от лица и оборота одной упаковки —
+    встречается чаще и раздражает сильнее.
+
+    **Второй проход — `unreadable`-двойники по одному имени.** Ключ §5.5 включает
+    бренд, а позиция с `readout="unreadable"` бренда сообщить не может: она и
+    означает «этот продукт я не разобрал». Поэтому по полному ключу она никогда
+    не совпадёт с прочитанным близнецом, и правило приоритета `label > estimate >
+    unreadable` из того же §5.5 оказалось бы мёртвым кодом.
+
+    Это не теория: прогон яруса C (C-03/C-04, 2026-08-01) дал ровно такую картину
+    — в составном режиме текст состава уходит в КАЖДЫЙ батч, поэтому второй батч
+    честно отвечает `unreadable` по продуктам, чьих этикеток на его снимках нет.
+    Вклад в КБЖУ у них нулевой, но в списке позиций они оставались дублями и
+    заодно удваивали Σ граммовок — из-за чего C6 ложно срабатывал на наборах,
+    которые обязан пропускать молча.
+
+    Порядок первого появления сохраняется: позиции показываются пользователю в
+    том же порядке, в каком он снимал.
+    """
+    out: list[ExtractedItem] = []
+    index: dict[tuple, int] = {}
+    for item in items:
+        key = (
+            (normalize_name(item.name),)
+            if by_name_only
+            else (normalize_name(item.name), normalize_name(item.brand or ""), item.fat_pct)
+        )
+        pos = index.get(key)
+        if pos is None:
+            index[key] = len(out)
+            out.append(item)
+        else:
+            out[pos] = _merge(out[pos], item)
+
+    # Проход 2: отказ по продукту, который другой батч всё-таки прочитал, —
+    # утверждение, потерявшее силу. Слияние только в эту сторону: прочитанная
+    # позиция от него ничего не теряет, кроме, возможно, note с причиной отказа.
+    by_name: dict[str, int] = {}
+    for i, item in enumerate(out):
+        if item.readout != "unreadable":
+            by_name.setdefault(normalize_name(item.name), i)
+    dropped: set[int] = set()
+    for i, item in enumerate(out):
+        if item.readout != "unreadable":
+            continue
+        target = by_name.get(normalize_name(item.name))
+        if target is not None:
+            out[target] = _merge(out[target], item)
+            dropped.add(i)
+    return [it for i, it in enumerate(out) if i not in dropped]
+
+
 class LLMExtractor:
-    """OpenAI-совместимая реализация извлекателя (vision + text, строгий JSON, §6).
+    """OpenAI-совместимая реализация извлекателя (vision + text, строгий JSON).
 
     Модель — `settings.llm_vision_model` (с 2026-07-27 `gpt-5.4-mini`: победитель
     замера на 25 эталонах яруса A, ADR-0017 §16).
+
+    `prompt_version` существует ради одного требования приёмки (ТЗ §12.3): раннер
+    обязан прогнать обе версии промпта, иначе «не хуже baseline» недоказуемо.
+    Прод всегда на дефолте.
     """
 
     def __init__(
-        self, target: LLMTarget | None = None, model: str | None = None
+        self,
+        target: LLMTarget | None = None,
+        model: str | None = None,
+        *,
+        prompt_version: str = prompts.DEFAULT_PROMPT_VERSION,
     ) -> None:
-        self._target = target
-        self._client = make_client(target) if target is not None else None
-        self.model = model or (target.model if target else settings.llm_vision_model)
-        # Наблюдаемость для раннера eval (ТЗ §6.2): сырой ответ и usage последнего
-        # вызова. Прод их игнорирует — это только для замера цены/латентности.
+        self._client = LLMClient(target=target, model=model)
+        self.model = self._client.model
+        self.prompt_version = prompt_version
+        # Наблюдаемость для раннера eval: сырой ответ, usage и число вызовов
+        # последнего extract(). Прод их игнорирует — это для замера цены,
+        # латентности и того, что батчи действительно разрезали ввод.
         self.last_raw: str | None = None
         self.last_usage: dict | None = None
+        self.last_call_count: int = 0
 
-    def _client_for(self):
-        return self._client if self._client is not None else _get_client()
-
-    def _reasoning_effort(self) -> str:
-        if self._target is not None:
-            return self._target.reasoning_effort
-        return settings.llm_reasoning_effort
+    @property
+    def system_prompt(self) -> str:
+        return prompts.SYSTEM_PROMPTS[self.prompt_version]
 
     def _max_images(self) -> int:
-        if self._target is not None:
-            return self._target.max_images
-        return settings.llm_max_images
+        return self._client.max_images
 
-    def _max_tokens_param(self) -> str:
-        if self._target is not None:
-            return self._target.max_tokens_param
-        return settings.llm_max_tokens_param
+    # ── один вызов: запрос → позиции ────────────────────────────────────────
 
-    def _output_budget(self, default: int) -> int:
-        if self._target is not None and self._target.max_output_tokens:
-            return self._target.max_output_tokens
-        return default
+    @staticmethod
+    def _with_retry_hint(user_content):
+        """Тот же запрос + строка «верни только JSON» (§6.1)."""
+        if isinstance(user_content, str):
+            return user_content + prompts.RETRY_JSON_SUFFIX
+        parts = [dict(p) for p in user_content]
+        for part in parts:
+            if part.get("type") == "text":
+                part["text"] = part["text"] + prompts.RETRY_JSON_SUFFIX
+                break
+        return parts
 
-    def _temperature(self) -> float | None:
-        if self._target is not None:
-            return self._target.temperature
-        return settings.llm_temperature
-
-    def _send_response_format(self) -> bool:
-        return self._target.send_response_format if self._target is not None else True
-
-    async def _complete(self, user_content) -> list[ExtractedItem]:
-        # См. llm_service._complete: у двухрежимных моделей без reasoning_effort
-        # включается thinking и reasoning-токены выедают бюджет вывода → пустой JSON.
-        # temperature=None → не слать (reasoning-модели OpenAI принимают только 1).
-        # response_format — не для Anthropic (compat хочет json_schema).
-        extra: dict = {self._max_tokens_param(): self._output_budget(1500)}
-        if self._reasoning_effort():
-            extra["reasoning_effort"] = self._reasoning_effort()
-        if self._temperature() is not None:
-            extra["temperature"] = self._temperature()
-        if self._send_response_format():
-            extra["response_format"] = {"type": "json_object"}
+    async def _call(self, user_content, n_images: int) -> list[ExtractedItem]:
+        call = await self._client.complete(
+            system=self.system_prompt, user_content=user_content, n_images=n_images
+        )
+        self.last_raw = call.text
+        self.last_usage = _sum_usage(self.last_usage, call.usage)
+        self.last_call_count += 1
         try:
-            response = await self._client_for().chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": _EXTRACT_PROMPT},
-                    {"role": "user", "content": user_content},
-                ],
-                **extra,
+            return _parse(call.text)
+        except LLMError:
+            # Один ретрай с ужесточающей строкой. Второй провал уходит наверх:
+            # бесконечное «попробуем ещё раз» дороже честной ошибки.
+            logger.warning("extractor: ответ не разобран, ретрай с ужесточением")
+            retry = await self._client.complete(
+                system=self.system_prompt,
+                user_content=self._with_retry_hint(user_content),
+                n_images=n_images,
             )
-        except RateLimitError as e:
-            raise LLMRateLimitError(
-                "Лимит запросов к модели исчерпан, попробуй позже"
-            ) from e
-        except APIError as e:
-            logger.error(f"LLM API error (extract): {e}")
-            raise LLMError("Сервис расчёта КБЖУ временно недоступен") from e
+            self.last_raw = retry.text
+            self.last_usage = _sum_usage(self.last_usage, retry.usage)
+            self.last_call_count += 1
+            return _parse(retry.text)
 
-        raw = response.choices[0].message.content or ""
-        self.last_raw = raw
-        usage = getattr(response, "usage", None)
-        self.last_usage = usage.model_dump() if usage is not None else None
-        data = _extract_json(raw)
-        try:
-            result = ExtractResult.model_validate(data)
-        except ValidationError as e:
-            logger.warning(f"extractor: invalid schema: {e}\nraw: {raw}")
-            raise LLMError("Модель вернула некорректные данные") from e
-
-        if not result.items:
-            raise LLMError("Не удалось распознать продукты")
-        return result.items
+    # ── публичный вход ──────────────────────────────────────────────────────
 
     async def extract(
         self,
         *,
+        mode: str = prompts.MODE_DIARY,
         text: str | None = None,
         images: list[bytes] | None = None,
         caption: str = "",
         mime_type: str = "image/jpeg",
+        dish_name: str | None = None,
+        weight_g: float | None = None,
     ) -> list[ExtractedItem]:
-        if images:
-            parts: list[dict] = [
-                {
-                    "type": "text",
-                    "text": caption.strip()
-                    or "Определи продукты на фото и оцени их КБЖУ.",
-                }
-            ]
-            for image_bytes in _cap_images(images, self._max_images()):  # кап модели
-                b64 = base64.b64encode(image_bytes).decode()
-                parts.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{b64}"},
-                    }
+        self.last_usage = None
+        self.last_call_count = 0
+        preamble = prompts.user_preamble(
+            mode, text=text, caption=caption, dish_name=dish_name, weight_g=weight_g
+        )
+        images = list(images or [])
+
+        if not images:
+            items = await self._call(preamble, 0)
+        else:
+            batches = _split(images, self._max_images())
+            if len(batches) == 1:
+                items = await self._call(_parts(preamble, batches[0], mime_type), len(batches[0]))
+            else:
+                # §5.2: батчи вместо молчаливой обрезки. Обрезка теряла ровно тот
+                # снимок, ради которого пользователь его прислал (оборот упаковки
+                # с таблицей), и делала это молча. Семафор — чтобы разбор из
+                # десяти снимков не выедал лимит запросов провайдера.
+                logger.info(
+                    "extractor: %d снимков > лимита %d → %d батчей",
+                    len(images), self._max_images(), len(batches),
                 )
-            return await self._complete(parts)
-        return await self._complete(text or "")
+                sem = asyncio.Semaphore(max(1, settings.llm_batch_concurrency))
+
+                async def run(batch: list[bytes]) -> list[ExtractedItem]:
+                    async with sem:
+                        return await self._call(_parts(preamble, batch, mime_type), len(batch))
+
+                items = [
+                    item
+                    for chunk in await asyncio.gather(*(run(b) for b in batches))
+                    for item in chunk
+                ]
+
+        items = dedup(items, by_name_only=mode in prompts.COMPOSED_MODES)
+
+        # C6 — свойство НАБОРА позиций, а не отдельной позиции, поэтому считается
+        # здесь, после дедупа. Только составные режимы: в dish_photos `portion_g`
+        # по контракту null, и Σ граммовок там не определена по построению.
+        if mode in prompts.COMPOSED_MODES and weight_g:
+            if weight_mismatch([i.portion_g for i in items], weight_g):
+                items = [
+                    i.model_copy(update={"warnings": [*i.warnings, FLAG_WEIGHT_MISMATCH]})
+                    for i in items
+                ]
+        return items
+
+
+# ── вспомогательное ──────────────────────────────────────────────────────────
+
+def _parse(raw: str) -> list[ExtractedItem]:
+    """C1 + схема §3.1. Обе ошибки — `LLMError`, чтобы ретрай был один на оба случая."""
+    data = extract_json(raw)
+    try:
+        result = ExtractResult.model_validate(data)
+    except ValidationError as e:
+        logger.warning(f"extractor: invalid schema: {e}\nraw: {raw}")
+        raise LLMError("Модель вернула некорректные данные") from e
+    return [apply_checks(item) for item in result.items]
+
+
+def _split(images: list[bytes], cap: int) -> list[list[bytes]]:
+    """Режет снимки на батчи по лимиту модели, СОХРАНЯЯ порядок.
+
+    Порядок важен: набор C-04 датасета кладёт оригиналы в первый батч, а повторные
+    кадры тех же товаров — во второй, и только так дедуп проверяется через
+    границу батча, а не внутри одного вызова.
+    """
+    cap = max(1, cap)
+    return [images[i : i + cap] for i in range(0, len(images), cap)] or [[]]
+
+
+def _parts(preamble: str, images: list[bytes], mime_type: str) -> list[dict]:
+    """Текст первым, снимки после (§5.1)."""
+    parts: list[dict] = [{"type": "text", "text": preamble}]
+    for image_bytes in images:
+        b64 = base64.b64encode(image_bytes).decode()
+        parts.append(
+            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}}
+        )
+    return parts
+
+
+def _sum_usage(acc: dict | None, add: dict | None) -> dict | None:
+    """Складывает usage батчей: цена разбора — это цена всех его вызовов."""
+    if add is None:
+        return acc
+    if acc is None:
+        return dict(add)
+    out = dict(acc)
+    for key, value in add.items():
+        if isinstance(value, (int, float)) and isinstance(out.get(key), (int, float)):
+            out[key] = out[key] + value
+    return out

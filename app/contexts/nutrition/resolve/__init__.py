@@ -13,8 +13,10 @@ import-linter «resolve — leaf внутри Nutrition» остаётся зе�
 оценка, отдельного LLM-вызова на неё нет.
 """
 
+from app.contexts.nutrition.resolve import prompts
+from app.contexts.nutrition.resolve.checks import apply_checks, extract_json, run_checks
 from app.contexts.nutrition.resolve.errors import SourceError
-from app.contexts.nutrition.resolve.extractor import Extractor, LLMExtractor
+from app.contexts.nutrition.resolve.extractor import Extractor, LLMExtractor, dedup
 from app.contexts.nutrition.resolve.pipeline import ResolverPipeline
 from app.contexts.nutrition.resolve.ports import (
     ExtractedItem,
@@ -37,7 +39,7 @@ def build_extractor() -> Extractor:
 
 
 def build_resolver() -> ProductResolver:
-    """Дефолтная лестница R1: label-short-circuit → OFF → estimate (§4).
+    """Дефолтная лестница R1: label-preferred → OFF → estimate (ТЗ контракта §7).
 
     Web (Compound, R2) и barcode (fast-follow) сюда добавятся новым адаптером —
     без правки лестницы (заменяемость источников, ADR-0002).
@@ -59,6 +61,11 @@ def build_resolver() -> ProductResolver:
 
 
 __all__ = [
+    "prompts",
+    "run_checks",
+    "apply_checks",
+    "extract_json",
+    "dedup",
     "Macros",
     "ExtractedItem",
     "ExtractResult",

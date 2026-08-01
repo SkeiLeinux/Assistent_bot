@@ -37,6 +37,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tests.eval.run_eval import (  # noqa: E402
+    C_PER100G_TOL,
+    C_TOTAL_TOL,
     C_WEIGHT_MISMATCH,
     c_expected_total,
     c_weight_mismatch,
@@ -468,3 +470,56 @@ def test_check_desync_silent_on_clean_answers():
         "per100g": {k: idx[cid]["ground_truth"][k] for k in MACROS},
     }]}]} for cid in idx]
     assert check_desync(cases, records) == []
+
+
+# ── Приграничные контроли (§3D.1, добавлено 2026-08-01) ──────────────────────
+# Правило появилось задним числом и по конкретной причине: 17 мутантов выше НЕ
+# поймали подмену знаменателя C6, потому что все стояли далеко от порога и
+# срабатывали при обеих формулах. Мутант, стоящий вплотную к границе с ОБЕИХ
+# сторон, отвечает на другой вопрос — «порог стоит там, где написано?» — и
+# только он ловит класс ошибок «формула другая, поведение похожее».
+
+
+def test_c3_boundary_from_both_sides():
+    """C3 (per100g ≤2%): чуть внутри допуска — зачёт, чуть снаружи — промах."""
+    case, idx = c_case(), a_index()
+
+    inside = c_answer(case, idx)
+    inside[0]["per100g"]["kcal"] *= 1 + C_PER100G_TOL * 0.9      # 1.8%
+    assert score_c_case(case, idx, inside)["c3_share"] == 1.0
+
+    outside = c_answer(case, idx)
+    outside[0]["per100g"]["kcal"] *= 1 + C_PER100G_TOL * 1.1     # 2.2%
+    assert score_c_case(case, idx, outside)["c3_share"] < 1.0
+
+
+def test_c4_boundary_from_both_sides():
+    """C4 (итог ≤0.5%): допуск нужен на округление и не должен прощать больше.
+
+    0.5% выбраны потому, что после L2 арифметику делает код и итог обязан
+    сходиться точно; 5% из эскиза замаскировали бы настоящую ошибку агрегации.
+    Проверяем обе стороны — иначе порог мог бы стоять где угодно.
+    """
+    case, idx = c_case(), a_index()
+
+    inside = c_answer(case, idx)
+    inside[0]["g"] *= 1 + C_TOTAL_TOL * 0.5
+    assert score_c_case(case, idx, inside)["c4_ok"] is True
+
+    outside = c_answer(case, idx)
+    outside[0]["g"] *= 1 + C_TOTAL_TOL * 4
+    assert score_c_case(case, idx, outside)["c4_ok"] is False
+
+
+def test_c6_boundary_from_both_sides():
+    """C6 (порог 0.30 от ЗАЯВЛЕННОГО веса): 29.9% молчит, 30.1% срабатывает.
+
+    Именно эта пара отсутствовала, когда знаменатель был неверным: на 30.0%
+    строгое `>` не проходило, и положительный контроль молча исчезал.
+    """
+    just_under = {"declared_weight_g": 1000,
+                  "ingredients": [{"case": "A-90", "g": 1000 * (1 + C_WEIGHT_MISMATCH) - 1}]}
+    just_over = {"declared_weight_g": 1000,
+                 "ingredients": [{"case": "A-90", "g": 1000 * (1 + C_WEIGHT_MISMATCH) + 1}]}
+    assert c_weight_mismatch(just_under) is False
+    assert c_weight_mismatch(just_over) is True
