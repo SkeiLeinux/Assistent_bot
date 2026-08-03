@@ -429,6 +429,12 @@ def test_eval_default_matches_prod_target():
     assert prov.max_images == settings.llm_max_images
     assert prov.max_tokens_param == settings.llm_max_tokens_param
     assert prov.reasoning_effort == settings.llm_reasoning_effort
+    # КЛЮЧ — такой же параметр прод-цели, и его здесь не хватало. Цена пропуска
+    # (найдено 2026-08-03 на VPS): прод ходит по `LLM_API_KEY`, а раннер требовал
+    # `OPENAI_API_KEY` — на машине с КОРРЕКТНЫМ прод-`.env` замер не запускался
+    # вовсе, и сообщение отправляло чинить `.env` там, где чинить было нечего.
+    # Сверяем не значение (в CI его нет), а то, что прод-ключ вообще принимается.
+    assert "llm_api_key" in prov.key_attrs
 
 
 # ── Синтетические фикстуры: доказательство, что валидаторы умеют падать ───────
@@ -644,3 +650,48 @@ def test_check_b_fields_catches(mutate, expect_in):
     mutate(case)
     errs = check_b_fields([case])
     assert any(expect_in in e for e in errs), errs
+
+
+def test_prod_key_alone_is_enough_for_eval(monkeypatch):
+    """Прод-`.env` с ОДНИМ `LLM_API_KEY` обязан запускать замер (найдено на VPS).
+
+    Второй ключ с тем же значением в `.env` — не конфигурация, а ловушка: он
+    дублирует прод-секрет ради инструмента и рано или поздно разъезжается с ним.
+    """
+    from pydantic import SecretStr
+
+    from app.config import settings
+
+    prov = PROVIDERS[DEFAULT_PROVIDER]
+    monkeypatch.setattr(settings, "openai_api_key", None)
+    monkeypatch.setattr(settings, "llm_api_key", SecretStr("sk-prod"))
+    assert prov.key() == "sk-prod"
+
+
+def test_dedicated_eval_key_wins_when_set(monkeypatch):
+    """А заданный ОТДЕЛЬНО `OPENAI_API_KEY` задан намеренно (другая квота под
+    замер) — молча игнорировать его нельзя."""
+    from pydantic import SecretStr
+
+    from app.config import settings
+
+    prov = PROVIDERS[DEFAULT_PROVIDER]
+    monkeypatch.setattr(settings, "openai_api_key", SecretStr("sk-eval"))
+    monkeypatch.setattr(settings, "llm_api_key", SecretStr("sk-prod"))
+    assert prov.key() == "sk-eval"
+
+
+def test_missing_key_message_lists_every_accepted_name(monkeypatch):
+    """Сообщение об ошибке обязано назвать ВСЕ принимаемые имена.
+
+    Прежнее «не задан settings.openai_api_key» было формально верным и
+    практически ложным: прод-ключ уже лежал в `LLM_API_KEY`.
+    """
+    from app.config import settings
+
+    prov = PROVIDERS[DEFAULT_PROVIDER]
+    monkeypatch.setattr(settings, "openai_api_key", None)
+    monkeypatch.setattr(settings, "llm_api_key", None)
+
+    assert prov.key() is None
+    assert "LLM_API_KEY" in prov.key_hint and "OPENAI_API_KEY" in prov.key_hint

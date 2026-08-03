@@ -81,7 +81,13 @@ class Provider:
                  max_images=5, extra_headers=None, max_tokens_param="max_tokens",
                  send_response_format=True):
         self.base_url = base_url
-        self.key_attr = key_attr
+        # Список кандидатов, а не одно имя. Причина — у ПРОД-провайдера ключ
+        # называется `llm_api_key`, потому что шов проходит по OpenAI-совместимому
+        # маршруту, а не по вендору (ADR-0017 §16), и заводить в `.env` второй
+        # ключ с тем же значением ради раннера незачем. `openai_api_key` остаётся
+        # первым по приоритету: если его задали ОТДЕЛЬНО, это сделали намеренно
+        # (другая квота/биллинг под замер), и молча его игнорировать нельзя.
+        self.key_attrs = (key_attr,) if isinstance(key_attr, str) else tuple(key_attr)
         self.reasoning_effort = reasoning_effort
         self.max_images = max_images
         self.extra_headers = extra_headers or {}
@@ -91,8 +97,21 @@ class Provider:
     def key(self):
         # Ключи в конфиге — SecretStr (чтобы не утекали в трейсбеки, см.
         # app/config.py). Раннеру нужно открытое значение: оно уходит в SDK.
-        secret = getattr(settings, self.key_attr, None)
-        return secret.get_secret_value() if secret is not None else None
+        for attr in self.key_attrs:
+            secret = getattr(settings, attr, None)
+            raw = secret.get_secret_value() if secret is not None else None
+            if raw:
+                return raw
+        return None
+
+    @property
+    def key_hint(self) -> str:
+        """Что писать в ошибке: перечислить ВСЕ принимаемые имена, а не первое.
+
+        Сообщение «не задан settings.openai_api_key» отправляло чинить `.env`
+        там, где чинить нечего: прод-ключ уже лежал в `LLM_API_KEY`.
+        """
+        return " или ".join(a.upper() for a in self.key_attrs)
 
 
 # Таймаут ОДНОГО вызова в замере. Намеренно много: раннер измеряет латентность,
@@ -117,7 +136,11 @@ PROVIDERS = {
         # llm_base_url / llm_max_images / llm_max_tokens_param / llm_reasoning_effort.
         # Расхождение = раннер меряет не то, что поедет в прод (ТЗ контракта §0.1);
         # сходимость проверяется тестом test_eval_default_matches_prod_target.
-        "https://api.openai.com/v1", "openai_api_key",
+        # Ключ — тоже параметр прод-цели, и его в этой сверке не хватало:
+        # прод ходит по `LLM_API_KEY`, а раннер требовал `OPENAI_API_KEY`, то есть
+        # на машине с корректным прод-`.env` замер не запускался вовсе.
+        # `OPENAI_API_KEY` остаётся ПЕРВЫМ: заданный отдельно, он задан намеренно.
+        "https://api.openai.com/v1", ("openai_api_key", "llm_api_key"),
         # GPT-5.x: max_tokens отвергается → max_completion_tokens. reasoning не шлём:
         # замер показал вред (100% → 94/88% при ×3 выходных токенов и ×2 задержке).
         reasoning_effort="", max_images=5,
@@ -1003,7 +1026,7 @@ async def run_model(provider: str, model: str, tier: str, repeat: int,
     prov = PROVIDERS[provider]
     key = prov.key()
     if not key:
-        sys.exit(f"Нет ключа для {provider}: не задан settings.{prov.key_attr} (.env)")
+        sys.exit(f"Нет ключа для {provider}: задай {prov.key_hint} в .env")
 
     # --reasoning переопределяет дефолт провайдера (замер влияния рассуждения на
     # кДж-конфузию/точность). Тег добавляется в имя файла прогона, чтобы none/low
