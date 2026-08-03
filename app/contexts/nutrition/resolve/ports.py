@@ -30,6 +30,15 @@ ProvenanceSource = Literal["label", "off", "web", "nutritionix", "estimate"]
 # и это перечисление обязаны совпадать по смыслу один в один.
 Readout = Literal["label", "estimate", "unreadable"]
 
+# Физическая константа перевода: 1 ккал = 4.184 кДж. Здесь, а не в checks.py,
+# потому что нужна обеим сторонам (ports заполняет ккал из кДж, checks сверяет),
+# а checks импортирует ports — обратное направление дало бы цикл.
+KJ_PER_KCAL = 4.184
+
+# Текст пометки о пересчёте. Константа, а не литерал: по нему тест отличает
+# «ккал посчитаны кодом» от «ккал прочитаны с этикетки».
+KJ_NOTE = "пересчёт из кДж"
+
 
 class Macros(BaseModel):
     """КБЖУ на 100 г. Все числа неотрицательны."""
@@ -56,6 +65,16 @@ class ExtractedItem(BaseModel):
     # None ТОЛЬКО при readout="unreadable" (инвариант ниже). Во всех остальных
     # случаях — числа с этикетки или типовая оценка модели.
     per100g: Macros | None = None
+    # Килоджоули «как напечатано» — транспортное поле, в БД не персистится и в
+    # `Macros` не входит (ТЗ v0.5 §3.1). Заведено после полевого дефекта F-01
+    # (`05_implementation/field-defect-2026-08-02-kj-leak.md`): пока энергия была
+    # ОДНИМ полем, модель сама решала, что в него положить, — при двух
+    # напечатанных величинах выбирала, при одной делила в уме. И то и другое —
+    # арифметика в модели, запрещённая L2 для всего остального. В проде это
+    # выстрелило в первый же день: 450 кДж уехали в ккал, жиры были подогнаны
+    # под них, пользователь получил завышение в 4,1 раза с провенансом `label`.
+    # Теперь модель транскрибирует обе величины, а сверяет их код (C3a, §6.3a).
+    energy_kj_100g: float | None = None
     readout: Readout = "estimate"
     note: str | None = None         # причина estimate/unreadable, факт пересчёта из кДж
     confidence: float = 0.0
@@ -78,6 +97,40 @@ class ExtractedItem(BaseModel):
             data = dict(data)
             legacy = data.pop("label_complete")
             data.setdefault("readout", "label" if legacy else "estimate")
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _kcal_from_kj(cls, data):
+        """C3a, ветка «напечатаны только кДж»: ккал считает КОД (ТЗ §6.3a).
+
+        Промпт v3 велит модели ставить `null` там, где величина не напечатана, и
+        прямо запрещает делить кДж на 4.184 самой — именно это деление «в уме»
+        и утекло в F-01. Пересчёт делается здесь, ДО валидации схемы, по одной
+        причине: `Macros.kcal` обязателен, и оставить его nullable значило бы
+        протащить `None` через агрегацию, цели, дайджест и фронт ради случая,
+        который закрывается одним делением.
+
+        Это не автокоррекция, запрещённая §2.4: код не «чинит» подозрительное
+        число, а переводит единицы у ОТСУТСТВУЮЩЕГО. Подозрительные числа по-
+        прежнему только помечаются (C3a в `checks.py`).
+        """
+        if not isinstance(data, dict):
+            return data
+        kj = data.get("energy_kj_100g")
+        if kj is None:
+            return data
+        per100g = data.get("per100g")
+        if not isinstance(per100g, dict) or per100g.get("kcal") is not None:
+            return data
+        try:
+            kcal = round(float(kj) / KJ_PER_KCAL, 1)
+        except (TypeError, ValueError):
+            return data
+        data = dict(data)
+        data["per100g"] = {**per100g, "kcal": kcal}
+        note = (data.get("note") or "").strip()
+        data["note"] = f"{note}; {KJ_NOTE}" if note else KJ_NOTE
         return data
 
     @field_validator("name")

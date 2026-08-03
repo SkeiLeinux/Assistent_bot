@@ -28,6 +28,8 @@ import pytest
 from app.kernel import Viewer
 from app.kernel.models import Family, Membership, User
 
+from tests.conftest import patch_llm_transport
+
 from app.contexts.nutrition.api import routes as nutri_routes
 from app.contexts.nutrition.resolve.extractor import LLMExtractor
 from app.contexts.nutrition.resolve.ports import ExtractedItem, Macros, ResolvedNutrition
@@ -60,13 +62,8 @@ class _FakeChat:
 
 
 def _patch_llm(monkeypatch, content: str) -> _FakeChat:
-    import app.contexts.nutrition.services.llm_service as llm_mod
-
     chat = _FakeChat(content)
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=chat))
-    )
-    monkeypatch.setattr(llm_mod, "_get_client", lambda: client)
+    patch_llm_transport(monkeypatch, chat)
     return chat
 
 

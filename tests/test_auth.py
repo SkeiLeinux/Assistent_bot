@@ -11,6 +11,7 @@ import time
 import urllib.parse
 
 import pytest
+from pydantic import SecretStr
 
 from app.config import settings
 from app.kernel.auth import InitDataError, resolve_viewer
@@ -36,7 +37,8 @@ def _init_data(user_id: int, auth_date: int | None = None) -> str:
 
 @pytest.fixture
 def fake_auth(monkeypatch):
-    monkeypatch.setattr(settings, "bot_token", _TOKEN)
+    # SecretStr, как в конфиге: resolve_viewer снимает его .get_secret_value().
+    monkeypatch.setattr(settings, "bot_token", SecretStr(_TOKEN))
     monkeypatch.setattr(settings, "allowed_user_ids_raw", "1,2")
     monkeypatch.setattr(settings, "admin_telegram_id", None)
 

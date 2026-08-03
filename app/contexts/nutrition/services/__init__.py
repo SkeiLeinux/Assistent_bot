@@ -23,9 +23,15 @@ from .llm_service import (
     LLMError,
     LLMNotConfiguredError,
     LLMRateLimitError,
+    LLMTarget,
     NutritionItem,
     NutritionResult,
     UnresolvedItem,
+    classify_failure,
+    default_targets,
+    make_llm_model_guard,
+    run_startup_guard,
+    set_llm_alert_hook,
 )
 
 __all__ = [
@@ -42,12 +48,19 @@ __all__ = [
     "DishAggregate",
     # LLM (провайдер-агностично, I7)
     "LLMClient",
+    "LLMTarget",
     "NutritionItem",
     "NutritionResult",
     "UnresolvedItem",
     "LLMError",
     "LLMNotConfiguredError",
     "LLMRateLimitError",
+    # отказоустойчивость (ADR-0018): список целей, классификатор, guard, алерты
+    "default_targets",
+    "classify_failure",
+    "run_startup_guard",
+    "make_llm_model_guard",
+    "set_llm_alert_hook",
     # ошибки домена
     "NutritionError",
     "InvalidInput",

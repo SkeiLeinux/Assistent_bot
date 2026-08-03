@@ -1,9 +1,19 @@
 import os
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    bot_token: str
+    # SecretStr, а не str — это не косметика. При выкатке волны 1 (2026-08-02)
+    # процесс упал на импорте конфига, и pydantic напечатал в трейсбек ЗНАЧЕНИЕ
+    # ключа: `GROQ_API_KEY` уехал в `journalctl` открытым текстом
+    # (`05_implementation/deploy-wave1-2026-08-02.md` §2). SecretStr закрывает
+    # все пути, где секрет попадает в текст через сам объект: repr(settings),
+    # model_dump(), лог значения поля — везде вместо ключа печатается
+    # `SecretStr('**********')`. Путь «pydantic сам напечатал вход» закрывает
+    # `hide_input_in_errors` в model_config ниже — одного SecretStr для него
+    # мало, см. комментарий там.
+    bot_token: SecretStr
     database_url: str
     allowed_user_ids_raw: str = ""
     # Telegram ID администратора — сюда приходят уведомления об ошибках.
@@ -19,7 +29,7 @@ class Settings(BaseSettings):
     # маршруту (base_url + ключ), а не по вендору — победитель и вторичный таргет
     # ADR-0018 ходят по нему нативно, поэтому адаптера под вендора не нужно.
     llm_base_url: str = "https://api.openai.com/v1"
-    llm_api_key: str | None = None
+    llm_api_key: SecretStr | None = None
     llm_vision_model: str = "gpt-5.4-mini"
     # Текстовая ветка отдельно НЕ замерялась (ADR-0017 §17) — до замера та же
     # модель. Поле заведено, чтобы расщепление text/vision не требовало правки
@@ -39,9 +49,23 @@ class Settings(BaseSettings):
     # GPT-5.x отвергают `max_tokens` и требуют `max_completion_tokens`
     # (проверено 2026-07-27). Имя параметра — свойство провайдера, не кода.
     llm_max_tokens_param: str = "max_completion_tokens"
-    # Таймаут и ретраи 429 — блок 11 (ADR-0018), ЗАВЕДЕНЫ, НО ЕЩЁ НЕ ИСПОЛЬЗУЮТСЯ.
+    # ── Отказоустойчивость (ADR-0018, ТЗ §8) ────────────────────────────────
+    # Таймаут ОДНОГО вызова. Медиана победителя 1.3 с — запас ×15. Передаётся в
+    # SDK параметром `timeout=`, а не через asyncio.wait_for: SDK корректно рвёт
+    # соединение, обёртка оставила бы висящий сокет. Худший случай латентности —
+    # llm_timeout_s × (1 + ретраи), это осознанная цена (ADR-0018 §5).
     llm_timeout_s: float = 20.0
     llm_retry_429: int = 2
+    # Вторичный таргет (ADR-0018, вариант B). Тот же вендор, ключ, SDK и
+    # параметры вызова — отдельных base_url/api_key НЕ заводим намеренно: они
+    # предполагали бы разных вендоров, чего решение B как раз не делает
+    # (третий вендор — ADR-0018 §6). Паритет по качеству: 92%/83%, 1.8 с.
+    llm_fallback_vision_model: str = "gpt-5.4"
+    # Стартовый и суточный guard присутствия модели (ADR-0018 §2.4): GET /models.
+    # Ровно это отловило бы отказ 17.07.26 за месяц до того, как его нашёл
+    # пользователь. Guard НЕ блокирует старт: недоступность сети → warning.
+    llm_guard_enabled: bool = True
+    llm_guard_interval_s: float = 86400.0
     # Бюджет вывода (ТЗ §5.3): base + per_item × число снимков в батче, но не
     # меньше 1500. Основание — фактический расход на ярусе A 1802–2174 токена
     # на вызов. Обрезка по бюджету видна через finish_reason="length" и лечится
@@ -59,6 +83,16 @@ class Settings(BaseSettings):
     check_atwater: float = 0.20          # один порог; пара 0.20/0.35 на данных неразличима
     check_kj_lo: float = 3.6             # полоса kcal/Атуотер, подтверждённая
     check_kj_hi: float = 4.8             # тремя реальными кДж-утечками, 0 ложных
+    # C3a (ТЗ §6.3a, правка v0.5 по полевому дефекту F-01): сверка напечатанных
+    # кДж с напечатанными ккал через константу 4.184. НЕ калибровался на эталонах
+    # и не должен: обе величины печатает производитель, и расходиться им можно
+    # только на округление (факт на эталонах: 0.3–2.2%). 5% покрывает округление
+    # с запасом и на порядок меньше самой мелкой ошибки чтения (спутать кДж с
+    # ккал — это 318%). Расширять этот порог значит гасить ЕДИНСТВЕННУЮ проверку,
+    # независимую от проверяемой величины: C2/C3/C4 выводят эталон из тех же
+    # чисел, что проверяют, и согласованную подгонку пропускают по построению —
+    # ровно это и произошло в F-01 (05_implementation/field-defect-2026-08-02-kj-leak.md).
+    check_kj_kcal: float = 0.05
     check_kcal_max: float = 900          # чистый жир = 900 ккал/100 г — физический потолок
     check_macros_sum_max: float = 102    # детектор ловушки per-portion, не только санити
     check_portion_g_max: float = 5000    # на данных не проверялось — санити
@@ -77,10 +111,10 @@ class Settings(BaseSettings):
     # Ключи прочих провайдеров для замера eval (ADR-0017 §8, T2). В проде не
     # используются, но объявлены здесь, чтобы pydantic не падал на их наличии
     # в .env (extra_forbidden) и чтобы раннер брал их из settings, а не парсил .env.
-    openai_api_key: str | None = None
-    openrouter_api_key: str | None = None
-    claude_api_key: str | None = None  # Anthropic (кандидат ADR-0017 §2, Haiku)
-    gemini_api_key: str | None = None  # закрыт по гео (ADR-0017 §14); держим ключ
+    openai_api_key: SecretStr | None = None
+    openrouter_api_key: SecretStr | None = None
+    claude_api_key: SecretStr | None = None  # Anthropic (кандидат ADR-0017 §2, Haiku)
+    gemini_api_key: SecretStr | None = None  # закрыт по гео (ADR-0017 §14); держим ключ
 
     # ── Резолвер КБЖУ (ADR-0013 / spec-nutrition-retrieval §12) ─────────────
     # Open Food Facts: бесплатно, без ключа, но обязателен кастомный User-Agent.
@@ -112,6 +146,19 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         populate_by_name=True,
+        # ⬅ Вот что реально закрывает утечку из `journalctl` 2026-08-02, а НЕ
+        # SecretStr. Ключ утёк лишним полем (`GROQ_API_KEY` остался в прод-`.env`
+        # после того, как волна 1 удалила поле из кода), а у лишнего поля НЕТ
+        # типа — SecretStr к нему неприменим по построению, и pydantic печатает
+        # `input_value='gsk_...'` в тексте ValidationError. Флаг убирает
+        # `input_value` из сообщений об ошибках целиком.
+        # Цена: диагностика ошибок конфига чуть беднее (видно, КАКОЕ поле не
+        # прошло, не видно ЧТО в нём лежало). Для конфига, где половина полей —
+        # секреты, это правильный размен: имя поля обычно и есть вся нужная
+        # информация. `extra=forbid` при этом сохраняется — он ловит опечатки в
+        # `.env` до старта, и отказываться от него из-за утечки было бы лечением
+        # симптома.
+        hide_input_in_errors=True,
     )
 
     @property

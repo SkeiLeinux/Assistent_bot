@@ -19,6 +19,8 @@ import pytest
 from app.kernel import Viewer
 from app.kernel.models import Family, Membership, User
 
+from tests.conftest import patch_llm_transport
+
 from app.contexts.nutrition.resolve import (
     EstimateSource,
     LLMExtractor,
@@ -68,13 +70,8 @@ class _FakeCreate:
 
 def _patch_extractor(monkeypatch, content: str) -> _FakeCreate:
     """Клиент патчится в llm_service: транспорт теперь один на весь домен (§5.3)."""
-    import app.contexts.nutrition.services.llm_service as llm_mod
-
     create = _FakeCreate(content)
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
-    monkeypatch.setattr(llm_mod, "_get_client", lambda: client)
+    patch_llm_transport(monkeypatch, create)
     return create
 
 
@@ -162,8 +159,12 @@ async def test_extractor_text_two_items(monkeypatch):
     assert items[0].name == "гречка" and items[0].portion_g == 200
     assert items[0].per100g.kcal == 340
     assert items[1].name == "курица" and items[1].portion_g == 150
-    # системный промпт — один на все пять путей (ТЗ §4.1); режим задаёт user-часть
-    assert create.kwargs["messages"][0]["content"] == prompts.SYSTEM_PROMPT_V2
+    # Системный промпт — один на все пять путей (ТЗ §4.1); режим задаёт user-часть.
+    # Сверяем с ДЕФОЛТНОЙ версией, а не с конкретной: пин на `SYSTEM_PROMPT_V2`
+    # уже протух при вводе v3 — тест ловил не «прод шлёт системный промпт», а
+    # «номер версии не менялся», хотя менять версию — штатное событие (ТЗ §12.3).
+    assert (create.kwargs["messages"][0]["content"]
+            == prompts.SYSTEM_PROMPTS[prompts.DEFAULT_PROMPT_VERSION])
     assert create.kwargs["messages"][1]["content"] == "гречка 200, курица 150"
 
 
@@ -725,3 +726,37 @@ async def test_contract_entry_persists_source_ref(session):
     )
     assert entry.source == "off"
     assert entry.source_ref == "https://off/product/123"
+
+
+# ── §8.5 (D14): одна сессия OFF на процесс, а не на lookup ────────────────────
+
+async def test_off_reuses_one_session():
+    """Прежний код открывал `ClientSession` на КАЖДЫЙ lookup, то есть платил
+    TCP+TLS handshake за каждую позицию с валидным штрихкодом.
+
+    Резолвер собирается на каждый запрос (`build_resolver` в api-роуте), поэтому
+    владеть сессией обязан модуль, а не экземпляр источника: иначе «одна сессия»
+    жила бы ровно один HTTP-запрос миниапы и ничего бы не экономила.
+    """
+    from app.contexts.nutrition.resolve.sources import openfoodfacts as off_mod
+
+    try:
+        first = off_mod._shared_session()
+        assert off_mod._shared_session() is first          # тот же объект
+        assert OpenFoodFactsSource(base_url="u", user_agent="a")._fetch is not None
+    finally:
+        await off_mod.close_shared_session()
+    assert off_mod._session is None                        # shutdown закрывает
+
+
+async def test_off_session_is_recreated_after_close():
+    """Закрытую сессию нельзя переиспользовать — иначе после shutdown/restart
+    в тестах или в долгом процессе lookup падал бы на `Session is closed`."""
+    from app.contexts.nutrition.resolve.sources import openfoodfacts as off_mod
+
+    first = off_mod._shared_session()
+    await off_mod.close_shared_session()
+    try:
+        assert off_mod._shared_session() is not first
+    finally:
+        await off_mod.close_shared_session()

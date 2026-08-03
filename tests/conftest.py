@@ -1,5 +1,7 @@
 """Общие фикстуры тестов S1: in-memory БД на общем Base.metadata."""
 
+from types import SimpleNamespace
+
 import pytest_asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -32,3 +34,28 @@ async def session() -> AsyncSession:
     async with maker() as s:
         yield s
     await engine.dispose()
+
+
+def patch_llm_transport(monkeypatch, create):
+    """Подменяет HTTP-транспорт LLM и даёт конфигу ключ-заглушку.
+
+    Один шов на все тесты домена питания. Раньше подменялся ленивый синглтон
+    `_get_client()`, но после ADR-0018 клиент выбирается ПОД ЦЕЛЬ (первичная /
+    резервная), поэтому шов сместился на `_client_for(target)` — фейк отвечает
+    за любую цель, и тест не зависит от того, какая из них сработала.
+
+    Ключ-заглушка нужна потому, что путь до транспорта теперь проходит через
+    `default_targets()`: без ключа он честно бросит `LLMNotConfiguredError`
+    ещё до вызова. Живых запросов при этом нет — `create` фейковый (GAP-6).
+    """
+    import app.contexts.nutrition.services.llm_service as llm_mod
+    from pydantic import SecretStr
+
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_api_key", SecretStr("test-key"))
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(llm_mod, "_client_for", lambda target: client)
+    return client

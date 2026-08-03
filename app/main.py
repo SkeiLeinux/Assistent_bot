@@ -39,6 +39,12 @@ from app.scheduler import Scheduler
 
 from app.analytics import make_digest_job
 from app.contexts.lists.change_events import set_change_listener
+from app.contexts.nutrition.resolve.sources import close_shared_session
+from app.contexts.nutrition.services import (
+    make_llm_model_guard,
+    run_startup_guard,
+    set_llm_alert_hook,
+)
 from app.contexts.reminders.services import (
     ReminderNotFound,
     ReminderService,
@@ -147,7 +153,7 @@ async def main() -> None:
     run_migrations()
 
     bot = Bot(
-        token=settings.bot_token,
+        token=settings.bot_token.get_secret_value(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 
@@ -158,6 +164,12 @@ async def main() -> None:
     # ListChangeData через свой порт; delivery подписывается здесь (инверсия
     # зависимости — contexts не тянет ребро на delivery, ADR-0004).
     set_change_listener(make_lists_change_listener(notifier))
+
+    # Канал алерта для LLM-слоя (ADR-0018 §2.2/§2.4). Контекст Nutrition не
+    # строит Bot сам — инъекция, как у change-событий Lists выше. Без неё отказ
+    # провайдера ушёл бы только в лог, то есть остался бы немым: ровно то, из-за
+    # чего 17.07.26 нашли через неделю от пользователя, а не от системы.
+    set_llm_alert_hook(notifier.alert_admin)
 
     # Generic callback-диспетчер push-кнопок (rem:ack/snooze → ReminderService).
     callback_dispatcher = build_callback_dispatcher()
@@ -174,7 +186,16 @@ async def main() -> None:
     scheduler.register(make_reminder_poll(async_session_maker, notifier))
     # Job ретро-дайджеста (Analytics, аудит F2.1) — через deliver-адаптер.
     scheduler.register(make_digest_job(async_session_maker, make_digest_deliver(notifier)))
+    # Суточная проверка присутствия vision-модели у провайдера (ADR-0018 §2.4).
+    # Уведомление о снятии модели приходит вендором по ПОЧТЕ — то есть мимо
+    # системы; эта job переводит его в канал, который читают.
+    scheduler.register(make_llm_model_guard())
     scheduler.start()
+
+    # Тот же guard при старте. Результат не проверяем и старт им не блокируем:
+    # бот с неизвестным статусом модели полезнее бота, который не поднялся из-за
+    # недоступного `/v1/models` (§8.4).
+    await run_startup_guard()
 
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Бот запущен!")
@@ -183,6 +204,7 @@ async def main() -> None:
     finally:
         await scheduler.stop()
         await web_runner.cleanup()
+        await close_shared_session()
         await bot.session.close()
 
 

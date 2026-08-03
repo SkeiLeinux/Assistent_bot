@@ -41,6 +41,29 @@ logger = logging.getLogger(__name__)
 # нужны — их читал скоринг выбора, а выбирать не из чего.
 _FIELDS = "code,product_name,product_name_ru,nutriments"
 
+# Одна сессия на процесс, а не на lookup (ТЗ §8.5, D14). Прежний код открывал
+# `ClientSession` на каждый вызов, то есть платил TCP+TLS handshake за КАЖДУЮ
+# позицию с валидным штрихкодом. Ленивая: `ClientSession` требует запущенного
+# event-loop, а модуль импортируется до него. Резолвер собирается на каждый
+# запрос (`build_resolver` в api-роуте), поэтому владеть сессией должен модуль,
+# а не экземпляр источника.
+_session: aiohttp.ClientSession | None = None
+
+
+def _shared_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession()
+    return _session
+
+
+async def close_shared_session() -> None:
+    """Закрыть общую сессию (вызывается на shutdown из main.py)."""
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
+    _session = None
+
 
 def _num(nutriments: dict, key: str) -> float | None:
     """Число из nutriments по ключу; нечисло/отсутствие → None."""
@@ -111,17 +134,20 @@ class OpenFoodFactsSource:
         базе, писал бы в лог ошибку источника.
         """
         url = f"{self.base_url}/api/v2/product/{barcode}"
+        # Таймаут и User-Agent — на ЗАПРОС, а не на сессию: сессия общая на
+        # процесс, а таймаут принадлежит этому источнику (`off_timeout_s`).
         timeout = aiohttp.ClientTimeout(total=self.timeout_s)
         headers = {"User-Agent": self.user_agent}
         try:
-            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as s:
-                async with s.get(url, params={"fields": _FIELDS}) as resp:
-                    if resp.status == 404:
-                        return None
-                    if resp.status != 200:
-                        raise SourceError(f"OFF HTTP {resp.status}")
-                    # OFF иногда отдаёт json как text/plain → content_type=None.
-                    return await resp.json(content_type=None)
+            async with _shared_session().get(
+                url, params={"fields": _FIELDS}, timeout=timeout, headers=headers
+            ) as resp:
+                if resp.status == 404:
+                    return None
+                if resp.status != 200:
+                    raise SourceError(f"OFF HTTP {resp.status}")
+                # OFF иногда отдаёт json как text/plain → content_type=None.
+                return await resp.json(content_type=None)
         except aiohttp.ClientError as e:
             raise SourceError(f"OFF network error: {e}") from e
 

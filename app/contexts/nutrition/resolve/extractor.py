@@ -37,6 +37,7 @@ from app.config import settings
 from app.contexts.nutrition.resolve import prompts
 from app.contexts.nutrition.resolve.cache import normalize_name
 from app.contexts.nutrition.resolve.checks import (
+    FLAG_FALLBACK_PROVIDER,
     FLAG_WEIGHT_MISMATCH,
     apply_checks,
     extract_json,
@@ -96,6 +97,17 @@ def _merge(base: ExtractedItem, other: ExtractedItem) -> ExtractedItem:
             "brand": winner.brand or loser.brand,
             "fat_pct": winner.fat_pct if winner.fat_pct is not None else loser.fat_pct,
             "barcode": winner.barcode or loser.barcode,
+            # кДж переносим по тому же правилу, что и остальные признаки —
+            # как транспорт до экрана подтверждения. Флаг C3a при этом заново
+            # НЕ считается: проверки применяются к позиции до дедупа, как и
+            # C2/C3. Дыры это не оставляет — таблица пищевой ценности печатается
+            # целиком на одном снимке, поэтому кДж и ккал приходят одной
+            # позицией и сверяются там же.
+            "energy_kj_100g": (
+                winner.energy_kj_100g
+                if winner.energy_kj_100g is not None
+                else loser.energy_kj_100g
+            ),
             "note": "; ".join(dict.fromkeys(notes)) or None,
             "warnings": list(seen),
         }
@@ -225,7 +237,7 @@ class LLMExtractor:
         self.last_usage = _sum_usage(self.last_usage, call.usage)
         self.last_call_count += 1
         try:
-            return _parse(call.text)
+            return _mark_target(_parse(call.text), call)
         except LLMError:
             # Один ретрай с ужесточающей строкой. Второй провал уходит наверх:
             # бесконечное «попробуем ещё раз» дороже честной ошибки.
@@ -238,7 +250,7 @@ class LLMExtractor:
             self.last_raw = retry.text
             self.last_usage = _sum_usage(self.last_usage, retry.usage)
             self.last_call_count += 1
-            return _parse(retry.text)
+            return _mark_target(_parse(retry.text), retry)
 
     # ── публичный вход ──────────────────────────────────────────────────────
 
@@ -312,6 +324,23 @@ def _parse(raw: str) -> list[ExtractedItem]:
         logger.warning(f"extractor: invalid schema: {e}\nraw: {raw}")
         raise LLMError("Модель вернула некорректные данные") from e
     return [apply_checks(item) for item in result.items]
+
+
+def _mark_target(items: list[ExtractedItem], call) -> list[ExtractedItem]:
+    """Флаг `fallback_provider` на позициях, посчитанных резервной целью.
+
+    ADR-0018 §2.5: при варианте B качество на резерве не падает (паритет 92%/83%),
+    поэтому плашка на экране подтверждения ИНФОРМАЦИОННАЯ, а не предупреждающая.
+    Механизм всё равно нужен: состав таргетов переживёт это решение, и в тот день,
+    когда резервом станет модель послабее, флаг обязан уже быть на месте — иначе
+    деградация опять окажется молчаливой.
+    """
+    if getattr(call, "target_role", "primary") != "fallback":
+        return items
+    return [
+        i.model_copy(update={"warnings": [*i.warnings, FLAG_FALLBACK_PROVIDER]})
+        for i in items
+    ]
 
 
 def _split(images: list[bytes], cap: int) -> list[list[bytes]]:

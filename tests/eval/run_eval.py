@@ -89,8 +89,16 @@ class Provider:
         self.send_response_format = send_response_format
 
     def key(self):
-        return getattr(settings, self.key_attr, None)
+        # Ключи в конфиге — SecretStr (чтобы не утекали в трейсбеки, см.
+        # app/config.py). Раннеру нужно открытое значение: оно уходит в SDK.
+        secret = getattr(settings, self.key_attr, None)
+        return secret.get_secret_value() if secret is not None else None
 
+
+# Таймаут ОДНОГО вызова в замере. Намеренно много: раннер измеряет латентность,
+# а не обеспечивает UX, и обрезать медленную модель по прод-таймауту значит
+# записать ей отказ вместо честного «21.9 с» (ровно столько давал qwen3.6-27b).
+EVAL_TIMEOUT_S = 180.0
 
 DEFAULT_PROVIDER = "openai"
 DEFAULT_MODEL = "gpt-5.4-mini"
@@ -1013,6 +1021,18 @@ async def run_model(provider: str, model: str, tier: str, repeat: int,
         extra_headers=prov.extra_headers, max_tokens_param=prov.max_tokens_param,
         max_output_tokens=out_budget, temperature=temperature,
         send_response_format=prov.send_response_format,
+        # ⬇ Два параметра, где раннер ОБЯЗАН расходиться с продом (блок 11).
+        # Таймаут: прод-значение 20 с выбрано под медиану победителя 1.3 с, а
+        # раннер меряет и заведомо медленные модели — у `qwen/qwen3.6-27b`
+        # замерено 21.9 с на вызов, то есть прод-таймаут превратил бы её замер
+        # в сплошные ошибки и «доказал» бы негодность моделью, а не данными.
+        # 180 с — не «без таймаута»: висящий сокет всё равно рвётся.
+        timeout_s=EVAL_TIMEOUT_S,
+        # Ретраи 429: у раннера СВОЙ backoff (10·2^n, флаг --retries) и своя
+        # метрика латентности. Ретраи внутри клиента спали бы ВНУТРИ
+        # `extract()`, то есть попадали бы в замеряемое время и завышали
+        # медианную задержку — метрику, по которой принимается инкремент.
+        retry_429=0,
     )
     extractor = LLMExtractor(target=target, prompt_version=prompt_version)
 

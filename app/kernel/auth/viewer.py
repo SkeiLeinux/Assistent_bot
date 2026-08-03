@@ -18,7 +18,10 @@ async def resolve_viewer(session, init_data: str) -> tuple[User, Viewer]:
     InitDataError (битый/просрочен) → пробрасывается (REST: 401);
     NotWhitelisted (не в whitelist) → 403; иначе auto-provision и резолв семьи.
     """
-    data = validate_init_data(init_data, settings.bot_token)
+    # .get_secret_value() — bot_token хранится SecretStr, чтобы не утекать в
+    # трейсбеки и repr(settings) (см. app/config.py). Здесь он нужен в открытом
+    # виде: это ключ HMAC подписи initData.
+    data = validate_init_data(init_data, settings.bot_token.get_secret_value())
     tg = parse_user(data)
     tg_id = tg.get("id")
 

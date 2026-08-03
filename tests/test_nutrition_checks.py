@@ -26,12 +26,14 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import settings
+from tests.conftest import patch_llm_transport
 from app.contexts.nutrition.resolve import prompts
 from app.contexts.nutrition.resolve.checks import (
     FLAG_ARITH_MISMATCH,
     FLAG_BARCODE_INVALID,
     FLAG_BOUNDS_FAIL,
     FLAG_BOUNDS_WARN,
+    FLAG_KJ_KCAL_CONFLICT,
     FLAG_KJ_SUSPECTED,
     FLAG_PORTION_WARN,
     FLAG_WEIGHT_MISMATCH,
@@ -44,6 +46,7 @@ from app.contexts.nutrition.resolve.checks import (
 from app.contexts.nutrition.resolve.extractor import LLMExtractor, dedup
 from app.contexts.nutrition.resolve.pipeline import ResolverPipeline
 from app.contexts.nutrition.resolve.ports import (
+    KJ_NOTE,
     ExtractedItem,
     Macros,
     ResolvedNutrition,
@@ -413,15 +416,8 @@ class _ScriptedChat:
 
 
 def _patch(monkeypatch, contents: list[str]) -> _ScriptedChat:
-    import app.contexts.nutrition.services.llm_service as llm_mod
-
     chat = _ScriptedChat(contents)
-    monkeypatch.setattr(
-        llm_mod, "_get_client",
-        lambda: SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=chat))
-        ),
-    )
+    patch_llm_transport(monkeypatch, chat)
     return chat
 
 
@@ -511,12 +507,7 @@ async def test_finish_reason_length_retries_with_double_budget(monkeypatch):
             usage=None,
         )
 
-    monkeypatch.setattr(
-        llm_mod, "_get_client",
-        lambda: SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-        ),
-    )
+    patch_llm_transport(monkeypatch, create)
     items = await LLMExtractor().extract(text="хлеб")
 
     assert len(items) == 1 and len(calls) == 2
@@ -536,12 +527,7 @@ async def test_finish_reason_length_twice_is_honest_error(monkeypatch):
             usage=None,
         )
 
-    monkeypatch.setattr(
-        llm_mod, "_get_client",
-        lambda: SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-        ),
-    )
+    patch_llm_transport(monkeypatch, create)
     with pytest.raises(LLMError, match="меньше снимков"):
         await LLMExtractor().extract(text="хлеб")
 
@@ -859,3 +845,128 @@ async def test_composed_mode_does_not_double_count_across_batches(monkeypatch):
     agg = aggregate_dish(items, name="боул", weight_g=150)
     assert len(items) == 2
     assert agg.item.kcal == 200.0        # 100×1.0 + 200×0.5, а не вдвое больше
+
+
+# ══════════════ C3a — сверка кДж с ккал (§6.3a, ТЗ v0.5, DoD п.11) ═══════════
+#
+# Проверка заведена по ПОЛЕВОМУ дефекту, а не по рассуждению: 2026-08-02, первый
+# вечер прода на gpt-5.4-mini, этикетка «450 кДж / 110 ккал» → модель записала в
+# ккал 450 и подогнала под них жиры (40 г вместо 2,5). Пользователь увидел 414
+# ккал вместо 101 с провенансом `label`; C2 показала 2,7 % при пороге 20 %, C3 —
+# 1,03 при полосе [3,6; 4,8]. Разбор — 05_implementation/field-defect-2026-08-02-kj-leak.md.
+#
+# Негативные контроли обязательны (правило llm-eval-dataset.md §3D.1): метрика без
+# них не считается введённой. Приграничные кейсы ниже проверяют не «метрика
+# шевелится», а «порог стоит ровно там, где написан».
+
+
+def _kj_item(kcal, kj, p=10.0, f=2.0, c=10.5):
+    return _item(per100g=_macros(kcal, p, f, c), energy_kj_100g=kj)
+
+
+def test_c3a_kcal_equals_kj_is_flagged():
+    """(1) Мутант «kcal := kj» — ровно то, что произошло в поле (F-01)."""
+    result = run_checks(_kj_item(450, 450))
+    assert FLAG_KJ_KCAL_CONFLICT in result.flags        # 450 против 107.6 = 318%
+    assert result.readout == "estimate" and result.downgraded
+
+
+def test_c3a_rounded_label_is_silent():
+    """(2) Реальная этикетка «450 кДж / 110 ккал»: 2,2 % — округление производителем."""
+    assert FLAG_KJ_KCAL_CONFLICT not in run_checks(_kj_item(110, 450)).flags
+
+
+def test_c3a_reference_a16_is_silent():
+    """(3) Эталон A-16 (873,2 кДж / 210,9 ккал): 0,3 %."""
+    assert FLAG_KJ_KCAL_CONFLICT not in run_checks(_kj_item(210.9, 873.2)).flags
+
+
+def test_c3a_threshold_stands_where_written():
+    """(4) Приграничный негативный контроль: 4 % молчит, 6 % срабатывает.
+
+    Мутант вдали от порога доказывает лишь, что метрика вообще считается.
+    Что порог стоит на 5 %, а не «где-то там», показывает только пара вокруг него.
+    """
+    exact = 873.2 / 4.184                       # 208.7 ккал — точное соответствие
+    assert FLAG_KJ_KCAL_CONFLICT not in run_checks(_kj_item(exact * 1.04, 873.2)).flags
+    assert FLAG_KJ_KCAL_CONFLICT in run_checks(_kj_item(exact * 1.06, 873.2)).flags
+    assert settings.check_kj_kcal == 0.05       # порог — из конфига, не из литерала
+
+
+def test_c3a_without_kj_does_not_run():
+    """(5) кДж не напечатаны → сверять не с чем; ккал не трогаются (§2.4)."""
+    checked = apply_checks(_item(per100g=_macros(110, 10, 2, 10.5)))
+    assert FLAG_KJ_KCAL_CONFLICT not in checked.warnings
+    assert checked.per100g.kcal == 110 and checked.energy_kj_100g is None
+
+
+def test_c3a_kcal_computed_from_kj_in_code():
+    """(6) Напечатаны только кДж → ккал считает КОД, факт пересчёта в note.
+
+    Прежняя редакция промпта поручала это деление модели — и именно оно, будучи
+    арифметикой в модели, обернулось F-01. Здесь та же операция выполняется
+    детерминированно и оставляет след.
+    """
+    item = ExtractedItem.model_validate({
+        "name": "продукт", "readout": "label", "energy_kj_100g": 450,
+        "per100g": {"kcal": None, "protein": 4, "fat": 3, "carbs": 12},
+    })
+    assert item.per100g.kcal == 107.6           # 450 / 4.184
+    assert KJ_NOTE in (item.note or "")
+    # И этот пересчёт НЕ порождает собственного расхождения: код делит той же
+    # константой, которой сверяет.
+    assert FLAG_KJ_KCAL_CONFLICT not in run_checks(item).flags
+
+
+def test_c3a_catches_what_c2_and_c3_cannot():
+    """(7) Полный F-01: C2 и C3 молчат, C3a срабатывает.
+
+    Это ФИКСАЦИЯ ГРАНИЦЫ ПРИМЕНИМОСТИ C2/C3, а не баг: обе выводят эталон из тех
+    же чисел, что проверяют, и против согласованной подгонки бессильны по
+    построению. Полосу [3,6; 4,8] трогать нельзя — она подтверждена данными для
+    своего класса (одиночная кДж-утечка без компенсации).
+    """
+    item = _item(per100g=_macros(450, 17, 40, 2.5), energy_kj_100g=450)
+    result = run_checks(item)
+
+    assert FLAG_ARITH_MISMATCH not in result.flags      # Атуотер сошёлся: 2,7%
+    assert FLAG_KJ_SUSPECTED not in result.flags        # ratio 1,03 — вне полосы
+    assert FLAG_KJ_KCAL_CONFLICT in result.flags        # а вот здесь видно
+    assert result.readout == "estimate"                 # позиция уходит в лестницу
+
+
+def test_c3a_never_touches_numbers():
+    """Инвариант §2.4 распространяется и на C3a: флаг есть, числа как были."""
+    checked = apply_checks(_kj_item(450, 450))
+    assert checked.per100g.kcal == 450 and checked.energy_kj_100g == 450
+
+
+def test_label_without_any_energy_is_schema_violation():
+    """§6.3a, третья ветка: `label` без ккал и без кДж — нарушение схемы (C1).
+
+    Отдельного кода для неё нет и не нужно: `Macros.kcal` обязателен, а `label`
+    обязан нести `per100g` — то есть состояние невыразимо, а не «не проверено».
+    """
+    with pytest.raises(ValidationError):
+        ExtractedItem.model_validate({"name": "x", "readout": "label", "per100g": None})
+    with pytest.raises(ValidationError):
+        ExtractedItem.model_validate({
+            "name": "x", "readout": "label",
+            "per100g": {"kcal": None, "protein": 1, "fat": 1, "carbs": 1},
+        })
+
+
+def test_prompt_forbids_energy_arithmetic_in_model():
+    """Грep-пин формулировки (DoD п.4): промпт обязан ЗАПРЕЩАТЬ деление кДж.
+
+    В v2 стояло «если указаны ТОЛЬКО кДж — раздели на 4.184». Строка выглядела
+    безобидно рядом с общим запретом арифметики и стоила прода 4,1-кратного
+    завышения. Тест дешёвый и ловит именно её возврат.
+    """
+    active = prompts.SYSTEM_PROMPTS[prompts.DEFAULT_PROMPT_VERSION]
+    assert "energy_kj_100g" in active
+    assert "НЕ ДЕЛИ кДж" in active
+    assert "не подгоняй жиры" in active
+    assert "раздели на 4.184" not in active
+    # v2 держим ДОСЛОВНО: без него «не хуже baseline» недоказуемо (ТЗ §12.3).
+    assert "раздели на 4.184" in prompts.SYSTEM_PROMPT_V2

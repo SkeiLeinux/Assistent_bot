@@ -32,22 +32,34 @@ import re
 from dataclasses import dataclass, field
 
 from app.config import settings
-from app.contexts.nutrition.resolve.ports import ExtractedItem, Macros, Readout
+from app.contexts.nutrition.resolve.ports import (
+    KJ_PER_KCAL,
+    ExtractedItem,
+    Macros,
+    Readout,
+)
 from app.contexts.nutrition.services.llm_service import LLMError
 
 # ── Коды флагов (транспорт до фронта; человекочитаемый текст — на клиенте) ────
 
 FLAG_ARITH_MISMATCH = "arith_mismatch"      # C2: Атуотер не сходится
 FLAG_KJ_SUSPECTED = "kj_suspected"          # C3: похоже, в ккал записаны кДж
+FLAG_KJ_KCAL_CONFLICT = "kj_kcal_conflict"  # C3a: напечатанные кДж и ккал не сходятся
 FLAG_BOUNDS_FAIL = "bounds_fail"            # C4.1–C4.3: физически невозможные числа
 FLAG_BOUNDS_WARN = "bounds_warn"            # C4.4: подозрительно, но бывает легитимно
 FLAG_BARCODE_INVALID = "barcode_invalid"    # C4.0: контрольная сумма EAN не сошлась
 FLAG_PORTION_WARN = "portion_warn"          # C5: порция вне (0, 5000]
 FLAG_WEIGHT_MISMATCH = "weight_mismatch"    # C6: Σ граммовок ≠ заявленный вес
+# Не проверка §6, а метка маршрута (ADR-0018 §2.5): позицию посчитала резервная
+# модель. Живёт здесь, потому что коды флагов должны лежать в одном месте — фронт
+# рисует текст по коду, и разнесённые по модулям коды расходятся по формулировкам.
+FLAG_FALLBACK_PROVIDER = "fallback_provider"
 
 # Флаги, понижающие доверие к «этикетке»: числа могли быть прочитаны не из той
 # строки/колонки, поэтому позиция обязана пройти лестницу, а не коротить её.
-_DOWNGRADING = frozenset({FLAG_ARITH_MISMATCH, FLAG_KJ_SUSPECTED, FLAG_BOUNDS_FAIL})
+_DOWNGRADING = frozenset({
+    FLAG_ARITH_MISMATCH, FLAG_KJ_SUSPECTED, FLAG_KJ_KCAL_CONFLICT, FLAG_BOUNDS_FAIL,
+})
 
 # Внутримагазинные (весовые) префиксы EAN-13: такие коды печатает касса магазина,
 # в глобальных базах товаров их нет по определению.
@@ -114,6 +126,27 @@ def kj_ratio(m: Macros) -> float:
     return m.kcal / max(atwater_kcal(m), 1.0)
 
 
+# ── C3a — сверка напечатанных кДж с напечатанными ккал (ТЗ §6.3a) ────────────
+
+def kj_kcal_delta(kcal: float, energy_kj_100g: float) -> float:
+    """Относительное расхождение ккал с кДж/4.184.
+
+    **Чем эта проверка отличается от C2/C3 — и почему именно поэтому введена.**
+    C2, C3 и C4 выводят эталон сравнения ИЗ САМОГО ОТВЕТА: Атуотер считается по
+    макросам того же ответа, границы применяются к его же числам. Согласованная
+    выдумка проходит их насквозь — что и случилось в поле 2026-08-02 (F-01,
+    `05_implementation/field-defect-2026-08-02-kj-leak.md`): модель записала в
+    ккал килоджоули И подогнала под них жиры, после чего C2 показала 2,7 % при
+    пороге 20 %, а C3 — 1,03 при полосе [3,6; 4,8]. Обе промолчали не из-за
+    порогов, а по построению.
+
+    C3a сверяет ДВЕ РАЗНЫЕ транскрибированные величины через физическую
+    константу: величина, которую она проверяет, в вычислении эталона не
+    участвует. Это единственная проверка §6 с таким свойством.
+    """
+    return abs(kcal - energy_kj_100g / KJ_PER_KCAL) / max(kcal, 1.0)
+
+
 # ── C4.0 — контрольная сумма штрихкода ───────────────────────────────────────
 
 def ean_checksum_ok(code: str | None) -> bool:
@@ -173,6 +206,7 @@ def run_checks(
     atwater: float | None = None,
     kj_lo: float | None = None,
     kj_hi: float | None = None,
+    kj_kcal: float | None = None,
     kcal_max: float | None = None,
     macros_sum_max: float | None = None,
     portion_g_max: float | None = None,
@@ -184,6 +218,7 @@ def run_checks(
     atwater = settings.check_atwater if atwater is None else atwater
     kj_lo = settings.check_kj_lo if kj_lo is None else kj_lo
     kj_hi = settings.check_kj_hi if kj_hi is None else kj_hi
+    kj_kcal = settings.check_kj_kcal if kj_kcal is None else kj_kcal
     kcal_max = settings.check_kcal_max if kcal_max is None else kcal_max
     macros_sum_max = (
         settings.check_macros_sum_max if macros_sum_max is None else macros_sum_max
@@ -197,6 +232,15 @@ def run_checks(
 
     if m is not None:
         macros_sum = m.protein + m.fat + m.carbs
+
+        # C3a — сверка двух НАПЕЧАТАННЫХ величин энергии. Стоит ПЕРЕД C2/C3 не
+        # ради порядка вычислений (флаги независимы), а чтобы при чтении кода
+        # было видно: это единственная здешняя проверка, чей эталон приходит
+        # извне проверяемого числа. Предусловия `macros_informative` у неё нет —
+        # состав ей не нужен, поэтому она работает и на водке, и на воде.
+        if m.kcal is not None and item.energy_kj_100g is not None:
+            if kj_kcal_delta(m.kcal, item.energy_kj_100g) > kj_kcal:
+                flags.append(FLAG_KJ_KCAL_CONFLICT)
         # C2 и C3 сравнивают заявленные ккал С СОСТАВОМ. Когда состава нет,
         # сравнивать не с чем: знаменатель вырождается в защитную единицу, и
         # ЛЮБОЕ kcal > 0 даёт «расхождение» в сотни процентов. Легитимный случай
