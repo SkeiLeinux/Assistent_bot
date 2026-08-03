@@ -714,8 +714,38 @@ def test_report_skips_foreign_json_in_runs_dir(tmp_path, monkeypatch, capsys):
         _json.dumps({"cases": [], "note": "артефакт замера источника"}),
         encoding="utf-8",
     )
+    # Файл, на котором ПЕРВАЯ версия этой проверки всё равно упала: у него
+    # `records` ЕСТЬ, а `provider` нет. Так пишет `check_off_value.py`
+    # (`RUNS_DIR / "*_memory-tierA.json"`). Проверка по одному ключу была
+    # проверкой по симптому, а не по форме.
+    (tmp_path / "2026-08-03_memory-tierA.json").write_text(
+        _json.dumps({"mode": "dish_text", "records": [{"id": "A-01"}]}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(run_eval, "RUNS_DIR", tmp_path)
 
     with pytest.raises(SystemExit):   # валидных прогонов нет — но и не KeyError
         run_eval.build_report()
-    assert "пропущен (не прогон раннера)" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.count("пропущен (не прогон раннера") == 2
+
+
+def test_report_required_keys_cover_every_direct_read():
+    """Структурный пин: каждый `d["..."]` в build_report обязан быть в списке.
+
+    Сводка падала на постороннем файле ДВАЖДЫ — сперва на `records`, потом на
+    `provider`, — потому что оба раза чинился конкретный ключ. Этот тест ловит
+    следующий такой ключ в момент его появления, а не на прод-запуске у С.
+    """
+    import inspect
+    import re
+
+    from tests.eval import run_eval
+
+    src = inspect.getsource(run_eval.build_report)
+    # Обе формы прямого чтения: d["key"] и d['key'] внутри f-строк.
+    read = set(re.findall(r"""d\[["']([a-z_]+)["']\]""", src))
+    assert read, "не нашли ни одного прямого чтения — регулярка протухла"
+    assert read <= set(run_eval._RUN_REQUIRED_KEYS), (
+        f"читаются без проверки: {sorted(read - set(run_eval._RUN_REQUIRED_KEYS))}"
+    )
