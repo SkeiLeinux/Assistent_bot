@@ -1,0 +1,681 @@
+{
+  "model": "прод-цель (ADR-0017 §16)",
+  "mode": "memory_by_name",
+  "records": [
+    {
+      "id": "A-04",
+      "query": "Double B сироп топинамбура",
+      "per100g": {
+        "kcal": 260.0,
+        "protein": 0.0,
+        "fat": 0.0,
+        "carbs": 65.0
+      },
+      "latency_s": 1.84,
+      "usage": {
+        "prompt_tokens": 106,
+        "completion_tokens": 25,
+        "total_tokens": 131,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-05",
+      "query": "Фетакса сыр плавленый 45%",
+      "per100g": {
+        "kcal": 260.0,
+        "protein": 14.0,
+        "fat": 21.0,
+        "carbs": 3.0
+      },
+      "latency_s": 0.84,
+      "usage": {
+        "prompt_tokens": 108,
+        "completion_tokens": 25,
+        "total_tokens": 133,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-06",
+      "query": "ВкусВилл картофель отварной с укропом",
+      "per100g": {
+        "kcal": 87.0,
+        "protein": 2.0,
+        "fat": 0.1,
+        "carbs": 20.1
+      },
+      "latency_s": 0.82,
+      "usage": {
+        "prompt_tokens": 110,
+        "completion_tokens": 31,
+        "total_tokens": 141,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-09",
+      "query": "BB картофельное пюре",
+      "per100g": {
+        "kcal": 110.0,
+        "protein": 2.0,
+        "fat": 4.5,
+        "carbs": 15.0
+      },
+      "latency_s": 1.01,
+      "usage": {
+        "prompt_tokens": 104,
+        "completion_tokens": 31,
+        "total_tokens": 135,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-13",
+      "query": "Онгири рыбное кулинарное изделие с филе-кусочками тунца желтопёрого запечённого",
+      "per100g": {
+        "kcal": 185.0,
+        "protein": 8.5,
+        "fat": 4.5,
+        "carbs": 28.0
+      },
+      "latency_s": 1.03,
+      "usage": {
+        "prompt_tokens": 126,
+        "completion_tokens": 29,
+        "total_tokens": 155,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-15",
+      "query": "Черкизовский корейка свиная",
+      "per100g": {
+        "kcal": 242.0,
+        "protein": 17.0,
+        "fat": 19.0,
+        "carbs": 0.0
+      },
+      "latency_s": 0.86,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 31,
+        "total_tokens": 138,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-16",
+      "query": "Унагранде Компани сыр мягкий творожный 65%",
+      "per100g": {
+        "kcal": 250.0,
+        "protein": 8.0,
+        "fat": 22.0,
+        "carbs": 4.0
+      },
+      "latency_s": 0.68,
+      "usage": {
+        "prompt_tokens": 112,
+        "completion_tokens": 25,
+        "total_tokens": 137,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-17",
+      "query": "ПКФ РусАгроГРУПП белок яичный пастеризованный",
+      "per100g": {
+        "kcal": 52.0,
+        "protein": 10.9,
+        "fat": 0.2,
+        "carbs": 0.7
+      },
+      "latency_s": 1.21,
+      "usage": {
+        "prompt_tokens": 115,
+        "completion_tokens": 31,
+        "total_tokens": 146,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-18",
+      "query": "Чудо коктейль молочный стерилизованный со вкусом клубники 2%",
+      "per100g": {
+        "kcal": 60.0,
+        "protein": 2.8,
+        "fat": 2.0,
+        "carbs": 8.5
+      },
+      "latency_s": 0.89,
+      "usage": {
+        "prompt_tokens": 116,
+        "completion_tokens": 29,
+        "total_tokens": 145,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-19",
+      "query": "томатная паста",
+      "per100g": {
+        "kcal": 82.0,
+        "protein": 4.3,
+        "fat": 0.5,
+        "carbs": 19.0
+      },
+      "latency_s": 0.99,
+      "usage": {
+        "prompt_tokens": 101,
+        "completion_tokens": 31,
+        "total_tokens": 132,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-20",
+      "query": "кефир 3.2%",
+      "per100g": {
+        "kcal": 56.0,
+        "protein": 3.0,
+        "fat": 3.2,
+        "carbs": 4.0
+      },
+      "latency_s": 1.09,
+      "usage": {
+        "prompt_tokens": 105,
+        "completion_tokens": 27,
+        "total_tokens": 132,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-21",
+      "query": "молоко питьевое пастеризованное 3.2%",
+      "per100g": {
+        "kcal": 60.0,
+        "protein": 3.0,
+        "fat": 3.2,
+        "carbs": 4.7
+      },
+      "latency_s": 0.76,
+      "usage": {
+        "prompt_tokens": 113,
+        "completion_tokens": 29,
+        "total_tokens": 142,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-26",
+      "query": "Черкизово стейк на кости",
+      "per100g": {
+        "kcal": 220.0,
+        "protein": 18.0,
+        "fat": 16.0,
+        "carbs": 0.0
+      },
+      "latency_s": 0.67,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 25,
+        "total_tokens": 132,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-27",
+      "query": "ВкусВилл суп с куриными фрикадельками и пастой в виде звёздочек",
+      "per100g": {
+        "kcal": 62.0,
+        "protein": 4.5,
+        "fat": 2.5,
+        "carbs": 5.5
+      },
+      "latency_s": 1.0,
+      "usage": {
+        "prompt_tokens": 119,
+        "completion_tokens": 31,
+        "total_tokens": 150,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-28",
+      "query": "BB сметана 20%",
+      "per100g": {
+        "kcal": 206.0,
+        "protein": 2.8,
+        "fat": 20.0,
+        "carbs": 3.2
+      },
+      "latency_s": 1.02,
+      "usage": {
+        "prompt_tokens": 104,
+        "completion_tokens": 29,
+        "total_tokens": 133,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-29",
+      "query": "Воронеж ТМ карпаччо из индейки",
+      "per100g": {
+        "kcal": 110.0,
+        "protein": 20.0,
+        "fat": 3.5,
+        "carbs": 1.0
+      },
+      "latency_s": 0.85,
+      "usage": {
+        "prompt_tokens": 110,
+        "completion_tokens": 27,
+        "total_tokens": 137,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-30",
+      "query": "Bombbar печенье",
+      "per100g": {
+        "kcal": 430.0,
+        "protein": 20.0,
+        "fat": 18.0,
+        "carbs": 45.0
+      },
+      "latency_s": 0.73,
+      "usage": {
+        "prompt_tokens": 101,
+        "completion_tokens": 25,
+        "total_tokens": 126,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-31",
+      "query": "макароны",
+      "per100g": {
+        "kcal": 158.0,
+        "protein": 5.8,
+        "fat": 0.9,
+        "carbs": 30.9
+      },
+      "latency_s": 0.9,
+      "usage": {
+        "prompt_tokens": 100,
+        "completion_tokens": 31,
+        "total_tokens": 131,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-32",
+      "query": "MEX FOODS тортилья",
+      "per100g": {
+        "kcal": 313.0,
+        "protein": 8.0,
+        "fat": 8.0,
+        "carbs": 52.0
+      },
+      "latency_s": 0.98,
+      "usage": {
+        "prompt_tokens": 105,
+        "completion_tokens": 31,
+        "total_tokens": 136,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-33",
+      "query": "ВВ в балансе щавелевый суп с куриной грудкой",
+      "per100g": {
+        "kcal": 45.0,
+        "protein": 3.5,
+        "fat": 2.0,
+        "carbs": 3.5
+      },
+      "latency_s": 0.7,
+      "usage": {
+        "prompt_tokens": 114,
+        "completion_tokens": 29,
+        "total_tokens": 143,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-34",
+      "query": "ВкусВилл творог мягкий высокобелковый 1.5%",
+      "per100g": {
+        "kcal": 97.0,
+        "protein": 18.0,
+        "fat": 1.5,
+        "carbs": 3.5
+      },
+      "latency_s": 0.72,
+      "usage": {
+        "prompt_tokens": 115,
+        "completion_tokens": 29,
+        "total_tokens": 144,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-35",
+      "query": "творог со сливками с наполнителем черника 5%",
+      "per100g": {
+        "kcal": 145.0,
+        "protein": 10.5,
+        "fat": 5.0,
+        "carbs": 11.0
+      },
+      "latency_s": 1.07,
+      "usage": {
+        "prompt_tokens": 111,
+        "completion_tokens": 27,
+        "total_tokens": 138,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-36",
+      "query": "рыбные консервы, филе тунца в масле",
+      "per100g": {
+        "kcal": 198.0,
+        "protein": 29.0,
+        "fat": 8.0,
+        "carbs": 0.0
+      },
+      "latency_s": 1.66,
+      "usage": {
+        "prompt_tokens": 111,
+        "completion_tokens": 25,
+        "total_tokens": 136,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-37",
+      "query": "Skipjack тунец консервированный натуральный",
+      "per100g": {
+        "kcal": 116.0,
+        "protein": 26.0,
+        "fat": 1.0,
+        "carbs": 0.0
+      },
+      "latency_s": 0.95,
+      "usage": {
+        "prompt_tokens": 107,
+        "completion_tokens": 25,
+        "total_tokens": 132,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    },
+    {
+      "id": "A-39",
+      "query": "Макфа макаронные изделия",
+      "per100g": {
+        "kcal": 350.0,
+        "protein": 12.0,
+        "fat": 1.5,
+        "carbs": 72.0
+      },
+      "latency_s": 1.08,
+      "usage": {
+        "prompt_tokens": 103,
+        "completion_tokens": 27,
+        "total_tokens": 130,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "error": null
+    }
+  ]
+}
