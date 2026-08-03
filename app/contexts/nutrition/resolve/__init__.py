@@ -8,9 +8,10 @@
 import-linter «resolve — leaf внутри Nutrition» остаётся зелёным.
 
 Ключевой факт (фиксируем комментарием): LLM сам в интернет не ходит. Retrieval —
-отдельные адаптеры за портом `NutritionSource` (R1: только Open Food Facts).
-`extractor` лишь сегментирует ввод и оценивает per100g; «estimate» — это та самая
-оценка, отдельного LLM-вызова на неё нет.
+отдельные адаптеры за портом `NutritionSource` (сейчас: только Open Food Facts, и
+только точным lookup'ом по штрихкоду — ADR-0019, вариант D). `extractor` лишь
+сегментирует ввод и оценивает per100g; «estimate» — это та самая оценка,
+отдельного LLM-вызова на неё нет.
 """
 
 from app.contexts.nutrition.resolve import prompts
@@ -39,10 +40,13 @@ def build_extractor() -> Extractor:
 
 
 def build_resolver() -> ProductResolver:
-    """Дефолтная лестница R1: label-preferred → OFF → estimate (ТЗ контракта §7).
+    """Дефолтная лестница: label-preferred → OFF по штрихкоду → estimate (§7).
 
-    Web (Compound, R2) и barcode (fast-follow) сюда добавятся новым адаптером —
-    без правки лестницы (заменяемость источников, ADR-0002).
+    Единственная сетевая ступень — точный lookup OFF по коду. Поисковая ветка
+    удалена по итогам шести замеров (ADR-0019, вариант D; разбор —
+    `05_implementation/off-value-2026-08-03.md`), возвращать её не надо.
+    Web (Compound, R2) добавится новым адаптером — без правки лестницы
+    (заменяемость источников, ADR-0002).
     """
     from app.config import settings
 
@@ -51,7 +55,6 @@ def build_resolver() -> ProductResolver:
             OpenFoodFactsSource(
                 base_url=settings.off_base_url,
                 user_agent=settings.off_user_agent,
-                lc=settings.off_lc,
                 timeout_s=settings.off_timeout_s,
             ),
         ],

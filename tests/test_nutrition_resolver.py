@@ -1,9 +1,13 @@
 """R1 retrieval-augmented разбор КБЖУ (ADR-0013 / spec-nutrition-retrieval §14).
 
 Без живых вызовов: извлекатель драйвится фейковым LLM-клиентом (канонический
-JSON), OFF — фейковым fetch на реальных JSON-фикстурах (`tests/fixtures/off_*.json`),
-лестница — фейковыми источниками. Покрытие: extractor (мульти), refine (label/off/
-estimate/таймаут), OFF маппинг+выбор, мульти-ввод, масштаб, кэш, бюджет, контракт.
+JSON), OFF — фейковым fetch на JSON-фикстуре (`tests/fixtures/off_product_v2.json`
+— карточка из живого curl к `api/v2/product/4690228004018`), лестница — фейковыми
+источниками. Покрытие: extractor (мульти), refine (label/off/estimate/таймаут),
+OFF-маппинг и предусловие штрихкода, гейт уверенности матча, мульти-ввод, масштаб,
+кэш, бюджет, контракт.
+
+Фикстуры поисковой выдачи удалены вместе с поисковой веткой (ADR-0019, вариант D).
 """
 
 import json
@@ -29,10 +33,8 @@ from app.contexts.nutrition.resolve.ports import (
     ResolvedNutrition,
     ResolveQuery,
 )
-from app.contexts.nutrition.resolve.sources.openfoodfacts import (
-    map_product,
-    select_best,
-)
+from app.contexts.nutrition.resolve.pipeline import FLAG_LABEL_DISAGREES
+from app.contexts.nutrition.resolve.sources.openfoodfacts import map_product
 from app.contexts.nutrition.services import FoodService, NutritionItem
 
 TZ = "Europe/Amsterdam"
@@ -115,10 +117,22 @@ def _macros(kcal=100.0, protein=5.0, fat=2.0, carbs=10.0) -> Macros:
     return Macros(kcal=kcal, protein=protein, fat=fat, carbs=carbs)
 
 
-def _extracted(name="гречка", portion_g=200.0, readout="estimate", **kw) -> ExtractedItem:
+def _extracted(
+    name="гречка", portion_g=200.0, readout="estimate",
+    brand=None, barcode=None, **kw,
+) -> ExtractedItem:
     return ExtractedItem(
         name=name, portion_g=portion_g, per100g=_macros(**kw), readout=readout,
+        brand=brand, barcode=barcode,
     )
+
+
+# Реальный EAN-13 карточки «Домик в деревне 3,2 %»; контрольная сумма сходится.
+VALID_EAN = "4690228004018"
+# Та же строка с испорченной контрольной цифрой — ровно тот класс ошибки, ради
+# которого заведена C4.0: неверно прочитанная цифра даёт ЧУЖОЙ товар с доверием
+# `exact` (`off-source-probe-2026-07-28.md` §2.4 — 6 таких кодов из 12).
+BROKEN_EAN = "4690228004019"
 
 
 def _pipeline(network_sources) -> ResolverPipeline:
@@ -235,11 +249,12 @@ async def test_refine_label_without_brand_skips_network():
 
 
 async def test_refine_label_with_brand_queries_source_but_keeps_label():
-    """readout=label + бренд → источник спрашивается, но числа этикетки остаются.
+    """readout=label + бренд → ступень спрашивается, но числа этикетки остаются.
 
-    Гейт §7.1a (блок 10) сейчас закрыт — `match_confidence` ступень не сообщает,
-    поэтому расхождение НЕ показывается: при матчинге 36% оно было бы ложным в
-    двух случаях из трёх. Числа не подменяются в любом случае (§2.4).
+    Регресс на `need_verify`: он по-прежнему открывается брендом, а не
+    штрихкодом. Ступень при этом отвечает `None` без сети, если кода нет —
+    проверено на реальном адаптере ниже. Числа не подменяются в любом случае
+    (§2.4), а неуверенный ответ гасится гейтом §7.1a.
     """
     off = FakeSource(
         name="off", result=ResolvedNutrition(per100g=_macros(kcal=500), source="off")
@@ -309,18 +324,55 @@ async def test_refine_skip_network_when_budget_exhausted():
     assert r.source == "estimate" and off.calls == 0
 
 
-# ════════════════════════ OFF МАППИНГ / ВЫБОР (§7) ══════════════════════════
+# ══════════════ OFF — ТОЛЬКО ШТРИХКОД (ADR-0019, вариант D) ═════════════════
+#
+# Поисковая ветка удалена: она выбирала чужой товар и на ветке `estimate`
+# проигрывала типовым числам самой модели 7:13 (`off-value-2026-08-03.md`).
+# Тесты `select_best` удалены вместе с ней — механизма выбора больше нет.
+# Ниже проверяется главное свойство замены: сетевой вызов происходит ТОЛЬКО
+# при штрихкоде, прошедшем контрольную сумму. Счётчик — на фейковом fetch, а не
+# на результате: результат совпал бы и в случае, когда вызов был сделан впустую.
+
+class _CountingFetch:
+    """Фейковый сетевой вызов: считает обращения и запоминает коды."""
+
+    def __init__(self, payload=None, exc=None):
+        self.payload = payload
+        self.exc = exc
+        self.calls = 0
+        self.codes: list[str] = []
+
+    async def __call__(self, barcode: str):
+        self.calls += 1
+        self.codes.append(barcode)
+        if self.exc is not None:
+            raise self.exc
+        return self.payload
+
+
+def _off(fetch, base_url="https://world.openfoodfacts.org") -> OpenFoodFactsSource:
+    return OpenFoodFactsSource(base_url=base_url, user_agent="test/1.0 (t@e.x)",
+                               fetch=fetch)
+
+
+def _product_payload() -> dict:
+    return _fixture("off_product_v2.json")
+
 
 def test_off_map_product_kcal_direct():
-    """energy-kcal_100g → kcal; остальные поля 1:1 (фикстура «Домик в деревне»)."""
-    milk = _fixture("off_milk_search.json")["products"][0]
-    m = map_product(milk)
+    """energy-kcal_100g → kcal; остальные поля 1:1 (карточка «Домик в деревне»)."""
+    m = map_product(_product_payload()["product"])
     assert m is not None
     assert m.kcal == 60 and m.protein == 3 and m.fat == 3.2 and m.carbs == 4.7
 
 
 def test_off_map_product_kj_fallback():
-    """Нет energy-kcal_100g → пересчёт из energy-kj_100g / 4.184."""
+    """Нет energy-kcal_100g → пересчёт из energy-kj_100g / 4.184.
+
+    Фолбэк живёт: убрать его требовала §7.2 ТЗ из-за выдачи `search-a-licious`,
+    где поля нет, — но миграция на неё отменена вместе с поиском, а `api/v2`
+    поле отдаёт.
+    """
     product = {"nutriments": {"energy-kj_100g": 1787, "proteins_100g": 14,
                               "fat_100g": 11, "carbohydrates_100g": 68}}
     m = map_product(product)
@@ -334,61 +386,181 @@ def test_off_map_product_missing_macro_skips():
     assert map_product(product) is None
 
 
-def test_off_select_best_prefers_brand_and_completeness():
-    """Выбор: полный + бренд + близкая жирность + completeness → топ-1."""
-    products = _fixture("off_milk_search.json")["products"]
-    q = ResolveQuery(name="молоко питьевое", brand="Домик в деревне", fat_pct=3.2,
-                     fallback_per100g=_macros())
-    best = select_best(products, q)
-    assert best is not None and best["code"] == "4690228004018"
+async def test_off_lookup_without_barcode_makes_no_network_call():
+    """Штрихкода нет → сети НЕ было (счётчик fetch), ступень вернула None."""
+    fetch = _CountingFetch(_product_payload())
+    r = await _off(fetch).lookup(ResolveQuery(name="молоко", brand="Домик в деревне",
+                                              fallback_per100g=_macros()))
+    assert r is None
+    assert fetch.calls == 0
 
 
-def test_off_select_best_empty_is_none():
-    products = _fixture("off_empty_search.json")["products"]
-    q = ResolveQuery(name="несуществующее", fallback_per100g=_macros())
-    assert select_best(products, q) is None
-
-
-async def test_off_source_lookup_with_fixture_fetch():
-    """OFF.lookup на фикстуре (fake fetch) → ResolvedNutrition(source=off)."""
-    captured = {}
-
-    async def fake_fetch(params):
-        captured["params"] = params
-        return _fixture("off_milk_search.json")
-
-    src = OpenFoodFactsSource(
-        base_url="https://world.openfoodfacts.org",
-        user_agent="test/1.0 (t@e.x)", fetch=fake_fetch,
+async def test_off_lookup_invalid_barcode_makes_no_network_call():
+    """Контрольная сумма EAN не сошлась (C4.0) → вызова нет, ступень молчит."""
+    fetch = _CountingFetch(_product_payload())
+    r = await _off(fetch).lookup(
+        ResolveQuery(name="молоко", barcode=BROKEN_EAN, fallback_per100g=_macros())
     )
-    q = ResolveQuery(name="молоко питьевое", brand="Домик в деревне", fat_pct=3.2,
-                     fallback_per100g=_macros())
-    r = await src.lookup(q)
-    assert r is not None and r.source == "off"
+    assert r is None
+    assert fetch.calls == 0
+
+
+async def test_off_lookup_in_store_barcode_makes_no_network_call():
+    """Внутримагазинный весовой код (префикс 20–29) → вызова нет.
+
+    Такие коды печатает касса, в глобальной базе их нет по определению; в замере
+    их было 2 из 12. Контрольная сумма у них сходится — отсекает именно префикс.
+    """
+    fetch = _CountingFetch(_product_payload())
+    r = await _off(fetch).lookup(
+        ResolveQuery(name="сыр", barcode="2200000000000", fallback_per100g=_macros())
+    )
+    assert r is None
+    assert fetch.calls == 0
+
+
+async def test_off_lookup_valid_barcode_hits_and_marks_exact():
+    """Валидный EAN + карточка найдена → source=off, match_confidence=exact."""
+    fetch = _CountingFetch(_product_payload())
+    r = await _off(fetch).lookup(
+        ResolveQuery(name="молоко", barcode=VALID_EAN, fallback_per100g=_macros())
+    )
+    assert r is not None
+    assert r.source == "off" and r.match_confidence == "exact"
     assert r.per100g.kcal == 60
-    assert "4690228004018" in (r.source_ref or "")
+    assert fetch.calls == 1 and fetch.codes == [VALID_EAN]
+    assert (r.source_ref or "").endswith(f"/product/{VALID_EAN}")
     assert r.matched_name
-    # search_terms собрал бренд+имя+жирность
-    assert "Домик в деревне" in captured["params"]["search_terms"]
-    assert "3.2%" in captured["params"]["search_terms"]
 
 
-async def test_off_source_lookup_empty_returns_none():
-    async def fake_fetch(params):
-        return _fixture("off_empty_search.json")
+async def test_off_lookup_status_zero_returns_none():
+    """`status != 1` (товара нет в базе) → None, а не выдумка."""
+    fetch = _CountingFetch({"status": 0, "status_verbose": "product not found"})
+    r = await _off(fetch).lookup(
+        ResolveQuery(name="молоко", barcode=VALID_EAN, fallback_per100g=_macros())
+    )
+    assert r is None and fetch.calls == 1
 
-    src = OpenFoodFactsSource(base_url="https://x", user_agent="t", fetch=fake_fetch)
-    assert await src.lookup(ResolveQuery(name="x", fallback_per100g=_macros())) is None
+
+async def test_off_lookup_incomplete_card_returns_none():
+    """Карточка есть, КБЖУ неполные → None (частичные числа не отдаём)."""
+    fetch = _CountingFetch(
+        {"status": 1, "product": {"code": VALID_EAN, "product_name": "Молоко",
+                                  "nutriments": {"energy-kcal_100g": 60}}}
+    )
+    r = await _off(fetch).lookup(
+        ResolveQuery(name="молоко", barcode=VALID_EAN, fallback_per100g=_macros())
+    )
+    assert r is None and fetch.calls == 1
 
 
 async def test_off_source_http_error_raises_then_pipeline_estimates():
     """HTTP-сбой fetch → SourceError; в лестнице это деградирует в estimate."""
-    async def boom(params):
-        raise SourceError("OFF HTTP 503")
-
-    src = OpenFoodFactsSource(base_url="https://x", user_agent="t", fetch=boom)
-    r = await _pipeline([src]).refine(_extracted(kcal=777))
+    src = _off(_CountingFetch(exc=SourceError("OFF HTTP 503")))
+    r = await _pipeline([src]).refine(_extracted(kcal=777, barcode=VALID_EAN))
     assert r.source == "estimate" and r.per100g.kcal == 777
+
+
+async def test_pipeline_estimate_branch_uses_barcode_hit():
+    """estimate + валидный EAN → числа берутся из карточки OFF (сеть сработала)."""
+    fetch = _CountingFetch(_product_payload())
+    r = await _pipeline([_off(fetch)]).refine(_extracted(kcal=999, barcode=VALID_EAN))
+    assert r.source == "off" and r.per100g.kcal == 60 and fetch.calls == 1
+
+
+async def test_pipeline_estimate_branch_without_barcode_never_calls_network():
+    """estimate без штрихкода → сети нет вовсе, числа модели (вариант D).
+
+    Это и есть удалённая ветка: раньше здесь уходил поисковый запрос, и его
+    результат подменял продукт в 11 случаях из 25.
+    """
+    fetch = _CountingFetch(_product_payload())
+    r = await _pipeline([_off(fetch)]).refine(_extracted(kcal=999))
+    assert r.source == "estimate" and r.per100g.kcal == 999
+    assert fetch.calls == 0
+
+
+# ═══════════════ ГЕЙТ УВЕРЕННОСТИ МАТЧА (§7.1a, ADR-0019 §2.5) ══════════════
+
+async def test_label_with_barcode_disagreement_shows_both_versions():
+    """label + валидный EAN + расхождение >15% → флаг + alternative (сверка ожила).
+
+    Числа этикетки остаются основными (§2.4) — код не подменяет их карточкой,
+    он показывает обе версии и оставляет выбор человеку.
+    """
+    fetch = _CountingFetch(_product_payload())        # карточка: 60 ккал
+    item = _extracted(readout="label", kcal=500, name="молоко",
+                      brand="Домик в деревне", barcode=VALID_EAN)
+    r = await _pipeline([_off(fetch)]).refine(item)
+
+    assert fetch.calls == 1
+    assert r.source == "label" and r.per100g.kcal == 500   # числа не подменены
+    assert FLAG_LABEL_DISAGREES in r.warnings
+    assert r.alternative is not None
+    assert r.alternative.source == "off" and r.alternative.per100g.kcal == 60
+
+
+async def test_label_with_barcode_but_no_brand_still_verifies():
+    """label + валидный EAN БЕЗ бренда → сверка всё равно идёт.
+
+    Регресс на изменённое условие входа: пока ступень искала по названию, вход
+    открывал бренд (§7.3); теперь ищет код, и позиция с валидным EAN без
+    распознанного бренда обязана сверяться — иначе покрытие оказалось бы уже
+    измеренных ~16% (ADR-0019 §2.2).
+    """
+    fetch = _CountingFetch(_product_payload())        # карточка: 60 ккал
+    item = _extracted(readout="label", kcal=500, name="молоко", barcode=VALID_EAN)
+    r = await _pipeline([_off(fetch)]).refine(item)
+
+    assert fetch.calls == 1
+    assert r.source == "label" and r.per100g.kcal == 500
+    assert FLAG_LABEL_DISAGREES in r.warnings and r.alternative is not None
+
+
+async def test_label_with_barcode_agreement_no_flag():
+    """label + валидный EAN + числа сошлись → сверка прошла тихо, alternative нет."""
+    fetch = _CountingFetch(_product_payload())        # карточка: 60 ккал
+    item = _extracted(readout="label", kcal=62, name="молоко",
+                      brand="Домик в деревне", barcode=VALID_EAN)
+    r = await _pipeline([_off(fetch)]).refine(item)
+
+    assert fetch.calls == 1
+    assert r.source == "label" and r.per100g.kcal == 62
+    assert FLAG_LABEL_DISAGREES not in r.warnings and r.alternative is None
+
+
+async def test_label_without_barcode_no_network_and_no_verification():
+    """label + бренд, но штрихкода нет → сети нет, сверки нет.
+
+    Ровно 84% позиций: сверять их внешним источником больше нечем, остаточную
+    ошибку «верное имя, неверные числа» ловит только экран подтверждения.
+    """
+    fetch = _CountingFetch(_product_payload())
+    item = _extracted(readout="label", kcal=500, name="молоко",
+                      brand="Домик в деревне")
+    r = await _pipeline([_off(fetch)]).refine(item)
+
+    assert fetch.calls == 0
+    assert r.source == "label" and r.per100g.kcal == 500
+    assert FLAG_LABEL_DISAGREES not in r.warnings and r.alternative is None
+
+
+async def test_gate_rejects_source_without_match_confidence():
+    """Негативный контроль гейта: источник ответил БЕЗ `match_confidence`.
+
+    Гейт обязан приравнять такой результат к отсутствию — иначе будущий
+    источник, отвечающий неуверенно, протёк бы в сверку молча.
+    """
+    unsure = FakeSource(
+        name="unsure", result=ResolvedNutrition(per100g=_macros(kcal=60), source="off")
+    )
+    item = _extracted(readout="label", kcal=500, name="молоко",
+                      brand="Домик в деревне", barcode=VALID_EAN)
+    r = await _pipeline([unsure]).refine(item)
+
+    assert unsure.calls == 1                      # ступень спрошена
+    assert r.source == "label" and r.per100g.kcal == 500
+    assert FLAG_LABEL_DISAGREES not in r.warnings and r.alternative is None
 
 
 # ════════════════════ МУЛЬТИ-ВВОД / МАСШТАБ / БЮДЖЕТ (через FoodService) ═════

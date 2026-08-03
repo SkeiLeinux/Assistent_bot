@@ -1,31 +1,45 @@
-"""resolve/sources/openfoodfacts.py — Open Food Facts (spec-nutrition-retrieval §7).
+"""resolve/sources/openfoodfacts.py — Open Food Facts, ТОЛЬКО lookup по штрихкоду.
+
+**Поисковой ветки здесь нет и возвращать её не надо.** Это не уборка мёртвого
+кода, а результат шести замеров (обоснование — `05_implementation/off-value-
+2026-08-03.md`, решение — ADR-0019, ревизия 2026-08-03, вариант D). Коротко:
+полнотекстовый `cgi/search.pl` + скоринг `select_best` выбирали ЧУЖОЙ товар.
+На ветке `estimate` — единственной, где ступень в проде реально срабатывала —
+карточка проигрывала типовым числам самой модели 7:13 при медиане ошибки ккал
+18,3 % против 8,4 % и 11 грубых промахах из 25 (515 %, 461 %, 381 %). Пять
+механизмов выбора (скоринг, 4 режима LLM-переранжирования, LLM-вето) гейт
+ADR-0019 §6 не взяли; шестого прогона на этих 25 кейсах не будет по правилу,
+записанному до замера.
+
+**Что при этом НЕ опровергнуто:** данные в базе OFF хорошие — на кейсах, где
+карточка проходит подпись по имени, потолок 0,6 % ошибки. Непригоден **поиск**,
+а не источник. Поэтому остаётся точный lookup по коду: матчинга в нём нет вовсе,
+а контрольная сумма EAN (C4.0) отсекает неверно прочитанные коды. Цена решения —
+~16 % позиций вместо проектных ~80 %; остальное ловит экран подтверждения.
+
+Эндпоинт `api/v2/product/{code}` — не тот, что положил поиск: Perl-бэкенд отдаёт
+503 на `cgi/search.pl` и `api/v2/search`, а lookup по коду работает. Поэтому
+миграция на `search-a-licious` (ADR-0019 §2.1) отменена вместе с поиском.
 
 Бесплатно, без ключа, READ без авторизации; обязателен кастомный User-Agent.
-Дефолт — полнотекстовый `cgi/search.pl` (выбор зафиксирован за Code, §17). Штрихкод
-(api/v2) — fast-follow, в R1 не вызывается (barcode не извлекаем).
-
 Имена полей `nutriments.*` подтверждены живым ответом OFF (curl, 2026-06-13,
-api/v2/product/4690228004018 — «Домик в деревне 3,2 %»): схема `energy-kcal_100g`,
-`proteins_100g`, `fat_100g`, `carbohydrates_100g`, `energy-kj_100g`, плюс
-`product_name(_ru)`, `brands`, `completeness`, `code` — совпала с §7.1 и фикстурами
-(search.pl периодически отдаёт 503/пусто, но форма ответа идентична v2). Сетевой
-вызов инъектируется (`fetch`) — в pytest живых запросов нет (§14).
+api/v2/product/4690228004018 — «Домик в деревне 3,2 %»). Сетевой вызов
+инъектируется (`fetch`) — в pytest живых запросов нет (§14).
 """
 
 import logging
 
 import aiohttp
 
+from app.contexts.nutrition.resolve.checks import ean_checksum_ok
 from app.contexts.nutrition.resolve.errors import SourceError
 from app.contexts.nutrition.resolve.ports import Macros, ResolvedNutrition, ResolveQuery
 
 logger = logging.getLogger(__name__)
 
-# Поля ответа OFF (минимум для маппинга и выбора). Подтверждены живым curl (см. модуль).
-_FIELDS = (
-    "code,product_name,product_name_ru,brands,quantity,"
-    "nutrition_data_per,nutriments,completeness"
-)
+# Поля ответа OFF. Минимум для маппинга: ни бренд, ни `completeness` больше не
+# нужны — их читал скоринг выбора, а выбирать не из чего.
+_FIELDS = "code,product_name,product_name_ru,nutriments"
 
 
 def _num(nutriments: dict, key: str) -> float | None:
@@ -39,28 +53,20 @@ def _num(nutriments: dict, key: str) -> float | None:
         return None
 
 
-def _norm(value: str | None) -> str:
-    return (value or "").strip().lower().replace("ё", "е")
-
-
-def _tokens(value: str | None) -> list[str]:
-    return [t for t in _norm(value).replace(",", " ").split() if t]
-
-
-def _first_brand(brands_csv: str | None) -> str:
-    """`brands` приходит CSV — берём первый бренд."""
-    if not brands_csv:
-        return ""
-    return brands_csv.split(",")[0].strip()
-
-
 def _best_name(product: dict) -> str:
     """matched_name = product_name_ru ∥ product_name (§7.1)."""
     return (product.get("product_name_ru") or product.get("product_name") or "").strip()
 
 
 def map_product(product: dict) -> Macros | None:
-    """OFF product → Macros на 100 г (§7.1). Нет любого из 4 значений → None (skip)."""
+    """OFF product → Macros на 100 г (§7.1). Нет любого из 4 значений → None (skip).
+
+    Фолбэк «ккал из кДж» сохранён: удалить его требовала §7.2 ТЗ, потому что в
+    выдаче `search-a-licious` поля `energy-kj_100g` нет. Миграция на неё отменена
+    вместе с поиском, а `api/v2` это поле отдаёт — требование отпало вместе со
+    своим основанием. Деление на 4.184 здесь безопасно: это арифметика КОДА над
+    числом карточки, а не пересчёт, доверенный модели (ср. дефект F-01).
+    """
     nutriments = product.get("nutriments") or {}
     kcal = _num(nutriments, "energy-kcal_100g")
     if kcal is None:
@@ -74,48 +80,13 @@ def map_product(product: dict) -> Macros | None:
     return Macros(kcal=kcal, protein=protein, fat=fat, carbs=carbs)
 
 
-def select_best(products: list[dict], q: ResolveQuery) -> dict | None:
-    """Детерминированный выбор лучшего матча (§7.2). Лучше None, чем не тот продукт.
-
-    (1) оставить только с полными 4 значениями; (2)+(3) скоринг: бренд(3) +
-    доля токенов name(2) + близость fat(бонус) + completeness(1); (4) топ-1.
-    """
-    candidates = [p for p in products if map_product(p) is not None]
-    if not candidates:
-        return None
-
-    brand_norm = _norm(q.brand)
-    name_tokens = set(_tokens(q.name))
-
-    def score(product: dict) -> float:
-        s = 0.0
-        prod_brand = _norm(_first_brand(product.get("brands")))
-        prod_name = _norm(_best_name(product))
-        # (2) бренд: предпочесть содержащие, но не отбрасывать остальные
-        if brand_norm and (brand_norm in prod_brand or brand_norm in prod_name):
-            s += 3.0
-        # доля совпавших токенов родового имени
-        if name_tokens:
-            prod_tokens = set(_tokens(_best_name(product)))
-            s += 2.0 * (len(name_tokens & prod_tokens) / len(name_tokens))
-        # (3) близость жирности (дискриминатор молочки)
-        if q.fat_pct is not None:
-            prod_fat = _num(product.get("nutriments") or {}, "fat_100g")
-            if prod_fat is not None and abs(prod_fat - q.fat_pct) < 0.6:
-                s += 1.0
-        # полнота карточки OFF
-        try:
-            s += float(product.get("completeness") or 0.0)
-        except (TypeError, ValueError):
-            pass
-        return s
-
-    # стабильность: при равном скоре сохраняем исходный порядок выдачи OFF
-    return max(candidates, key=score)
-
-
 class OpenFoodFactsSource:
-    """Полнотекстовый поиск OFF (`cgi/search.pl`) → ResolvedNutrition|None (source=off)."""
+    """Точный lookup OFF по штрихкоду → ResolvedNutrition|None (source=off).
+
+    Единственная форма обращения к OFF. Ступень отвечает ТОЛЬКО когда товар
+    найден по коду — «похожих товаров» она не предлагает ни при каких условиях
+    (см. докстринг модуля).
+    """
 
     name = "off"
 
@@ -123,31 +94,30 @@ class OpenFoodFactsSource:
         self,
         base_url: str,
         user_agent: str,
-        lc: str = "ru",
         timeout_s: float = 2.5,
-        page_size: int = 20,
         fetch=None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.user_agent = user_agent
-        self.lc = lc
         self.timeout_s = timeout_s
-        self.page_size = page_size
         # Инъекция сетевого вызова: тесты подменяют фикстурой (живых запросов нет).
         self._fetch = fetch or self._default_fetch
 
-    def _search_terms(self, q: ResolveQuery) -> str:
-        fat = f"{q.fat_pct:g}%" if q.fat_pct is not None else None
-        return " ".join(p for p in (q.brand, q.name, fat) if p)
+    async def _default_fetch(self, barcode: str) -> dict | None:
+        """Живой GET к OFF. HTTP≠200/404 → SourceError (pipeline ловит → estimate).
 
-    async def _default_fetch(self, params: dict) -> dict | None:
-        """Живой GET к OFF. HTTP≠200 → SourceError (pipeline ловит → следующая ступень)."""
-        url = f"{self.base_url}/cgi/search.pl"
+        404 — это НЕ сбой: OFF так отвечает на неизвестный код. Такой ответ
+        обязан деградировать в тихий miss, иначе каждый товар, которого нет в
+        базе, писал бы в лог ошибку источника.
+        """
+        url = f"{self.base_url}/api/v2/product/{barcode}"
         timeout = aiohttp.ClientTimeout(total=self.timeout_s)
         headers = {"User-Agent": self.user_agent}
         try:
             async with aiohttp.ClientSession(timeout=timeout, headers=headers) as s:
-                async with s.get(url, params=params) as resp:
+                async with s.get(url, params={"fields": _FIELDS}) as resp:
+                    if resp.status == 404:
+                        return None
                     if resp.status != 200:
                         raise SourceError(f"OFF HTTP {resp.status}")
                     # OFF иногда отдаёт json как text/plain → content_type=None.
@@ -156,29 +126,39 @@ class OpenFoodFactsSource:
             raise SourceError(f"OFF network error: {e}") from e
 
     async def lookup(self, q: ResolveQuery) -> ResolvedNutrition | None:
-        params = {
-            "search_terms": self._search_terms(q),
-            "search_simple": "1",
-            "action": "process",
-            "json": "1",
-            "page_size": str(self.page_size),
-            "lc": self.lc,
-            "fields": _FIELDS,
-        }
-        data = await self._fetch(params)
-        if not data:
+        # C4.0 — предусловие сетевого вызова, а не постфильтр. Проверка стоит
+        # здесь, а не только в `apply_checks`: ступень обязана быть безопасной у
+        # любого вызывающего (раннер eval ходит мимо проверок), а неверно
+        # прочитанный код — это чужой товар с наивысшим доверием `exact`.
+        # В замере источника контрольная сумма отсеяла 6 кодов из 12 и ещё 2
+        # внутримагазинных (`off-source-probe-2026-07-28.md` §2.4).
+        if not ean_checksum_ok(q.barcode):
             return None
-        products = data.get("products") or []
-        best = select_best(products, q)
-        if best is None:
-            logger.info("OFF: нет подходящего матча для %r", self._search_terms(q))
+
+        data = await self._fetch(q.barcode)
+        # status != 1 — «товара нет в базе». Это штатный miss, а не ошибка.
+        if not data or data.get("status") != 1:
+            logger.info("OFF: товар не найден по коду %s", q.barcode)
             return None
-        macros = map_product(best)  # select_best гарантирует полноту
-        code = best.get("code")
+
+        product = data.get("product") or {}
+        macros = map_product(product)
+        if macros is None:
+            # Карточка есть, КБЖУ неполные. Достраивать нечем — лучше None, чем
+            # частичные числа: позиция уйдёт в estimate с числами модели.
+            logger.info("OFF: карточка %s без полного КБЖУ", q.barcode)
+            return None
+
+        code = product.get("code") or q.barcode
         return ResolvedNutrition(
             per100g=macros,
             source="off",
-            source_ref=f"{self.base_url}/product/{code}" if code else None,
-            matched_name=_best_name(best) or None,
-            confidence=float(best.get("completeness") or 0.0),
+            source_ref=f"{self.base_url}/product/{code}",
+            matched_name=_best_name(product) or None,
+            # Матч однозначен: код — это идентификатор товара, а не мера похожести.
+            # Прежняя реализация клала сюда `completeness`, то есть полноту
+            # заполнения карточки — одна из диагностированных причин, по которым
+            # скоринг выбора не коррелировал с правильностью.
+            confidence=1.0,
+            match_confidence="exact",
         )
