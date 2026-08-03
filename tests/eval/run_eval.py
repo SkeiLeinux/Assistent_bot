@@ -1144,10 +1144,16 @@ def _write_run(provider, model, tier, repeat, reasoning_effort, prompt_version,
                records, alerts, *, refusal=None, mode=None) -> Path:
     RUNS_DIR.mkdir(exist_ok=True)
     slug = model.replace("/", "_").replace(":", "_")
-    # Теги в имени файла, чтобы прогоны одной модели не затирали друг друга:
-    # версия промпта — ровно то, что сравнивается на приёмке.
-    if prompt_version != prompts.DEFAULT_PROMPT_VERSION:
-        slug += f"_p-{prompt_version}"
+    # Теги в имени файла, чтобы прогоны одной модели не затирали друг друга.
+    #
+    # Версия промпта пишется ВСЕГДА, включая дефолтную. Раньше тег ставился
+    # только для не-дефолтной версии, и это выглядело экономным ровно до смены
+    # дефолта: `2026-08-03_gpt-5.4-mini.json` не сообщает, что снят на v3, а
+    # через месяц он неотличим от прогона на v2 — то есть baseline, ради
+    # сравнения с которым флаг `--prompt` и заведён, перестаёт быть опознаваемым.
+    # Дефолт — переменная, а имя файла — запись о прошлом; записи о прошлом не
+    # имеют права зависеть от переменной.
+    slug += f"_p-{prompt_version}"
     if reasoning_effort:
         slug += f"_r-{reasoning_effort}"
     if tier != "A":

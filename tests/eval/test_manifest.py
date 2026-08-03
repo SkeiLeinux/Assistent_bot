@@ -49,7 +49,15 @@ MACROS = ("kcal", "protein", "fat", "carbs")
 # заведения C-04»): оба карантинных кадра теперь адресуются из `extra_images`
 # набора C-04 как второй ракурс товара, то есть перестали быть вне зачёта.
 # Держать исключение дальше значило бы разрешить копить там что угодно.
-IMAGE_EXEMPT_DIRS: tuple[str, ...] = ()
+#
+# `_field/` ДОБАВЛЕН 2026-08-03. Это не возврат к «складу вне зачёта»: полевые
+# кадры (снимки, на которых ошибся прод) не являются данными манифеста в принципе
+# — у них нет эталона, они не входят ни в один ярус и не участвуют в метриках.
+# Требовать на них запись в манифесте значило бы либо размывать замороженный
+# baseline яруса A, либо заводить фиктивные записи. Инвариант «ничего не копится
+# без объяснения» при этом сохранён другой проверкой — `check_field_documented`:
+# каталог обязан иметь README.md, а каждый файл в нём — быть в README упомянут.
+IMAGE_EXEMPT_DIRS: tuple[str, ...] = ("_field",)
 IMAGE_EXEMPT_NAMES = (".gitkeep",)
 
 # §3D.5 п.3: порог Атуотера здесь 15%, а НЕ 12% из ТЗ контракта §6.2.
@@ -148,6 +156,31 @@ def check_images(cases: list[dict], images_dir: Path) -> list[str]:
             continue
         if p.resolve() not in referenced:
             errs.append(f"файл-сирота: {p.relative_to(images_dir.parent)} не упомянут в манифесте")
+    return errs
+
+
+def check_field_documented(images_dir: Path) -> list[str]:
+    """Полевые кадры вне манифеста — но не вне учёта.
+
+    `_field/` исключён из `check_images` (см. комментарий у `IMAGE_EXEMPT_DIRS`),
+    поэтому правило «каждый файл кем-то упомянут» для него держит эта проверка:
+    каталог обязан иметь README.md, и каждый кадр обязан быть в нём назван.
+    Без этого исключение выродилось бы в «сюда можно класть что угодно» — ровно
+    то, из-за чего 2026-08-01 убрали исключение для `_quarantine/`.
+    """
+    field = images_dir / "_field"
+    if not field.exists():
+        return []
+    readme = field / "README.md"
+    if not readme.exists():
+        return [f"{field.name}/: нет README.md — полевые кадры обязаны быть описаны"]
+    text = readme.read_text(encoding="utf-8")
+    errs = []
+    for p in sorted(field.iterdir()):
+        if p.is_dir() or p.name == "README.md":
+            continue
+        if p.name not in text:
+            errs.append(f"{field.name}/{p.name}: файл не упомянут в README.md")
     return errs
 
 
@@ -309,6 +342,10 @@ def test_schema_real(cases):
 
 def test_images_real(cases):
     assert check_images(cases, IMAGES) == []
+
+
+def test_field_documented_real():
+    assert check_field_documented(IMAGES) == []
 
 
 def test_atwater_real(cases):
@@ -728,6 +765,84 @@ def test_report_skips_foreign_json_in_runs_dir(tmp_path, monkeypatch, capsys):
         run_eval.build_report()
     out = capsys.readouterr().out
     assert out.count("пропущен (не прогон раннера") == 2
+
+
+def test_runs_dir_holds_only_runner_artifacts():
+    """Хвост №4: в `runs/` не должно быть ничего, кроме прогонов раннера.
+
+    Тест на РЕАЛЬНОМ каталоге, а не на `tmp_path`: проверка пропуска чужих
+    файлов (выше) гарантирует, что сводка не упадёт, но она же и позволяет чужим
+    файлам копиться незамеченными. Разница существенная — падение чинили дважды,
+    оба раза по симптому конкретного файла, потому что причина (общий каталог у
+    двух инструментов с разными контрактами) не была видна ниоткуда.
+
+    Замеры источника пишут в `tests/eval/probes/`.
+    """
+    import json as _json
+
+    from tests.eval import run_eval
+
+    strays = []
+    for path in sorted(run_eval.RUNS_DIR.glob("*.json")):
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        missing = set(run_eval._RUN_REQUIRED_KEYS) - set(data)
+        if missing:
+            strays.append(f"{path.name} (нет {sorted(missing)})")
+    assert not strays, (
+        "в каталоге прогонов раннера лежат чужие файлы: " + "; ".join(strays)
+        + " — артефактам замеров место в tests/eval/probes/"
+    )
+
+
+def test_probe_scripts_write_outside_the_runs_dir():
+    """Тот же хвост, но со стороны инструмента, а не результата.
+
+    Проверка выше зелена, пока никто не запускал замер: она смотрит на файлы. Эта
+    смотрит на КОД — куда замер положит результат в следующий раз. Без неё
+    достаточно одного прогона `check_off_*.py` со старым дефолтом, чтобы каталог
+    снова смешался, и мы бы узнали об этом падением сводки, как оба прошлых раза.
+    """
+    import re
+
+    scripts = sorted((ROOT / "scripts").glob("check_off_*.py"))
+    assert scripts, "не нашли ни одного скрипта замера — тест протух"
+
+    out_names = re.compile(
+        r"^\s*(?:DEFAULT_)?(?:OUT|CACHE|MEMORY)\s*=\s*(\w+)\s*/|"
+        r'"--out",\s*default=str\((\w+)\s*/'
+    )
+    bad = []
+    for path in scripts:
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            m = out_names.match(line) or out_names.search(line)
+            if m and (m.group(1) or m.group(2)) == "RUNS_DIR":
+                bad.append(f"{path.name}:{n}: {line.strip()}")
+    assert not bad, "замер пишет в каталог раннера: " + "; ".join(bad)
+
+
+def test_run_filename_always_carries_the_prompt_version(tmp_path, monkeypatch):
+    """Хвост №5: тег версии промпта в имени файла — ВСЕГДА, включая дефолт.
+
+    Раньше тег ставился только для не-дефолтной версии, поэтому
+    `2026-08-03_gpt-5.4-mini.json` не сообщал, что снят на v3, и через месяц был
+    неотличим от прогона на v2. Имя файла — запись о прошлом, и зависеть от
+    текущего значения переменной (`DEFAULT_PROMPT_VERSION`) оно не имеет права.
+    """
+    from app.contexts.nutrition.resolve import prompts
+    from tests.eval import run_eval
+
+    monkeypatch.setattr(run_eval, "RUNS_DIR", tmp_path)
+    out = run_eval._write_run(
+        "openai", "gpt-5.4-mini", "A", 1, "",
+        prompts.DEFAULT_PROMPT_VERSION, records=[], alerts=[],
+    )
+
+    assert f"_p-{prompts.DEFAULT_PROMPT_VERSION}" in out.name
+    # И то же самое внутри JSON: имя файла удобно, но первоисточник — поле.
+    import json as _json
+    assert _json.loads(out.read_text(encoding="utf-8"))["prompt_version"] == (
+        prompts.DEFAULT_PROMPT_VERSION
+    )
 
 
 def test_report_required_keys_cover_every_direct_read():

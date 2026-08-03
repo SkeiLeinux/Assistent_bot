@@ -29,6 +29,7 @@ ADR-0013 §17), и при размещении в `refine` половина пу
 import asyncio
 import base64
 import logging
+from time import monotonic
 from typing import Protocol, runtime_checkable
 
 from pydantic import ValidationError
@@ -44,9 +45,14 @@ from app.contexts.nutrition.resolve.checks import (
     weight_mismatch,
 )
 from app.contexts.nutrition.resolve.ports import ExtractedItem, ExtractResult
+from app.contexts.nutrition.services import observability as obs
 from app.contexts.nutrition.services.llm_service import LLMClient, LLMError, LLMTarget
 
 logger = logging.getLogger(__name__)
+
+# Флаг строки лога, а не проверки §6: ответ не разобрался, и следующая строка
+# `llm_call` (если она есть) — это ретрай с ужесточением, а не новый разбор.
+FLAG_JSON_INVALID = "json_invalid"
 
 # Приоритет при слиянии дублей (§5.5): чем выше, тем «надёжнее» происхождение.
 _READOUT_RANK = {"label": 2, "estimate": 1, "unreadable": 0}
@@ -229,28 +235,63 @@ class LLMExtractor:
                 break
         return parts
 
-    async def _call(self, user_content, n_images: int) -> list[ExtractedItem]:
-        call = await self._client.complete(
-            system=self.system_prompt, user_content=user_content, n_images=n_images
-        )
-        self.last_raw = call.text
-        self.last_usage = _sum_usage(self.last_usage, call.usage)
-        self.last_call_count += 1
-        try:
-            return _mark_target(_parse(call.text), call)
-        except LLMError:
-            # Один ретрай с ужесточающей строкой. Второй провал уходит наверх:
-            # бесконечное «попробуем ещё раз» дороже честной ошибки.
-            logger.warning("extractor: ответ не разобран, ретрай с ужесточением")
-            retry = await self._client.complete(
-                system=self.system_prompt,
-                user_content=self._with_retry_hint(user_content),
-                n_images=n_images,
+    async def _call(
+        self, user_content, n_images: int, *, path: str, batch: str = "1/1"
+    ) -> list[ExtractedItem]:
+        """Один вызов (+ до одного ретрая на невалидный JSON) с логом §9.
+
+        Строка `llm_call` пишется на КАЖДЫЙ вызов провайдера, включая тот, чей
+        ответ не разобрался: иначе ретрай с ужесточением был бы невидим, а его
+        частота — прямой признак того, что модель поплыла (сдвиг формата ответа
+        — как раз тот отказ, который не даёт исключения и не жалуется).
+        """
+        content = user_content
+        for attempt in (0, 1):
+            started = monotonic()
+            call = await self._client.complete(
+                system=self.system_prompt, user_content=content, n_images=n_images
             )
-            self.last_raw = retry.text
-            self.last_usage = _sum_usage(self.last_usage, retry.usage)
+            latency_ms = round((monotonic() - started) * 1000)
+            self.last_raw = call.text
+            self.last_usage = _sum_usage(self.last_usage, call.usage)
             self.last_call_count += 1
-            return _mark_target(_parse(retry.text), retry)
+            try:
+                items = _mark_target(_parse(call.text), call)
+            except LLMError:
+                self._log_call(call, path, batch, latency_ms, None)
+                if attempt:
+                    # Второй провал уходит наверх: бесконечное «попробуем ещё
+                    # раз» дороже честной ошибки.
+                    raise
+                logger.warning("extractor: ответ не разобран, ретрай с ужесточением")
+                content = self._with_retry_hint(user_content)
+                continue
+            self._log_call(call, path, batch, latency_ms, items)
+            return items
+        raise AssertionError("недостижимо: цикл ретрая либо вернул, либо бросил")
+
+    def _log_call(self, call, path: str, batch: str, latency_ms: int, items) -> None:
+        """Единственное место сборки строки `llm_call` (§9).
+
+        Именно единственное — по требованию задачи блока 13: россыпь f-строк по
+        пяти путям разъезжается на первой же правке, и поле, добавленное в один
+        путь, молча отсутствует в остальных.
+        """
+        logger.info("%s", obs.llm_call_line(
+            model=call.model or self.model,
+            target=getattr(call, "target_role", "primary"),
+            path=path,
+            batch=batch,
+            latency_ms=latency_ms,
+            usage=call.usage,
+            finish_reason=call.finish_reason,
+            n_items=0 if items is None else len(items),
+            readout=obs.readout_counts(items),
+            flags=(
+                [FLAG_JSON_INVALID] if items is None else obs.flag_codes(items)
+            ),
+            retries=call.retries,
+        ))
 
     # ── публичный вход ──────────────────────────────────────────────────────
 
@@ -271,13 +312,16 @@ class LLMExtractor:
             mode, text=text, caption=caption, dish_name=dish_name, weight_g=weight_g
         )
         images = list(images or [])
+        path = path_of(mode, bool(images))
 
         if not images:
-            items = await self._call(preamble, 0)
+            items = await self._call(preamble, 0, path=path)
         else:
             batches = _split(images, self._max_images())
             if len(batches) == 1:
-                items = await self._call(_parts(preamble, batches[0], mime_type), len(batches[0]))
+                items = await self._call(
+                    _parts(preamble, batches[0], mime_type), len(batches[0]), path=path
+                )
             else:
                 # §5.2: батчи вместо молчаливой обрезки. Обрезка теряла ровно тот
                 # снимок, ради которого пользователь его прислал (оборот упаковки
@@ -288,14 +332,20 @@ class LLMExtractor:
                     len(images), self._max_images(), len(batches),
                 )
                 sem = asyncio.Semaphore(max(1, settings.llm_batch_concurrency))
+                total = len(batches)
 
-                async def run(batch: list[bytes]) -> list[ExtractedItem]:
+                async def run(index: int, batch: list[bytes]) -> list[ExtractedItem]:
                     async with sem:
-                        return await self._call(_parts(preamble, batch, mime_type), len(batch))
+                        return await self._call(
+                            _parts(preamble, batch, mime_type), len(batch),
+                            path=path, batch=f"{index}/{total}",
+                        )
 
                 items = [
                     item
-                    for chunk in await asyncio.gather(*(run(b) for b in batches))
+                    for chunk in await asyncio.gather(
+                        *(run(i, b) for i, b in enumerate(batches, 1))
+                    )
                     for item in chunk
                 ]
 
@@ -315,13 +365,59 @@ class LLMExtractor:
 
 # ── вспомогательное ──────────────────────────────────────────────────────────
 
+def path_of(mode: str, has_images: bool) -> str:
+    """Режим промпта + наличие снимков → путь разбора для лога (§4.3).
+
+    Отдельная функция, а не параметр контракта `Extractor`: пять путей ТЗ §4.3
+    полностью определяются тем, что уже пришло в `extract()`, и добавлять ради
+    лога шестой аргумент в контракт, который реализуют и фейки тестов, значило бы
+    менять шов I7 из-за наблюдаемости.
+    """
+    if mode == prompts.MODE_DIARY:
+        return obs.PATH_ANALYZE_PHOTO if has_images else obs.PATH_ANALYZE_TEXT
+    return mode if mode in obs.PATHS else "unknown"
+
+
+def _schema_errors(exc: ValidationError) -> str:
+    """Ошибки схемы БЕЗ входных значений: «items.0.per100g.fat: missing».
+
+    Раньше здесь печатался и `str(e)`, и сырой ответ целиком. И то и другое —
+    содержимое ответа модели, то есть дневник питания живых людей в
+    `journalctl`: pydantic v2 включает `input_value=...` в текст ошибки, поэтому
+    «не логировать raw» без этой замены было бы иллюзией.
+
+    **Что берётся и почему именно это.** `loc` и `type` порождает сама схема —
+    входных данных в них нет по построению. `msg` добавляется ТОЛЬКО для
+    `value_error`, то есть для наших собственных валидаторов в `ports.py`: у
+    инвариантов уровня модели (`readout=label требует per100g`) вся полезная
+    информация лежит в тексте, а `loc` вырождается в «items.0» и не говорит,
+    какое правило нарушено. Тексты этих сообщений написаны в репозитории и не
+    содержат данных модели — требование зафиксировано тестом
+    `test_ports_validator_messages_carry_no_model_data`.
+    """
+    parts = []
+    for err in exc.errors(include_url=False):
+        loc = ".".join(str(p) for p in err.get("loc", ()))
+        kind = err.get("type", "invalid")
+        detail = f"{loc or '<root>'}: {kind}"
+        if kind == "value_error":
+            detail += f" ({err.get('msg', '')})"
+        parts.append(detail)
+    return "; ".join(parts) or "invalid"
+
+
 def _parse(raw: str) -> list[ExtractedItem]:
     """C1 + схема §3.1. Обе ошибки — `LLMError`, чтобы ретрай был один на оба случая."""
     data = extract_json(raw)
     try:
         result = ExtractResult.model_validate(data)
     except ValidationError as e:
-        logger.warning(f"extractor: invalid schema: {e}\nraw: {raw}")
+        # Длина ответа вместо самого ответа: она отличает «модель вернула пусто»
+        # от «модель вернула не тот JSON», а содержимого не раскрывает.
+        logger.warning(
+            "extractor: схема не принята (%s), длина ответа %d",
+            _schema_errors(e), len(raw or ""),
+        )
         raise LLMError("Модель вернула некорректные данные") from e
     return [apply_checks(item) for item in result.items]
 

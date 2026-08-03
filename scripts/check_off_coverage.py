@@ -54,7 +54,9 @@
 
 Запуск:  python scripts/check_off_coverage.py [--no-llm] [--cache FILE]
 Сеть:    search.openfoodfacts.org (GET) + api.openai.com (POST, ключ из .env).
-Ничего не пишет в БД и не меняет прод. Артефакт прогона — JSON рядом с runs/.
+Ничего не пишет в БД и не меняет прод. Артефакт прогона — JSON в
+`tests/eval/probes/` (НЕ в `runs/`: тот каталог принадлежит раннеру, и посторонний
+файл в нём дважды ронял его сводку — блок 13, хвост №4).
 """
 
 import argparse
@@ -71,8 +73,14 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "tests" / "eval" / "manifest.yaml"
+# ЧИТАЕМ из runs/ — там прогоны раннера, они источник запросов для замера.
 RUNS_DIR = ROOT / "tests" / "eval" / "runs"
 DEFAULT_RUN = RUNS_DIR / "2026-08-01_gpt-5.4-mini.json"
+# ПИШЕМ в probes/ — свой каталог. Замеры источника складывали артефакты в runs/,
+# и `report` раннера дважды падал на них `KeyError`: у файлов другая форма, а один
+# посторонний файл делал недоступной сводку по ВСЕМ прогонам, то есть блокировал
+# приёмку. Каталог прогонов принадлежит раннеру; у замеров он свой.
+PROBES_DIR = ROOT / "tests" / "eval" / "probes"
 
 USER_AGENT = "lifeManager_bot/1.0 (skyline987650@gmail.com)"
 REQUEST_TIMEOUT_S = 30.0
@@ -720,8 +728,9 @@ def main():
     ap.add_argument("--no-llm", action="store_true", help="только сбор выдачи")
     ap.add_argument("--cache", help="взять выдачу из JSON прошлого прогона")
     ap.add_argument("--run", default=str(DEFAULT_RUN), help="прогон-источник запросов")
-    ap.add_argument("--out", default=str(RUNS_DIR / "off-rerank.json"))
+    ap.add_argument("--out", default=str(PROBES_DIR / "off-rerank.json"))
     args = ap.parse_args()
+    pathlib.Path(args.out).parent.mkdir(parents=True, exist_ok=True)
 
     import hashlib
     for name, text in (("A", RERANK_SYSTEM), ("B", RERANK_SYSTEM_B)):

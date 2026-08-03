@@ -19,6 +19,7 @@ from .food_service import (
     aggregate_dish,
 )
 from .llm_service import (
+    AlternativeNutrition,
     LLMClient,
     LLMError,
     LLMNotConfiguredError,
@@ -52,6 +53,7 @@ __all__ = [
     "NutritionItem",
     "NutritionResult",
     "UnresolvedItem",
+    "AlternativeNutrition",
     "LLMError",
     "LLMNotConfiguredError",
     "LLMRateLimitError",

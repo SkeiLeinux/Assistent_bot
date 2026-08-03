@@ -38,11 +38,40 @@ from openai import APIError, AsyncOpenAI, RateLimitError
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.contexts.nutrition.services import observability as obs
 
 logger = logging.getLogger(__name__)
 
 
 # ── Контракт данных ─────────────────────────────────────────────────────────
+
+class AlternativeNutrition(BaseModel):
+    """Вторая версия чисел той же позиции (ТЗ §7.2, ADR-0013 ревизия).
+
+    Появляется, когда этикетка разошлась с внешним источником больше чем на
+    `resolver_disagree_pct`. Числа НЕ подменяются (принцип §2.4) — обе версии
+    показываются пользователю, и выбирает он.
+
+    Транспорт analyze→confirm, в БД не пишется: пользователь выбирает ОДНУ
+    версию, и в дневник уезжает она, а не пара. Отдельная модель, а не
+    вложенный `NutritionItem`, потому что альтернатива не самостоятельная
+    позиция: у неё нет ни имени в дневнике, ни флага «сохранить в каталог», ни
+    собственной альтернативы — вложенность породила бы все три вопроса.
+    """
+
+    kcal: float
+    protein: float
+    fat: float
+    carbs: float
+    source: str | None = None
+    source_ref: str | None = None
+    matched_name: str | None = None
+    # per100g — чтобы правка веса пересчитывала и альтернативу тоже (опция C).
+    kcal_100g: float | None = None
+    protein_100g: float | None = None
+    fat_100g: float | None = None
+    carbs_100g: float | None = None
+
 
 class NutritionItem(BaseModel):
     """Одна позиция: продукт/блюдо с КБЖУ уже для съеденной порции (абсолют, I1).
@@ -72,6 +101,11 @@ class NutritionItem(BaseModel):
     protein_100g: float | None = None
     fat_100g: float | None = None
     carbs_100g: float | None = None
+    # Вторая версия чисел при расхождении этикетки с источником >15% (§7.2).
+    # До блока 15 резолвер её вычислял, а DTO терял — то есть механизм сверки
+    # label-preferred, ради которого ревизовался ADR-0013, до пользователя не
+    # доходил вовсе. Не персистится: в дневник уезжает выбранная версия.
+    alternative: AlternativeNutrition | None = None
 
 
 class UnresolvedItem(BaseModel):
@@ -300,14 +334,22 @@ async def _alert(text: str) -> None:
 _last_switch_alert: date | None = None
 
 
-async def _alert_switch(text: str) -> None:
+async def _alert_switch(text: str) -> bool:
+    """Алерт о переключении. Возвращает, был ли он ОТПРАВЛЕН (а не подавлен).
+
+    Возвращает, а не молчит, ради строки лога §9: поле `alerted` обязано
+    сообщать факт, а не повторять правило дедупликации во втором месте. Повтор
+    правила разъехался бы с ним при первой же правке, и лог утверждал бы об
+    отправленном алерте, которого не было.
+    """
     global _last_switch_alert
     today = date.today()
     if _last_switch_alert == today:
         logger.warning("LLM: %s (алерт уже отправлен сегодня)", text)
-        return
+        return False
     _last_switch_alert = today
     await _alert(text)
+    return True
 
 
 # ── Классификация отказа (ADR-0018 §2.2, ТЗ §8.3) ────────────────────────────
@@ -540,15 +582,22 @@ class LLMClient:
                 is_last = index + 1 >= len(targets)
                 if kind in SWITCHABLE and not is_last:
                     nxt = targets[index + 1]
-                    logger.warning(
-                        "LLM: отказ модели %s (класс %s) → переключаемся на %s",
-                        target.model, kind, nxt.model,
-                    )
-                    await _alert_switch(
+                    # Структурная строка §1.3 рядом с алертом, а не вместо него:
+                    # алерт дедуплицируется («первое за сутки», §5 ADR-0018),
+                    # поэтому по одним алертам нельзя отличить единичный сбой от
+                    # постоянной работы на резерве — а это ровно та разница,
+                    # ради которой блок 13 существует. `alerted` берётся у самого
+                    # алерта, а не вычисляется здесь заново: второе место с тем
+                    # же правилом рано или поздно разъедется с первым.
+                    alerted = await _alert_switch(
                         f"LLM: модель {target.model} не отвечает (класс отказа: "
                         f"{kind}). Переключение на {nxt.model}. "
                         f"Причина: {failure.original}"
                     )
+                    logger.warning("%s", obs.switch_line(
+                        from_model=target.model, to_model=nxt.model,
+                        failure=kind, alerted=alerted,
+                    ))
                     continue
                 if kind in ("account", "vendor"):
                     # Ошибку пользователю всё равно отдадим, но админ обязан
@@ -717,12 +766,24 @@ async def check_models(*, alert: bool = True) -> bool | None:
         return None
 
     models = await list_models(primary)
+    # Три статуса, а не два (ADR-0018 §2.4): «спросить не удалось» — не «модели
+    # нет». В логе они обязаны различаться так же, как в коде, иначе сетевой
+    # сбой будет читаться как снятие модели — то есть как инцидент 17.07.26.
     if models is None:
+        logger.info("%s", obs.guard_line(
+            model=primary.model, status=obs.GUARD_UNKNOWN
+        ))
         return None
     if primary.model in models:
+        logger.info("%s", obs.guard_line(
+            model=primary.model, status=obs.GUARD_PRESENT
+        ))
         restore_primary()
         return True
 
+    logger.warning("%s", obs.guard_line(
+        model=primary.model, status=obs.GUARD_MISSING
+    ))
     demote_primary(primary.model)
     if alert:
         await _alert(

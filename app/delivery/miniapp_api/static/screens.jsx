@@ -196,7 +196,7 @@ function ExportScreen({ period, setPeriod, customFrom, setCustomFrom, customTo, 
 // ─── Сетка фото (миниатюры + «×» + «+»), до `max` снимков ─────────
 // Общий компонент для каталога («Создать блюдо») и дневника (режим «Фото»).
 // Сам читает файл и сжимает в dataURL; наружу — массив dataURL + add/remove.
-function PhotoGrid({ photos, onAdd, onRemove, max = 5 }) {
+function PhotoGrid({ photos, onAdd, onRemove, max = MAX_PHOTOS }) {
   const fileRef = React.useRef(null);
   const [reading, setReading] = React.useState(false);
 
@@ -281,7 +281,8 @@ function CreateDishView({
       <div className="field__label" style={{ padding: '0 16px 6px' }}>
         Фото этикеток <span style={{ color: 'var(--tg-text-3)', fontWeight: 400 }}>(необязательно)</span>
       </div>
-      <PhotoGrid photos={dishPhotos} onAdd={onAddPhoto} onRemove={onRemovePhoto} />
+      <PhotoGrid photos={dishPhotos} onAdd={onAddPhoto} onRemove={onRemovePhoto}
+        max={MAX_PHOTOS} />
       <div className="dropzone__hint" style={{ padding: '4px 16px 10px' }}>
         С фото этикеток точнее — модель читает реальные значения с упаковки
       </div>
@@ -485,7 +486,8 @@ function FoodPickerMode({
 
 // ─── Add sheet ─────────────────────────────────────────────────
 function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
-                    photos, onAddPhoto, onRemovePhoto, caption, setCaption, analyzing, error,
+                    photos, onAddPhoto, onRemovePhoto, maxPhotos = MAX_PHOTOS,
+                    caption, setCaption, analyzing, error,
                     foodResults, foodLoading, pickedFood, pickWeight, setPickWeight,
                     pickMeal, setPickMeal, pickSaving,
                     onFoodSearch, onPickFood, onPickBack, onPickConfirm,
@@ -573,9 +575,12 @@ function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
         ) : (
           <React.Fragment>
             <div className="field__label" style={{ padding: '8px 16px 6px' }}>
-              Фото <span style={{ color: 'var(--tg-text-3)', fontWeight: 400 }}>(до 5)</span>
+              Фото <span style={{ color: 'var(--tg-text-3)', fontWeight: 400 }}>
+                (до {maxPhotos})
+              </span>
             </div>
-            <PhotoGrid photos={photos} onAdd={onAddPhoto} onRemove={onRemovePhoto} />
+            <PhotoGrid photos={photos} onAdd={onAddPhoto} onRemove={onRemovePhoto}
+              max={maxPhotos} />
             <div className="dropzone__hint" style={{ padding: '4px 16px 8px' }}>
               Этикетка → точно, домашнее блюдо → грубо. Можно несколько снимков.
             </div>
@@ -615,12 +620,191 @@ function AddSheet({ open, onClose, onAnalyze, mode, setMode, text, setText,
 
 // Провенанс КБЖУ на позицию (ADR-0013): откуда взяты числа. estimate — прикидка
 // (нейтральный серый), остальное — найдено в источнике (цветной бейдж).
+//
+// Подпись `off` уточнена в блоке 15 под вариант D (ADR-0019, 2026-08-03):
+// поисковая ступень удалена, товар находится ТОЛЬКО точным lookup'ом по
+// штрихкоду. Прежнее «Open Food Facts» обещало поиск по названию, которого
+// больше нет, — а бейдж провенанса и существует, чтобы не врать об источнике.
 const SRC_META = {
-  off:      { label: 'Open Food Facts', color: '#4285F4', icon: '✓' },
-  label:    { label: 'с этикетки',      color: '#34A853', icon: '✓' },
-  web:      { label: 'веб-поиск',       color: '#4285F4', icon: '✓' },
-  estimate: { label: 'оценка модели',   color: '#9AA0A6', icon: '≈' },
+  off:      { label: 'OFF · по штрихкоду', color: '#4285F4', icon: '✓' },
+  label:    { label: 'с этикетки',         color: '#34A853', icon: '✓' },
+  web:      { label: 'веб-поиск',          color: '#4285F4', icon: '✓' },
+  estimate: { label: 'оценка модели',      color: '#9AA0A6', icon: '≈' },
 };
+
+// ─── Флаги проверок §6 → человеческий текст ───────────────────────
+// Коды приходят с бэкенда (`resolve/checks.py`), текст рисует фронт — так один
+// флаг не расходится по формулировкам между экранами.
+//
+// **Показ обязателен, формулировки — нет.** Тексты ниже переигрывает продукт;
+// что менять нельзя — сам факт показа: сработавшая проверка, которую
+// пользователь не увидел, — это немой отказ, просто переехавший в UI. Экран
+// подтверждения — единственная защита от остаточной ошибки модели (ADR-0017:
+// «верное название, неверные числа» на ~8% этикеток, пользователь их не поймает).
+const WARN_META = {
+  kj_kcal_conflict: 'На упаковке кДж и ккал не сходятся между собой — проверьте калорийность.',
+  kj_suspected:     'Похоже, в калории попали килоджоули — число может быть завышено вчетверо.',
+  arith_mismatch:   'Числа не сходятся с составом: калорийность не соответствует белкам, жирам и углеводам.',
+  weight_mismatch:  'Сумма ингредиентов не сходится с весом блюда.',
+  barcode_invalid:  'Штрихкод прочитан неверно — товар в базе не искали.',
+  bounds_fail:      'Числа выходят за физически возможные — проверьте.',
+  bounds_warn:      'Необычные числа. Бывает у крепкого алкоголя и чистых жиров, но стоит проверить.',
+  portion_warn:     'Странный вес порции — проверьте.',
+  portion_missing:  'Не указан вес — позиция не вошла в итог блюда.',
+  label_disagrees_with_source: 'Числа с этикетки расходятся с базой товаров — обе версии ниже.',
+};
+
+// Не предупреждение, а информация о маршруте (ADR-0018 §2.5): позицию посчитала
+// резервная модель. При варианте B качество не падает (паритет 92%/83%), поэтому
+// плашка НЕЙТРАЛЬНАЯ — серым и без восклицательных знаков. Красная плашка на
+// штатном режиме работы обесценивает настоящие предупреждения рядом.
+const FALLBACK_FLAG = 'fallback_provider';
+
+function FallbackNote() {
+  // `block`, а не `inline-flex`: рядом стоит бейдж провенанса с
+  // `alignSelf: flex-start`, и в inline-потоке две строки склеивались в одну
+  // («≈ оценка модели↺ посчитано резервной моделью») — поймано на UAT-прогоне.
+  return (
+    <div style={{ marginTop: 6, fontSize: 11, color: 'var(--tg-text-3)' }}>
+      ↺ посчитано резервной моделью
+    </div>
+  );
+}
+
+// Значок-«!» со сворачиваемой расшифровкой. Компактно по умолчанию (иначе на
+// шести позициях экран превращается в простыню), но раскрывается по тапу.
+function WarningChips({ warnings }) {
+  const codes = (warnings || []).filter(w => w !== FALLBACK_FLAG && WARN_META[w]);
+  const [open, setOpen] = React.useState(false);
+  if (codes.length === 0) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontSize: 11, fontWeight: 600, color: '#F5BE6A',
+          background: 'rgba(245, 165, 36, 0.14)', border: 'none',
+          borderRadius: 6, padding: '3px 8px',
+        }}
+      >
+        <IconWarn size={12} stroke="#F5BE6A" />
+        {codes.length === 1 ? 'Проверьте числа' : ('Проверьте числа · ' + codes.length)}
+        <span style={{ opacity: 0.7 }}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 6, fontSize: 12, lineHeight: 1.4, color: '#F5BE6A',
+          background: 'rgba(245, 165, 36, 0.08)', borderRadius: 8, padding: '8px 10px',
+        }}>
+          {codes.map(code => (
+            <div key={code} style={{ marginBottom: 4 }}>• {WARN_META[code]}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Две версии чисел при расхождении этикетки с источником >15% (ТЗ §7.2).
+// Числа НЕ подменяются молча (принцип §2.4) — выбирает человек. Источник
+// ошибается тоже, поэтому «правильной» версии код не знает и знать не может.
+function AlternativeChoice({ item, onPick }) {
+  const alt = item.alternative;
+  if (!alt) return null;
+  const rows = [
+    { key: 'label', title: 'С этикетки', src: item.source,
+      kcal: item.kcal, p: item.p, f: item.f, c: item.c, active: !item.alt_picked },
+    { key: 'alt', title: alt.matched_name || 'Из базы товаров', src: alt.source,
+      kcal: alt.kcal, p: alt.p, f: alt.f, c: alt.c, active: !!item.alt_picked },
+  ];
+  return (
+    <div style={{
+      marginTop: 8, borderRadius: 10, overflow: 'hidden',
+      border: '1px solid rgba(245, 165, 36, 0.25)',
+    }}>
+      <div style={{
+        fontSize: 11, color: '#F5BE6A', padding: '6px 10px',
+        background: 'rgba(245, 165, 36, 0.1)',
+      }}>
+        Две разные версии — выберите, какой верить
+      </div>
+      {rows.map(r => (
+        <button key={r.key} onClick={() => onPick(r.key === 'alt')}
+          style={{
+            display: 'flex', width: '100%', gap: 8, alignItems: 'center',
+            padding: '8px 10px', border: 'none', textAlign: 'left',
+            background: r.active ? 'var(--tg-surface-hi)' : 'transparent',
+            color: 'var(--tg-text)',
+          }}>
+          <span style={{ fontSize: 14, opacity: r.active ? 1 : 0.35 }}>
+            {r.active ? '◉' : '○'}
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600,
+                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {r.title}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--tg-text-3)' }}>
+              {SRC_META[r.src] ? SRC_META[r.src].label : r.src}
+            </span>
+          </span>
+          <span style={{ textAlign: 'right', fontSize: 11, color: 'var(--tg-text-2)' }}>
+            <b style={{ color: 'var(--kcal)', fontSize: 13 }}>{fmtNum(r.kcal)}</b> ккал
+            <span style={{ display: 'block' }}>
+              Б{fmtNum(r.p)} Ж{fmtNum(r.f)} У{fmtNum(r.c)}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Нераспознанные позиции (ТЗ §6.6) ─────────────────────────────
+// Модель имеет право сказать «не вижу» вместо того, чтобы выдумать числа. Без
+// этого блока честный отказ выглядит как молчаливая потеря данных: позиций
+// просто меньше, и почему — неизвестно. Это ХУЖЕ, чем было до §6.6.
+//
+// Действия — «удалить» и «ввести вручную». Не «переснять»: пользователь уже
+// съел еду, повторная съёмка чаще всего невозможна.
+//
+// Сохранить такую позицию в дневник нельзя, пока в ней нет чисел (§6.6):
+// запись с нулями выглядит как данные и портит итоги дня, прогресс к целям и
+// дайджест. Поэтому «ввести вручную» переносит строку в обычный список позиций,
+// где числа вводит человек, а не создаёт нулевую запись.
+function UnresolvedBlock({ items, onDrop, onEnterManually }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <React.Fragment>
+      <div className="card-title" style={{ paddingTop: 12 }}>
+        Не удалось распознать · {items.length}
+      </div>
+      {items.map(u => (
+        <div key={u.id} className="confirm-item" style={{ marginTop: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>
+            {u.name || 'Позиция без названия'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--tg-text-3)', marginTop: 4, lineHeight: 1.4 }}>
+            {u.note || (u.reason === 'no_source'
+              ? 'Числа не нашлись ни в одном источнике.'
+              : 'Модель не смогла прочитать эту позицию.')}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button className="save-toggle" style={{ flex: 1, justifyContent: 'center' }}
+              onClick={() => onEnterManually(u)}>
+              ✏️ Ввести вручную
+            </button>
+            <button className="save-toggle" style={{ justifyContent: 'center' }}
+              onClick={() => onDrop(u)}>
+              <IconTrash size={14} />
+            </button>
+          </div>
+        </div>
+      ))}
+    </React.Fragment>
+  );
+}
 
 // Read-only состав составного блюда (из чего состоит) — для записи дня и каталога.
 // ingredients: [{name, w, kcal, p, f, c, source}]. Каждая строка несёт провенанс.
@@ -669,7 +853,9 @@ function SourceBadge({ source, matchedName }) {
 }
 
 // ─── Confirm screen ────────────────────────────────────────────
-function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onSaveComposite, onCancel, source, defaultName, saving }) {
+function ConfirmScreen({ items, setItems, unresolved, setUnresolved,
+                         mealType, setMealType, onSave, onSaveComposite, onCancel,
+                         source, defaultName, saving }) {
   const sum = sumEntries(items.map(e => ({ kcal: +e.kcal || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0 })));
 
   // «Одно блюдо»: свернуть N распознанных позиций в одно блюдо с видимым составом.
@@ -701,9 +887,45 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onSaveC
     }));
   }
   function remove(id) { setItems(items.filter(it => it.id !== id)); }
+  function nextId() { return Math.max(0, ...items.map(i => i.id)) + 1; }
   function add() {
-    const nid = Math.max(0, ...items.map(i => i.id)) + 1;
-    setItems([...items, { id: nid, name: '', w: '', kcal: '', p: '', f: '', c: '' }]);
+    setItems([...items, { id: nextId(), name: '', w: '', kcal: '', p: '', f: '', c: '' }]);
+  }
+
+  // Выбор версии чисел при расхождении с источником (§7.2). Подменяем ЧИСЛА
+  // позиции и её провенанс, а обе версии оставляем на месте: выбор обратим,
+  // пока пользователь не нажал «Сохранить».
+  function pickVersion(id, useAlt) {
+    setItems(items.map(it => {
+      if (it.id !== id || !it.alternative) return it;
+      const src = useAlt ? it.alternative : (it.original || it);
+      return {
+        ...it,
+        alt_picked: useAlt,
+        // `original` запоминается при ПЕРВОМ переключении: иначе возврат к
+        // этикетке вернул бы числа альтернативы, уже записанные поверх.
+        original: it.original || {
+          kcal: it.kcal, p: it.p, f: it.f, c: it.c,
+          source: it.source, source_ref: it.source_ref, per100g: it.per100g,
+        },
+        kcal: src.kcal, p: src.p, f: src.f, c: src.c,
+        source: src.source, source_ref: src.source_ref,
+        per100g: src.per100g || it.per100g,
+      };
+    }));
+  }
+
+  // «Ввести вручную»: строка из `unresolved` переезжает в обычный список с
+  // пустыми числами. Пустыми, а не нулевыми — ноль выглядит как измеренное
+  // значение и молча уедет в итоги дня (§6.6).
+  function enterManually(u) {
+    setItems([...items, {
+      id: nextId(), name: u.name || '', w: '', kcal: '', p: '', f: '', c: '',
+    }]);
+    setUnresolved((unresolved || []).filter(x => x.id !== u.id));
+  }
+  function dropUnresolved(u) {
+    setUnresolved((unresolved || []).filter(x => x.id !== u.id));
   }
 
   return (
@@ -725,11 +947,13 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onSaveC
         </div>
       )}
 
-      <div className="card-title" style={{ paddingTop: 8 }}>
-        {dishMode ? 'Состав' : 'Распознано'} · {items.length} {dishMode
-          ? (items.length === 1 ? 'ингредиент' : (items.length < 5 ? 'ингредиента' : 'ингредиентов'))
-          : (items.length === 1 ? 'позиция' : (items.length < 5 ? 'позиции' : 'позиций'))}
-      </div>
+      {items.length > 0 && (
+        <div className="card-title" style={{ paddingTop: 8 }}>
+          {dishMode ? 'Состав' : 'Распознано'} · {items.length} {dishMode
+            ? (items.length === 1 ? 'ингредиент' : (items.length < 5 ? 'ингредиента' : 'ингредиентов'))
+            : (items.length === 1 ? 'позиция' : (items.length < 5 ? 'позиции' : 'позиций'))}
+        </div>
+      )}
 
       {source === 'photo' && (
         <div className="warn">
@@ -750,6 +974,11 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onSaveC
               </button>
             </div>
             <SourceBadge source={it.source} matchedName={it.matched_name} />
+            {/* Флаги проверок §6 и метка резерва — рядом с числами, к которым
+                они относятся. Скрыть их «ради чистоты экрана» значит вернуть
+                немой отказ, только уже в UI. */}
+            <WarningChips warnings={it.warnings} />
+            {(it.warnings || []).includes(FALLBACK_FLAG) && <FallbackNote />}
             <div className="confirm-item__grid">
               <NumField label="вес, г" value={it.w} onChange={v => update(it.id, 'w', v)} />
               <NumField label="ккал" value={it.kcal} onChange={v => update(it.id, 'kcal', v)} kcal />
@@ -760,6 +989,7 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onSaveC
               <div style={{ gridColumn: 'span 3' }} />
               <NumField label="У" value={it.c} onChange={v => update(it.id, 'c', v)} />
             </div>
+            <AlternativeChoice item={it} onPick={useAlt => pickVersion(it.id, useAlt)} />
             {!dishMode && hasWeight && (
               <button
                 className={'save-toggle ' + (it.save ? 'save-toggle--on' : '')}
@@ -775,6 +1005,13 @@ function ConfirmScreen({ items, setItems, mealType, setMealType, onSave, onSaveC
       <button onClick={add} className="add-item-btn">
         <IconPlus size={16} /> {dishMode ? 'Добавить ингредиент' : 'Добавить позицию'}
       </button>
+
+      {/* Позиции, от чисел которых модель честно отказалась (§6.6). Показываются
+          ПОСЛЕ списка: они не часть записи, пока пользователь не введёт числа. */}
+      {!dishMode && (
+        <UnresolvedBlock items={unresolved} onDrop={dropUnresolved}
+          onEnterManually={enterManually} />
+      )}
 
       {dishMode && (
         <button
@@ -920,4 +1157,10 @@ function ErrorBanner({ message, onRetry }) {
 Object.assign(window, {
   GoalsCta, TodayScreen, WeekChart, HistoryScreen, ExportScreen,
   CreateDishView, FoodPickerMode, AddSheet, ConfirmScreen, NumField, EditEntrySheet, ErrorBanner,
+  // Блок 15: состояния экрана подтверждения, которых до него не было.
+  // Экспортируются поимённо, чтобы их можно было отрендерить с подставленным
+  // ответом — DoD п.4 требует проверить каждое, а живой отказ модели по
+  // требованию не воспроизводится.
+  WarningChips, FallbackNote, AlternativeChoice, UnresolvedBlock,
+  SourceBadge, SRC_META, WARN_META, FALLBACK_FLAG,
 });

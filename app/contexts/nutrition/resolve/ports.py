@@ -148,6 +148,13 @@ class ExtractedItem(BaseModel):
         Без первой половины `unreadable` становится бесплатным способом ничего не
         сказать; без второй — `label`/`estimate` без чисел молча ломает лестницу
         (EstimateSource нечего вернуть).
+
+        **Текст ошибки уходит в лог целиком** (`extractor._schema_errors`, ТЗ §9):
+        у инвариантов уровня модели `loc` вырождается в «items.0», и без текста
+        непонятно, какое правило нарушено. Поэтому интерполировать сюда свободные
+        поля позиции (`name`/`note`/`brand`) нельзя — это дневник питания живых
+        людей. Закрытые словари вроде `readout` можно. Пин —
+        `tests/test_llm_observability.py::test_ports_validator_messages_carry_no_model_data`.
         """
         if self.readout == "unreadable":
             if not (self.note or "").strip():

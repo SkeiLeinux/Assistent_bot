@@ -63,7 +63,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from check_off_coverage import (            # noqa: E402 — путь настраивается выше
     MANIFEST,
-    RUNS_DIR,
+    PROBES_DIR,
     load_cases,
     macros_of,
     openai_chat,
@@ -73,9 +73,12 @@ from check_off_coverage import (            # noqa: E402 — путь настр
     terms_of,
 )
 
-CACHE = RUNS_DIR / "2026-08-01_off-rerank.json"
-MEMORY = RUNS_DIR / "2026-08-03_memory-tierA.json"
-OUT = RUNS_DIR / "2026-08-03_off-value.json"
+# Всё три — артефакты ЗАМЕРА, не прогоны раннера (блок 13, хвост №4). Файл
+# `*_memory-tierA.json` особенно показателен: `records` у него есть, а `provider`
+# нет, и именно на нём упала первая, «починенная по одному ключу», версия сводки.
+CACHE = PROBES_DIR / "2026-08-01_off-rerank.json"
+MEMORY = PROBES_DIR / "2026-08-03_memory-tierA.json"
+OUT = PROBES_DIR / "2026-08-03_off-value.json"
 
 # Ничья: руки считаются неразличимыми, если ошибки расходятся меньше чем на 1 п.п.
 TIE_PP = 0.01
@@ -411,6 +414,7 @@ def main():
     ap.add_argument("--selftest", action="store_true", help="только П1/П2 на синтетике")
     ap.add_argument("--run", default=None, help="прогон извлекателя (источник имён)")
     args = ap.parse_args()
+    PROBES_DIR.mkdir(parents=True, exist_ok=True)
 
     if args.selftest:
         selftest()

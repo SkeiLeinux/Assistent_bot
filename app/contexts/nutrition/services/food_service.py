@@ -28,6 +28,7 @@ I7 после консолидации (ТЗ §4.3): пять путей раз�
 """
 
 import base64
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from time import monotonic
@@ -44,13 +45,17 @@ from app.contexts.nutrition.repositories import (
     GoalsRepository,
     SharedFoodRepository,
 )
+from app.contexts.nutrition.services import observability as obs
 from app.contexts.nutrition.services.errors import FamilyRequired, InvalidInput
 from app.contexts.nutrition.services.llm_service import (
+    AlternativeNutrition,
     LLMError,
     NutritionItem,
     NutritionResult,
     UnresolvedItem,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_TZ = "Europe/Amsterdam"
 
@@ -371,10 +376,13 @@ class FoodService:
 
     async def analyze_text(self, text: str) -> NutritionResult:
         """1 LLM-вызов сегментирует ввод → СПИСОК позиций; резолвер уточняет каждую."""
+        started = monotonic()
         extracted = await self._require_extractor().extract(
             mode=MODE_DIARY, text=text
         )
-        return await self._resolve_extracted(extracted)
+        return await self._resolve_extracted(
+            extracted, path=obs.PATH_ANALYZE_TEXT, started=started
+        )
 
     async def analyze_photo(
         self, images: list[bytes], caption: str = "", mime_type: str = "image/jpeg"
@@ -385,10 +393,13 @@ class FoodService:
         пределе — estimate (оценка модели). Снимков больше лимита модели →
         батчи, а не обрезка (§5.2) — решает извлекатель, домену это не видно.
         """
+        started = monotonic()
         extracted = await self._require_extractor().extract(
             mode=MODE_DIARY, images=images, caption=caption, mime_type=mime_type
         )
-        return await self._resolve_extracted(extracted)
+        return await self._resolve_extracted(
+            extracted, path=obs.PATH_ANALYZE_PHOTO, started=started
+        )
 
     def _require_extractor(self):
         if self.extractor is None:
@@ -397,24 +408,36 @@ class FoodService:
             )
         return self.extractor
 
-    async def _resolve_extracted(self, extracted: list) -> NutritionResult:
+    async def _resolve_extracted(
+        self,
+        extracted: list,
+        *,
+        path: str = obs.PATH_ANALYZE_TEXT,
+        started: float | None = None,
+    ) -> NutritionResult:
         """Резолвит КАЖДУЮ извлечённую позицию (лестница §4), масштабирует на порцию.
 
         Бюджет на весь ввод (§3): дедлайн на сетевые ступени; после превышения
         оставшиеся позиции отдаём как estimate без сети (числа уже есть в позиции).
+
+        `started` — момент НАЧАЛА разбора (до извлечения), чтобы `total_ms` в
+        строке §9 мерил то, что ждёт пользователь, а не одну лишь лестницу.
         """
         if self.resolver is None:
             raise RuntimeError(
                 "FoodService.resolver не сконфигурирован (см. resolve.build_resolver)"
             )
+        started = monotonic() if started is None else started
         budget = float(
             getattr(self.resolver, "total_budget_s", _DEFAULT_RESOLVER_BUDGET_S)
         )
         deadline = monotonic() + budget
         items: list[NutritionItem] = []
         unresolved: list[UnresolvedItem] = []
+        budget_exhausted = False
         for ext in extracted:
             allow_network = monotonic() < deadline
+            budget_exhausted = budget_exhausted or not allow_network
             resolved = await self.resolver.refine(ext, allow_network=allow_network)
             if resolved is None:
                 # Чисел нет ни у модели, ни у источников (§6.6). Позиция не
@@ -425,7 +448,27 @@ class FoodService:
         if not items and not unresolved:
             # Модель не вернула ничего — это отказ разбора, а не частичный успех.
             raise LLMError("Не удалось распознать продукты")
+        self._log_resolve(path, items, unresolved, started, budget_exhausted)
         return NutritionResult(items=items, unresolved=unresolved)
+
+    @staticmethod
+    def _log_resolve(path, items, unresolved, started, budget_exhausted) -> None:
+        """Одна строка на разбор целиком (§9) — не на позицию.
+
+        Именно не на позицию: тарелка из шести продуктов дала бы простыню, в
+        которой распределение провенансов пришлось бы складывать глазами. А
+        интересен как раз сдвиг РАСПРЕДЕЛЕНИЯ (`sources`): падение доли `label`
+        означает, что модель перестала читать этикетки, при полностью исправном
+        транспорте и без единой ошибки в логе.
+        """
+        logger.info("%s", obs.resolve_line(
+            path=path,
+            n_items=len(items),
+            unresolved=len(unresolved),
+            sources=obs.source_counts(items),
+            total_ms=round((monotonic() - started) * 1000),
+            budget_exhausted=budget_exhausted,
+        ))
 
     @staticmethod
     def _compose_name(ext) -> str:
@@ -459,6 +502,35 @@ class FoodService:
             protein_100g=round(per.protein, 2),
             fat_100g=round(per.fat, 2),
             carbs_100g=round(per.carbs, 2),
+            # Тем же множителем, что и основные числа: пользователь сравнивает
+            # две версии ОДНОЙ порции, а не «за порцию» с «на 100 г».
+            alternative=FoodService._to_alternative(resolved.alternative, factor),
+        )
+
+    @staticmethod
+    def _to_alternative(alt, factor: float):
+        """ResolvedNutrition.alternative → транспортный DTO (§7.2). None → None.
+
+        Существует потому, что до блока 15 резолвер честно считал вторую версию
+        чисел, а `_to_item` её терял: сверка label-preferred доходила до DTO и
+        там умирала, то есть пользователь ни разу не увидел ни одного
+        расхождения, ради обнаружения которых ревизовался ADR-0013.
+        """
+        if alt is None:
+            return None
+        per = alt.per100g
+        return AlternativeNutrition(
+            kcal=round(per.kcal * factor, 1),
+            protein=round(per.protein * factor, 1),
+            fat=round(per.fat * factor, 1),
+            carbs=round(per.carbs * factor, 1),
+            source=alt.source,
+            source_ref=alt.source_ref,
+            matched_name=alt.matched_name,
+            kcal_100g=round(per.kcal, 2),
+            protein_100g=round(per.protein, 2),
+            fat_100g=round(per.fat, 2),
+            carbs_100g=round(per.carbs, 2),
         )
 
     # ── Анализ блюда каталога: тот же извлекатель, другой режим (ТЗ §4.3) ─────
@@ -483,6 +555,7 @@ class FoodService:
         self, *, mode: str, name: str, weight_g: float, text: str | None = None,
         images_b64: list[str] | None = None, single: bool = False,
     ) -> NutritionResult:
+        started = monotonic()
         extracted = await self._require_extractor().extract(
             mode=mode,
             text=text,
@@ -491,6 +564,11 @@ class FoodService:
             weight_g=weight_g,
         )
         agg = aggregate_dish(extracted, name=name, weight_g=weight_g, single=single)
+        # Строка §9 пишется и здесь, хотя провенанс блюда всегда `estimate`
+        # (расчётный путь, ADR-0013 §17) и бюджета лестницы у него нет. Пропустить
+        # каталог значило бы получить лог, в котором ЧАСТЬ разборов не видна: рост
+        # латентности или отказов на этих путях выглядел бы как их отсутствие.
+        self._log_resolve(mode, agg.positions, agg.unresolved, started, False)
         return NutritionResult(items=agg.positions, unresolved=agg.unresolved)
 
     async def analyze_dish_text(

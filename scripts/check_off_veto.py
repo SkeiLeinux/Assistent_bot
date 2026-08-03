@@ -22,7 +22,7 @@ LLM-переранжирование (4 режима) — измерены в `r
     и есть измеренная величина циркулярности.
 
 ИСТОЧНИК ДАННЫХ. Выдача OFF берётся из кэша прошлого замера
-(`tests/eval/runs/2026-08-01_off-rerank.json`): те же запросы, те же карточки,
+(`tests/eval/probes/2026-08-01_off-rerank.json`): те же запросы, те же карточки,
 тот же порядок `_score`. Это не экономия сети, а условие сравнимости — пять
 механизмов обязаны сравниваться на одной выдаче, а не в пяти разных прогонах.
 Адаптер OFF не трогается: транспорт живёт в check_off_coverage.py (v4).
@@ -54,14 +54,17 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 # копируются: ручная копия эталонов/правил внутри инструмента — ровно тот
 # механизм, которым родился рассинхрон фото↔эталон на 11 кейсах.
 from check_off_coverage import (  # noqa: E402
-    KCAL_TOL, NAME_TOL, RERANK_N, RUNS_DIR,
+    KCAL_TOL, NAME_TOL, PROBES_DIR, RERANK_N, RUNS_DIR,
     _best_name, _first_brand, attach_name_ok, classify, gate, macros_of,
     name_coverage, openai_chat, read_env_key, select_best, upper_bound,
 )
 
-DEFAULT_CACHE = RUNS_DIR / "2026-08-01_off-rerank.json"
+# Выдача прошлого замера — артефакт ЗАМЕРА (probes/), прогон прод-пути — артефакт
+# РАННЕРА (runs/). Разделение появилось в блоке 13: смешанный каталог дважды ронял
+# сводку раннера на файлах чужой формы.
+DEFAULT_CACHE = PROBES_DIR / "2026-08-01_off-rerank.json"
 DEFAULT_RUN = RUNS_DIR / "2026-08-01_gpt-5.4-mini.json"
-DEFAULT_OUT = RUNS_DIR / "2026-08-02_off-veto.json"
+DEFAULT_OUT = PROBES_DIR / "2026-08-02_off-veto.json"
 
 BATCH = 5          # прод-форма: один вызов на разбор
 PLACEBO_SHIFT = 7  # взаимно прост с 25 → перестановка без неподвижных точек
@@ -217,6 +220,7 @@ def main():
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--replay", help="пересобрать отчёт из сохранённых ответов")
     args = ap.parse_args()
+    pathlib.Path(args.out).parent.mkdir(parents=True, exist_ok=True)
 
     for name, text in (("вето", VETO_SYSTEM), ("вето-инверт (контроль П2)",
                                                VETO_SYSTEM_INVERTED)):

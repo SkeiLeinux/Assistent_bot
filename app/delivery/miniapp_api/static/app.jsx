@@ -28,6 +28,13 @@ function withIds(items) {
   return items.map((it, i) => ({ id: i + 1, ...it, save: false }));
 }
 
+// unresolved из /api/analyze → строки с id (нужны для удаления/переноса).
+// Нумерация СТРОКОВАЯ и отдельная от items: списки живут независимо, и после
+// «ввести вручную» общий числовой счётчик мог бы выдать позиции одинаковый id.
+function withUnresolvedIds(list) {
+  return (list || []).map((u, i) => ({ id: 'u' + (i + 1), ...u }));
+}
+
 function NutritionApp({ onExit }) {
   // Навигация
   const [view, setView] = useState('today');     // today | history | export
@@ -52,13 +59,17 @@ function NutritionApp({ onExit }) {
   const [addOpen, setAddOpen] = useState(false);
   const [mode, setMode] = useState('text');
   const [text, setText] = useState('');
-  const [photos, setPhotos] = useState([]);       // dataURL[] (до 5, паритет с каталогом)
+  const [photos, setPhotos] = useState([]);       // dataURL[] (до MAX_PHOTOS)
   const [caption, setCaption] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState(null);
 
   // Confirm
   const [confirmItems, setConfirmItems] = useState(null);
+  // Позиции, от чисел которых модель отказалась (§6.6). Отдельное состояние, а
+  // не поле внутри items: они не сохраняются и не участвуют в итогах — пока
+  // пользователь не введёт числа руками, они не данные.
+  const [confirmUnresolved, setConfirmUnresolved] = useState([]);
   const [confirmSource, setConfirmSource] = useState('text');
   const [mealType, setMealType] = useState('lunch');
   const [saving, setSaving] = useState(false);
@@ -102,6 +113,14 @@ function NutritionApp({ onExit }) {
     setToast(msg);
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  // Закрытие экрана подтверждения. Одной функцией, потому что состояний стало
+  // два: забыть сбросить `unresolved` — значит показать нераспознанные позиции
+  // прошлого разбора поверх следующего.
+  const closeConfirm = useCallback(() => {
+    setConfirmItems(null);
+    setConfirmUnresolved([]);
   }, []);
 
   // ─── Загрузка дня ──────────────────────────────────────────────
@@ -179,11 +198,17 @@ function NutritionApp({ onExit }) {
       if (mode === 'text') payload = { type: 'text', text };
       else payload = { type: 'photo', images: photos, caption };
       const resp = await API.analyze(payload);
-      if (!resp.items || resp.items.length === 0) {
+      const items = resp.items || [];
+      const unresolved = resp.unresolved || [];
+      // Пустой items при НЕПУСТОМ unresolved — валидное состояние (§6.6), а не
+      // ошибка: модель честно сказала «не вижу», и экран обязан это показать с
+      // объяснением. Ошибка — только когда пусты оба списка.
+      if (items.length === 0 && unresolved.length === 0) {
         setAnalyzeError('Продукты не распознаны, попробуйте уточнить.');
         return;
       }
-      setConfirmItems(withIds(resp.items));
+      setConfirmItems(withIds(items));
+      setConfirmUnresolved(withUnresolvedIds(unresolved));
       setConfirmSource(mode);
       setMealType(autoMeal(clientHour()));
       setAddOpen(false);
@@ -207,7 +232,7 @@ function NutritionApp({ onExit }) {
       const resp = await API.saveEntries({
         items, meal_type: mealType, source: confirmSource, date,
       });
-      setConfirmItems(null);
+      closeConfirm();
       setText(''); setPhotos([]); setCaption('');
       showToast('Сохранено · ' + resp.count + ' поз.');
       await loadDay(date);
@@ -230,7 +255,7 @@ function NutritionApp({ onExit }) {
         name, ingredients, meal_type: mealType, source: confirmSource,
         date, save_to_catalog: !!saveToCatalog,
       });
-      setConfirmItems(null);
+      closeConfirm();
       setText(''); setPhotos([]); setCaption('');
       showToast(saveToCatalog ? 'Блюдо сохранено · в дневник и базу' : 'Блюдо сохранено в дневник');
       await loadDay(date);
@@ -409,7 +434,7 @@ function NutritionApp({ onExit }) {
     if (createDishOpen) { handleOpenCreateDish(false); return; }
     if (pickedFood) { setPickedFood(null); return; }
     if (addOpen) { setAddOpen(false); setAnalyzeError(null); setPickedFood(null); return; }
-    if (confirmItems) { setConfirmItems(null); return; }
+    if (confirmItems) { closeConfirm(); return; }
     if (goalsOpen) { setGoalsOpen(false); return; }
     if (view !== 'today') { setView('today'); return; }
     if (onExit) onExit();                              // корень дневника → хаб ассистента
@@ -431,13 +456,19 @@ function NutritionApp({ onExit }) {
   const showTabs = !overlay;
 
   if (confirmItems) {
+    // Подзаголовок считает и нераспознанные: иначе разбор из трёх позиций, две
+    // из которых модель не прочла, покажет «1 позиция» — и потеря выглядит как
+    // норма ровно там, где её надо заметить.
+    const nUnresolved = confirmUnresolved.length;
     header = <TgHeader title="Подтверждение"
-      sub={confirmItems.length + ' ' + (confirmItems.length === 1 ? 'позиция' : 'позиций')}
-      onBack={() => setConfirmItems(null)} />;
+      sub={confirmItems.length + ' ' + (confirmItems.length === 1 ? 'позиция' : 'позиций')
+        + (nUnresolved ? ' · ' + nUnresolved + ' без чисел' : '')}
+      onBack={closeConfirm} />;
     content = <ConfirmScreen items={confirmItems} setItems={setConfirmItems}
+      unresolved={confirmUnresolved} setUnresolved={setConfirmUnresolved}
       mealType={mealType} setMealType={setMealType} source={confirmSource}
       defaultName={caption} saving={saving} onSave={handleSave}
-      onSaveComposite={handleSaveComposite} onCancel={() => setConfirmItems(null)} />;
+      onSaveComposite={handleSaveComposite} onCancel={closeConfirm} />;
   } else if (goalsOpen) {
     header = <TgHeader title="Цели КБЖУ" onBack={() => setGoalsOpen(false)} />;
     content = <GoalsScreen goals={goals} saving={goalsSaving} onSave={handleGoalsSave} />;
@@ -497,8 +528,8 @@ function NutritionApp({ onExit }) {
       <AddSheet open={addOpen}
         onClose={() => { setAddOpen(false); setAnalyzeError(null); setPickedFood(null); handleOpenCreateDish(false); }}
         mode={mode} setMode={setMode} text={text} setText={setText}
-        photos={photos}
-        onAddPhoto={url => setPhotos(p => (p.length < 5 ? [...p, url] : p))}
+        photos={photos} maxPhotos={MAX_PHOTOS}
+        onAddPhoto={url => setPhotos(p => (p.length < MAX_PHOTOS ? [...p, url] : p))}
         onRemovePhoto={idx => setPhotos(p => p.filter((_, i) => i !== idx))}
         caption={caption} setCaption={setCaption}
         analyzing={analyzing} error={analyzeError} onAnalyze={handleAnalyze}
@@ -512,7 +543,7 @@ function NutritionApp({ onExit }) {
         dishWeight={dishWeight} setDishWeight={setDishWeight}
         dishText={dishText} setDishText={setDishText}
         dishPhotos={dishPhotos}
-        onAddDishPhoto={url => setDishPhotos(p => [...p, url])}
+        onAddDishPhoto={url => setDishPhotos(p => (p.length < MAX_PHOTOS ? [...p, url] : p))}
         onRemoveDishPhoto={idx => setDishPhotos(p => p.filter((_, i) => i !== idx))}
         dishAnalyzing={dishAnalyzing} dishResult={dishResult} setDishResult={setDishResult}
         dishSaving={dishSaving} dishError={dishError}

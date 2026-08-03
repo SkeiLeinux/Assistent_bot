@@ -55,6 +55,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+# Наблюдаемость LLM-слоя (ТЗ контракта §9) пишет строки `llm_call`/`llm_resolve`
+# на INFO. Пулы и диалект SQLAlchemy на том же уровне дают поток, в котором эти
+# строки не читаются, — поэтому не «а заодно почистим», а условие того, что
+# новые строки видно. Сам поток SQL-запросов выключен в db/engine.py (echo=False):
+# echo выставляет уровень на собственном логгере и этой строкой не перебивается.
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 

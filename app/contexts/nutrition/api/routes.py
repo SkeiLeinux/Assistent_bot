@@ -18,10 +18,37 @@ from zoneinfo import ZoneInfo
 
 from aiohttp import web
 
+from app.config import settings
 from app.contexts.nutrition.resolve import build_extractor, build_resolver
 from app.contexts.nutrition.services import FoodService, InvalidInput, NutritionItem
 
 _DEFAULT_TZ = "Europe/Amsterdam"
+
+
+def _check_image_cap(images: list) -> list:
+    """Кап ввода — из конфига и с ОТКАЗОМ, а не молчаливой обрезкой (ТЗ §5.2).
+
+    Здесь стоял литерал `[:5]` — тот же класс хардкода, который ADR-0017 вычистил
+    из LLM-слоя и который уцелел в слое роутов. Две беды сразу:
+
+    1. **Обрезка была молчаливой.** Пользователь прислал оборот упаковки с
+       таблицей шестым снимком — и не узнал, что именно его и выбросили.
+       Ровно эту ошибку блок 6 убрал из извлекателя, а роут её сохранял.
+    2. **Батчи были недостижимы через REST.** `5` совпадало с `llm_max_images`,
+       поэтому ввод физически не мог превысить лимит одного запроса к
+       провайдеру: механика батчей была покрыта тестами и раннером, но ни разу
+       не выполнялась в бою.
+
+    Кап РОУТА (`api_max_images`) и лимит ПРОВАЙДЕРА (`llm_max_images`) — разные
+    величины, и именно их разность даёт батчи.
+    """
+    cap = settings.api_max_images
+    if len(images) > cap:
+        raise InvalidInput(
+            f"Слишком много фото: {len(images)}. За один раз можно прислать "
+            f"не больше {cap} — пришлите остальные отдельной записью."
+        )
+    return images
 
 # Провенанс КБЖУ (ADR-0013, ProvenanceSource) — допустимые значения source.
 # Канал ввода ('text'/'photo') больше не провенанс → нормализуем в 'manual'.
@@ -220,6 +247,31 @@ def _item(it: NutritionItem) -> dict:
             "f": it.fat_100g,
             "c": it.carbs_100g,
         }
+    # Вторая версия чисел при расхождении этикетки с источником (§7.2). Числа
+    # НЕ подменены — обе версии уезжают на экран, выбирает пользователь (§2.4).
+    if it.alternative is not None:
+        out["alternative"] = _alternative(it.alternative)
+    return out
+
+
+def _alternative(alt) -> dict:
+    """Альтернативная версия чисел под именами полей фронта."""
+    out = {
+        "kcal": round(alt.kcal, 1),
+        "p": round(alt.protein, 1),
+        "f": round(alt.fat, 1),
+        "c": round(alt.carbs, 1),
+        "source": alt.source,
+        "source_ref": alt.source_ref,
+        "matched_name": alt.matched_name,
+    }
+    if alt.kcal_100g is not None:
+        out["per100g"] = {
+            "kcal": alt.kcal_100g,
+            "p": alt.protein_100g,
+            "f": alt.fat_100g,
+            "c": alt.carbs_100g,
+        }
     return out
 
 
@@ -290,14 +342,15 @@ async def analyze(request: web.Request) -> web.Response:
             raise InvalidInput("Пустой запрос")
         result = await svc.analyze_text(text)
     elif kind == "photo":
-        # До 5 снимков (паритет с каталогом). Поддерживаем и одиночное поле `image`
-        # (обратная совместимость), и список `images` (dataURL или «голый» base64).
+        # До `api_max_images` снимков (паритет с каталогом). Поддерживаем и
+        # одиночное поле `image` (обратная совместимость), и список `images`
+        # (dataURL или «голый» base64).
         raw_images = body.get("images")
         if raw_images is None:
             single = body.get("image")
             raw_images = [single] if single else []
         images: list[bytes] = []
-        for img in (raw_images or [])[:5]:
+        for img in _check_image_cap(raw_images or []):
             if not isinstance(img, str):
                 continue
             b64 = img.split(",", 1)[-1] if img.startswith("data:") else img
@@ -616,7 +669,7 @@ async def post_food_analyze(request: web.Request) -> web.Response:
     description = (body.get("text") or "").strip()
     raw_images = body.get("images") or []
     images_b64: list[str] = []
-    for img in raw_images[:5]:
+    for img in _check_image_cap(raw_images):
         b64 = img.split(",", 1)[-1] if img.startswith("data:") else img
         if b64:
             images_b64.append(b64)

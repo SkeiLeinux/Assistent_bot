@@ -176,16 +176,206 @@ async def test_route_analyze_photo_multi_single_call(session, monkeypatch):
     assert len(rec.last_images) == 3 and all(isinstance(b, bytes) for b in rec.last_images)
 
 
-async def test_route_analyze_photo_caps_at_five(session, monkeypatch):
+async def test_route_analyze_photo_passes_everything_under_the_cap(session, monkeypatch):
+    """Кап роута читается из конфига и НИЧЕГО не режет, пока он не превышен.
+
+    Заменяет прежний `..._caps_at_five`, который пинил молчаливую обрезку
+    `images[:5]`. Обрезка убрана в блоке 15: она теряла ровно тот снимок, ради
+    которого пользователь его прислал (оборот упаковки с таблицей), и делала
+    это без единого слова — тот же дефект, который блок 6 уже убрал из
+    извлекателя, а слой роутов сохранял.
+    """
+    from app.config import settings
+
     rec = RecordingExtractor()
     _inject(monkeypatch, session, rec)
-    images = [_b64(bytes([i])) for i in range(6)]
+    n = settings.api_max_images
     req = FakeRequest(session, Viewer(id=1, family_id=1),
-                      body={"type": "photo", "images": images})
+                      body={"type": "photo", "images": [_b64(bytes([i])) for i in range(n)]})
 
     await nutri_routes.analyze(req)
 
-    assert len(rec.last_images) == 5  # бэкенд режет до 5
+    assert len(rec.last_images) == n
+
+
+async def test_route_analyze_photo_over_cap_is_rejected_not_truncated(session, monkeypatch):
+    """Сверх капа — внятный отказ, а не тихо усечённый ввод.
+
+    Разница принципиальная: при обрезке пользователь получает КБЖУ, посчитанные
+    НЕ по тому, что он прислал, и узнать об этом ему неоткуда. Отказ он видит
+    сразу и решает сам.
+    """
+    from app.config import settings
+
+    rec = RecordingExtractor()
+    _inject(monkeypatch, session, rec)
+    n = settings.api_max_images + 1
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "photo", "images": [_b64(bytes([i])) for i in range(n)]})
+
+    with pytest.raises(InvalidInput) as exc:
+        await nutri_routes.analyze(req)
+
+    assert str(settings.api_max_images) in str(exc.value)  # текст называет предел
+    assert rec.calls == 0  # до извлекателя не дошли, ничего не посчитано
+
+
+async def test_route_analyze_photo_over_cap_rejected_in_dish_mode_too(session, monkeypatch):
+    """Второе место того же хардкода — `/foods/analyze`.
+
+    Литерал `[:5]` стоял в ДВУХ местах, и починка одного оставила бы второй:
+    каталог принимал бы шестой снимок и молча его выбрасывал.
+    """
+    from app.config import settings
+
+    rec = RecordingExtractor()
+    _inject(monkeypatch, session, rec)
+    n = settings.api_max_images + 1
+    req = FakeRequest(session, Viewer(id=1, family_id=1), body={
+        "name": "салат", "weight_g": 200,
+        "images": [_b64(bytes([i])) for i in range(n)],
+    })
+
+    with pytest.raises(InvalidInput):
+        await nutri_routes.post_food_analyze(req)
+    assert rec.calls == 0
+
+
+async def test_route_analyze_photo_reaches_provider_in_batches(session, monkeypatch):
+    """**Боевой пробег батчей — впервые.**
+
+    Механика §5.2 покрыта тестами извлекателя и раннером, но через REST не
+    выполнялась ни разу: кап роута совпадал с лимитом провайдера, поэтому ввод
+    физически не мог превысить лимит одного запроса. Этот тест идёт сквозь
+    роут → извлекатель → фейковый транспорт и смотрит на СЧЁТЧИК ВЫЗОВОВ, а не
+    на результат: результат сойдётся и при потерянном снимке.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "llm_max_images", 5)
+    monkeypatch.setattr(settings, "api_max_images", 10)
+    chat = _patch_llm(monkeypatch, _one_item())
+    monkeypatch.setattr(
+        nutri_routes, "_service",
+        lambda req: FoodService(req["session"], extractor=LLMExtractor(),
+                                resolver=_PassthroughResolver()),
+    )
+    req = FakeRequest(session, Viewer(id=1, family_id=1), body={
+        "type": "photo", "images": [_b64(bytes([i])) for i in range(8)],
+    })
+
+    resp = await nutri_routes.analyze(req)
+
+    assert resp.status == 200
+    assert len(chat.calls) == 2               # 5 + 3, а не один усечённый вызов
+    sent = [
+        p for call in chat.calls
+        for p in call["messages"][1]["content"] if p["type"] == "image_url"
+    ]
+    assert len(sent) == 8                     # ни один снимок не потерян
+
+
+async def test_route_returns_200_when_only_unresolved(session, monkeypatch):
+    """DoD п.3: пустой `items` при непустом `unresolved` — это 200, а не ошибка.
+
+    Сервисный уровень это уже держит (`test_all_unresolved_is_200_not_502`), но
+    решает статус ответа РОУТ, и до фронта доходит именно он. Честный отказ
+    модели («этикетку не видно») обязан приехать как частичный успех с
+    объяснением: 502 сказал бы, что сломался сервис, чего не произошло.
+    """
+    class _OnlyUnreadable:
+        calls = 0
+
+        async def extract(self, **kwargs):
+            return [ExtractedItem(name="соус", readout="unreadable",
+                                  per100g=None, note="блик на этикетке")]
+
+    class _NoNumbers:
+        """Как прод-лестница на позиции без чисел (§6.6): `None`, а не нули."""
+
+        total_budget_s = 12.0
+
+        async def refine(self, item, *, allow_network=True):
+            return None
+
+    monkeypatch.setattr(
+        nutri_routes, "_service",
+        lambda req: FoodService(req["session"], extractor=_OnlyUnreadable(),
+                                resolver=_NoNumbers()),
+    )
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "text", "text": "соус"})
+
+    resp = await nutri_routes.analyze(req)
+
+    assert resp.status == 200
+    payload = json.loads(resp.text)
+    assert payload["items"] == []
+    assert len(payload["unresolved"]) == 1
+    # Причина обязана доехать: без неё экран покажет «стало меньше позиций» и
+    # ничего не объяснит — то есть честный отказ будет выглядеть как потеря данных.
+    assert payload["unresolved"][0]["note"] == "блик на этикетке"
+    assert payload["unresolved"][0]["reason"] == "unreadable"
+
+
+async def test_route_serializes_alternative_when_label_disagrees(session, monkeypatch):
+    """Вторая версия чисел (§7.2) доезжает до фронта.
+
+    До блока 15 резолвер её считал, а `_to_item` терял — сверка label-preferred
+    умирала на границе DTO, и пользователь не увидел ни одного расхождения,
+    ради обнаружения которых ревизовался ADR-0013. Проверяем ОБА конца:
+    масштабирование тем же множителем, что у основных чисел, и наличие per100g
+    (иначе правка веса пересчитает основную версию и не тронет альтернативу).
+    """
+    from app.contexts.nutrition.resolve.ports import Macros as _M
+
+    class _Disagreeing:
+        total_budget_s = 12.0
+
+        async def refine(self, item, *, allow_network=True):
+            return ResolvedNutrition(
+                per100g=_M(kcal=100, protein=10, fat=1, carbs=10),
+                source="label",
+                warnings=["label_disagrees_with_source"],
+                alternative=ResolvedNutrition(
+                    per100g=_M(kcal=200, protein=20, fat=2, carbs=20),
+                    source="off", source_ref="4600000000000",
+                    matched_name="Йогурт натуральный",
+                ),
+            )
+
+    rec = RecordingExtractor()   # отдаёт одну позицию с portion_g=100
+    monkeypatch.setattr(
+        nutri_routes, "_service",
+        lambda req: FoodService(req["session"], extractor=rec, resolver=_Disagreeing()),
+    )
+    req = FakeRequest(session, Viewer(id=1, family_id=1),
+                      body={"type": "text", "text": "йогурт 100 г"})
+
+    payload = json.loads((await nutri_routes.analyze(req)).text)
+
+    item = payload["items"][0]
+    assert item["kcal"] == 100 and item["source"] == "label"
+    assert "label_disagrees_with_source" in item["warnings"]
+    alt = item["alternative"]
+    assert alt["kcal"] == 200 and alt["source"] == "off"
+    assert alt["matched_name"] == "Йогурт натуральный"
+    assert alt["per100g"]["kcal"] == 200
+
+
+def test_route_cap_and_provider_cap_are_separate_settings():
+    """Два разных предела, и схлопывать их в одно поле нельзя.
+
+    `api_max_images` — сколько снимков примет API; `llm_max_images` — сколько
+    уходит в ОДИН запрос к провайдеру. Батчи существуют ровно из-за их разности,
+    поэтому равенство этих чисел означает, что батчи снова недостижимы. Второе
+    двигается при смене модели (scout=5 → qwen3.6=3 → gpt-5.4-mini=5), первое —
+    нет.
+    """
+    from app.config import Settings
+
+    defaults = Settings.model_fields
+    assert defaults["api_max_images"].default > defaults["llm_max_images"].default
 
 
 async def test_route_analyze_photo_empty_is_422(session, monkeypatch):
