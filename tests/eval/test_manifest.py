@@ -695,3 +695,27 @@ def test_missing_key_message_lists_every_accepted_name(monkeypatch):
 
     assert prov.key() is None
     assert "LLM_API_KEY" in prov.key_hint and "OPENAI_API_KEY" in prov.key_hint
+
+
+def test_report_skips_foreign_json_in_runs_dir(tmp_path, monkeypatch, capsys):
+    """`report` падал `KeyError: 'records'` на артефактах замеров OFF.
+
+    В `runs/` лежат не только прогоны раннера: `off-rerank.json` и
+    `off-veto.json` сохраняются туда же и имеют другую форму. Один посторонний
+    файл делал недоступной сводку по ВСЕМ прогонам — то есть блокировал приёмку.
+    Пропуск обязан быть ЯВНЫМ: прогон, у которого пропали записи, — испорченный
+    прогон, и молчание о нём скрыло бы выпадение модели из сводки.
+    """
+    import json as _json
+
+    from tests.eval import run_eval
+
+    (tmp_path / "2026-08-01_off-veto.json").write_text(
+        _json.dumps({"cases": [], "note": "артефакт замера источника"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(run_eval, "RUNS_DIR", tmp_path)
+
+    with pytest.raises(SystemExit):   # валидных прогонов нет — но и не KeyError
+        run_eval.build_report()
+    assert "пропущен (не прогон раннера)" in capsys.readouterr().out
