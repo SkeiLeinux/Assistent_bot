@@ -69,7 +69,9 @@
 - id: A-15
   tier: A
   image: images/A-15_clean.png
-  trap: clean
+  trap: kj-first          # ← было clean; переклассифицировано 2026-08-02 (F-01): кДж напечатан
+                          # раньше ккал. Имя файла НЕ меняем — оно в git и в сохранённых прогонах.
+
   ground_truth:
     basis: per100g
     kcal: 110
@@ -84,7 +86,7 @@
 - id: A-16
   tier: A
   image: images/A-16_clean.png
-  trap: clean
+  trap: kj-first          # ← было clean; переклассифицировано 2026-08-02 (F-01)
   ground_truth:
     basis: per100g
     kcal: 210.9
@@ -487,7 +489,7 @@
   tier: A
   image: null
   status: missing_photo   # ← кейс НЕ прогоняется (см. ревизию 2026-07-27)
-  trap: clean
+  trap: kj-first          # ← было clean; переклассифицировано 2026-08-02 (F-01)
   ground_truth:
     basis: per100g
     kcal: 100
