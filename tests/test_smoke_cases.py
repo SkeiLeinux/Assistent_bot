@@ -613,8 +613,15 @@ def test_corridor_is_wide_enough_for_measured_run_to_run_spread():
     assert 0.15 < smoke.KCAL_CORRIDOR < 0.50
 
 
-def _results(health_ok: bool, statuses: list[int], case_ok: bool = False) -> list[dict]:
-    out = [{"id": "HEALTH", "kind": "health", "status": 200 if health_ok else 404,
+def _results(
+    health_ok: bool,
+    statuses: list[int],
+    case_ok: bool = False,
+    health_status: int | None = None,
+) -> list[dict]:
+    out = [{"id": "HEALTH", "kind": "health",
+            "status": health_status if health_status is not None
+            else (200 if health_ok else 404),
             "errors": [] if health_ok else ["нет"]}]
     out += [{"id": f"S-0{i}", "kind": "photo", "status": s,
              "errors": [] if case_ok else ["нет"]}
@@ -628,7 +635,13 @@ def _results(health_ok: bool, statuses: list[int], case_ok: bool = False) -> lis
         (_results(True, [401, 401, 401]), "расходится токен бота, а не выкатка"),
         (_results(True, [403, 403, 403]), "не в whitelist"),
         (_results(False, [0, 0, 0]), "ни один запрос не дошёл"),
+        # /health не ответил вовсе → эндпоинта в задеплоенном коде нет
         (_results(False, [200, 200, 200], case_ok=True), "выкачен код без эндпоинта версии"),
+        # /health ОТВЕТИЛ 200, но коммит не тот → прод отстал. Первая редакция
+        # подсказки объявляла здесь «эндпоинта нет» — уверенно и неверно; поймано
+        # первым же прогоном против прода 10.08.
+        (_results(False, [200, 200, 200], case_ok=True, health_status=200),
+         "работает на другом коммите"),
     ],
 )
 def test_diagnose_names_the_likely_cause(results, expect_in):
@@ -650,6 +663,120 @@ def test_diagnose_stays_silent_on_a_green_run():
     assert smoke.diagnose(_results(True, [200, 200, 200], case_ok=True)) == []
     # Смешанная картина (часть 401, часть 200) — тоже не повод угадывать.
     assert smoke.diagnose(_results(True, [401, 200, 401])) == []
+
+
+# ════════════════════ Откуда смоук берёт токен ═══════════════════════════════
+# На ноутбуке `BOT_TOKEN` — это ТЕСТОВЫЙ бот (на нём отлаживается UI), поэтому
+# отдельное поле не удобство, а условие работоспособности: прод отвечает 401 на
+# все кейсы, если подписать его тестовым токеном.
+
+def _env_file(tmp_path, extra: str = "") -> str:
+    path = tmp_path / ".env"
+    path.write_text(
+        "BOT_TOKEN=1:test\nDATABASE_URL=sqlite+aiosqlite:///x.db\n" + extra,
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+def test_smoke_token_in_dotenv_does_not_crash_the_process(tmp_path):
+    """Ради этого поле и объявлено.
+
+    `Settings` живёт с `extra=forbid`, и незнакомая строка в `.env` роняет
+    процесс НА ИМПОРТЕ — тот самый механизм, что дал краш-луп 02.08.2026 на
+    остатке `GROQ_API_KEY`. То есть «просто допишем переменную в .env» уронило бы
+    не смоук, а бота.
+    """
+    from app.config import Settings
+
+    s = Settings(_env_file=_env_file(tmp_path, "SMOKE_BOT_TOKEN=8675:prod\n"))
+    assert s.smoke_bot_token.get_secret_value() == "8675:prod"
+    assert s.bot_token.get_secret_value() == "1:test"   # и это РАЗНЫЕ боты
+
+
+def test_unknown_key_in_dotenv_still_crashes(tmp_path):
+    """Негативный контроль, и он здесь главный.
+
+    Объявить поле — правильное лечение; ослабить `extra` до `ignore` — тоже
+    «починило» бы падение, и тест выше остался бы зелёным. Но `extra=forbid`
+    ловит опечатки в `.env` до старта, и терять его нельзя. Этот тест стоит
+    ровно против такой «починки».
+    """
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    with pytest.raises(ValidationError, match="grok_bot_token"):
+        Settings(_env_file=_env_file(tmp_path, "GROK_BOT_TOKEN=oops\n"))
+
+
+def test_smoke_token_is_secret_typed(tmp_path):
+    """`SecretStr`, а не `str`: поле не должно утечь через repr/model_dump.
+
+    Прод-токен бота — секрет того же класса, что `LLM_API_KEY`, и путь утечки у
+    него тот же (печать объекта настроек в трейсбек или лог).
+    """
+    from app.config import Settings
+
+    s = Settings(_env_file=_env_file(tmp_path, "SMOKE_BOT_TOKEN=8675:prod\n"))
+    assert "8675:prod" not in repr(s)
+    assert "8675:prod" not in str(s.model_dump())
+
+
+@pytest.mark.parametrize(
+    "env, dotenv, expect_token, expect_src",
+    [
+        ({"SMOKE_BOT_TOKEN": "env-smoke"}, "dotenv-smoke", "env-smoke", "окружение"),
+        ({}, "dotenv-smoke", "dotenv-smoke", ".env"),
+        ({"BOT_TOKEN": "env-bot"}, None, "env-bot", "BOT_TOKEN"),
+        ({}, None, "local-test-bot", "ТЕСТОВЫЙ"),
+    ],
+)
+def test_token_source_priority_and_naming(monkeypatch, env, dotenv, expect_token, expect_src):
+    """Порядок «явное про смоук → общий токен бота» плюс ИМЯ источника в выводе.
+
+    Имя печатается не для красоты: на первом прогоне против прода именно строка
+    «токен из: локальный .env» за полминуты объяснила 401 на всех кейсах.
+    """
+    from pydantic import SecretStr
+
+    monkeypatch.delenv("SMOKE_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("BOT_TOKEN", raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(
+        settings, "smoke_bot_token", SecretStr(dotenv) if dotenv else None
+    )
+    monkeypatch.setattr(settings, "bot_token", SecretStr("local-test-bot"))
+
+    token, source = smoke.resolve_token()
+    assert token == expect_token
+    assert expect_src in source
+
+
+def test_missing_token_names_the_field_to_fill(monkeypatch):
+    """Сообщение обязано сказать, КУДА положить токен.
+
+    Прежнее «задай SMOKE_BOT_TOKEN в окружении» отправляло мимо: теперь есть и
+    поле в `.env`, и подсказка про то, что лишним ключом оно не станет.
+    """
+    monkeypatch.delenv("SMOKE_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("BOT_TOKEN", raising=False)
+    monkeypatch.setattr(settings, "smoke_bot_token", None)
+    monkeypatch.setattr(settings, "bot_token", None)
+
+    with pytest.raises(SystemExit, match="SMOKE_BOT_TOKEN"):
+        smoke.resolve_token()
+
+
+def test_env_example_documents_the_field():
+    """`.env.example` — SSOT для того, кто заводит машину с нуля.
+
+    Поле, известное только коду, не существует для человека: ровно так `.env`
+    локальной копии и разошёлся с продом (мёртвый WEBAPP_URL, тестовый бот).
+    """
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "SMOKE_BOT_TOKEN" in text
 
 
 def test_endpoint_whitelist_is_closed():
