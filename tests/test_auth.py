@@ -4,35 +4,26 @@
 резолвнутого viewer, не зная о Telegram).
 """
 
-import hashlib
-import hmac
-import json
 import time
-import urllib.parse
 
 import pytest
 from pydantic import SecretStr
 
 from app.config import settings
-from app.kernel.auth import InitDataError, resolve_viewer
+from app.kernel.auth import InitDataError, make_init_data, resolve_viewer
 from app.kernel.services.errors import NotWhitelisted
 
 _TOKEN = "TESTTOKEN"
 
 
 def _init_data(user_id: int, auth_date: int | None = None) -> str:
-    user = json.dumps(
-        {"id": user_id, "first_name": "T", "username": "t"}, separators=(",", ":")
-    )
-    data = {
-        "user": user,
-        "auth_date": str(auth_date if auth_date is not None else int(time.time())),
-        "query_id": "AAH-test",
-    }
-    dcs = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
-    secret = hmac.new(b"WebAppData", _TOKEN.encode(), hashlib.sha256).digest()
-    data["hash"] = hmac.new(secret, dcs.encode(), hashlib.sha256).hexdigest()
-    return urllib.parse.urlencode(data)
+    """Тонкая обёртка над ЕДИНСТВЕННЫМ генератором подписи (`kernel.auth.initdata`).
+
+    Здесь стояла своя реализация HMAC — она же понадобилась смоуку выкатки, и две
+    копии протокола разъехались бы молча. Обёртка оставлена только затем, чтобы не
+    переписывать вызовы ниже: токен у всех тестов файла один.
+    """
+    return make_init_data(_TOKEN, user_id, auth_date=auth_date)
 
 
 @pytest.fixture

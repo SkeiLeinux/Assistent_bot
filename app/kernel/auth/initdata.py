@@ -20,7 +20,8 @@ import hashlib
 import hmac
 import json
 import time
-from urllib.parse import parse_qsl
+from collections.abc import Mapping
+from urllib.parse import parse_qsl, urlencode
 
 # 1 месяц (ТЗ §8, OQ-3) — поднято с прежних 24ч.
 DEFAULT_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -69,6 +70,62 @@ def validate_init_data(
                 raise InitDataError("initData просрочен")
 
     return data
+
+
+def sign_init_data(fields: Mapping[str, str], bot_token: str) -> str:
+    """Собрать подписанный initData из полей — обратная половина `validate_init_data`.
+
+    **Почему подписывающая половина живёт в проде, а не в тестах.** Подписи
+    initData нужны двум потребителям: тестам auth и смоуку выкатки
+    (`scripts/smoke.py`), который ходит по REST задеплоенного инстанса. Копия
+    алгоритма у каждого — это второй экземпляр правды о протоколе: поменяется
+    порядок полей или состав `data_check_string`, и копия разъедется молча,
+    причём разъедется именно у инструмента, чья задача — ловить расхождение
+    прода с кодом. Поэтому обе половины протокола стоят в одном файле и меняются
+    одной правкой; шаги 3–5 ниже — построчное зеркало шагов 3–5 валидатора.
+
+    Новой возможности это не даёт: подпись требует токен бота, а с токеном и так
+    можно всё.
+    """
+    data = {k: str(v) for k, v in fields.items() if k != "hash"}
+    data_check_string = "\n".join(
+        f"{key}={value}" for key, value in sorted(data.items())
+    )
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    data["hash"] = hmac.new(
+        secret_key, data_check_string.encode(), hashlib.sha256
+    ).hexdigest()
+    return urlencode(data)
+
+
+def make_init_data(
+    bot_token: str,
+    user_id: int,
+    *,
+    first_name: str = "T",
+    username: str = "t",
+    auth_date: int | None = None,
+    query_id: str = "AAH-test",
+) -> str:
+    """Готовый подписанный initData для пользователя — то, что шлёт Telegram.
+
+    Форма объекта `user` — тоже часть протокола (её читает `parse_user`), поэтому
+    собирается здесь, а не у каждого вызывающего. `separators` без пробелов: так
+    сериализует Telegram, и так же обязан сериализовать тот, кто подделывает
+    строку под него.
+    """
+    user = json.dumps(
+        {"id": user_id, "first_name": first_name, "username": username},
+        separators=(",", ":"),
+    )
+    return sign_init_data(
+        {
+            "user": user,
+            "auth_date": str(int(time.time()) if auth_date is None else auth_date),
+            "query_id": query_id,
+        },
+        bot_token,
+    )
 
 
 def parse_user(data: dict[str, str]) -> dict:

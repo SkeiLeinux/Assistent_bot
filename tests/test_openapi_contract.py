@@ -185,6 +185,37 @@ def test_image_cap_matches_config(spec):
         assert body["schema"]["properties"]["images"]["maxItems"] == cap, path
 
 
+def test_health_schema_matches_the_endpoint(spec):
+    """Тот же пин, что и на `warnings`, но для `/health` (задача смоука §1).
+
+    Документ отстал на всю волну 1 именно потому, что синхронность никто не
+    проверял. Новый публичный эндпоинт заводится сразу с пином, а не «синхронизируем
+    потом»: сверка в обе стороны ловит и забытое поле, и поле-призрак.
+    """
+    from app.delivery.miniapp_api.health import HEALTH_FIELDS
+
+    schema = spec["components"]["schemas"]["Health"]
+    assert set(schema["properties"]) == set(HEALTH_FIELDS)
+    assert set(schema["required"]) == set(HEALTH_FIELDS)
+
+
+def test_health_is_the_only_path_without_auth(spec):
+    """`security: []` — публичная поверхность, и она обязана быть ровно одна.
+
+    Пин стоит против «заодно откроем ещё один путь для удобства»: список
+    исключений в коде (`PUBLIC_API_PATHS`) и в контракте должны совпадать.
+    """
+    from app.delivery.miniapp_api.web import PUBLIC_API_PATHS
+
+    public = {
+        f"/api/v1{path}"
+        for path, ops in spec["paths"].items()
+        for op in ops.values()
+        if isinstance(op, dict) and op.get("security") == []
+    }
+    assert public == set(PUBLIC_API_PATHS)
+
+
 def test_every_ref_resolves(spec):
     """Все `$ref` указывают на существующий узел: битая ссылка ломает генераторы."""
 

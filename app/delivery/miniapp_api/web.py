@@ -40,17 +40,24 @@ from app.contexts.reminders.services import (
 )
 from app.analytics.api import register_routes as register_analytics_routes
 from app.delivery.miniapp_api._http import error_response
+from app.delivery.miniapp_api.health import HEALTH_PATH, register_health_routes
 from app.delivery.miniapp_api.kernel_api import register_kernel_routes
 
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+# Пути под /api/, которые ходят БЕЗ initData. Список закрытый и короткий: каждая
+# запись — публичная поверхность. `/health` в нём потому, что смоук выкатки
+# обязан узнать версию задеплоенного кода ДО того, как убедится, что auth
+# работает; иначе «выкатили не то» и «auth сломан» дают один и тот же 401.
+PUBLIC_API_PATHS = frozenset({HEALTH_PATH})
+
 
 @web.middleware
 async def auth_middleware(request: web.Request, handler):
     """Резолв зрителя из initData; сессия живёт на время запроса, commit при успехе."""
-    if not request.path.startswith("/api/"):
+    if not request.path.startswith("/api/") or request.path in PUBLIC_API_PATHS:
         return await handler(request)
 
     init_data = request.headers.get("X-Telegram-Init-Data", "")
@@ -141,6 +148,7 @@ def create_app() -> web.Application:
         client_max_size=16 * 1024**2,
         middlewares=[error_middleware, auth_middleware],
     )
+    register_health_routes(app)
     register_kernel_routes(app)
     register_list_routes(app)
     register_finance_routes(app)

@@ -25,8 +25,25 @@ tags:
     description: Напоминания (spec-reminders §9)
   - name: analytics
     description: Кросс-сферный обзор и дайджест (spec-analytics §9)
+  - name: ops
+    description: Эксплуатация — версия задеплоенного процесса (смоук выкатки)
 
 paths:
+  /health:
+    get:
+      tags: [ops]
+      summary: Что реально загрузилось в задеплоенном процессе
+      description: |
+        Единственный путь под /api/ БЕЗ initData (`security: []`). Так осознанно:
+        смоук выкатки обязан узнать версию кода ДО того, как убедится, что auth работает,
+        иначе «выкатили не то» и «auth сломан» дают один и тот же 401.
+        Значения читаются из конфига и `.git` — ничего захардкоженного, ничего чувствительного
+        (ни ключей, ни токенов, ни путей). `commit` фиксируется при СТАРТЕ процесса: `git pull`
+        без рестарта не должен рапортовать новый коммит, работая на старом коде.
+      security: []
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+
   /me:
     get:
       tags: [identity]
@@ -860,6 +877,21 @@ components:
       properties:
         code: { type: string }
         message: { type: string, description: "ru" }
+
+    Health:
+      type: object
+      description: |
+        Состав закрыт: набор полей пинуется тестом (`tests/test_health.py`) в обе стороны.
+        Публичный эндпоинт растёт по одному полю за раз, и без пина в него однажды попадёт
+        путь, версия библиотеки или содержимое `.env`.
+      required: [commit, model, fallback_model, api_max_images, llm_max_images, started_at]
+      properties:
+        commit: { type: string, example: "f8eb6e3", description: "короткий SHA HEAD на момент старта процесса; `unknown`, если `.git` недоступен" }
+        model: { type: string, example: "gpt-5.4-mini", description: "settings.llm_vision_model (ADR-0017 §16)" }
+        fallback_model: { type: string, example: "gpt-5.4", description: "settings.llm_fallback_vision_model (ADR-0018)" }
+        api_max_images: { type: integer, example: 10, description: "кап ввода РОУТА" }
+        llm_max_images: { type: integer, example: 5, description: "лимит одного запроса к ПРОВАЙДЕРУ; разность с предыдущим и порождает батчи" }
+        started_at: { type: string, format: date-time, example: "2026-08-10T14:38:01+03:00" }
 
     Scope: { type: string, enum: [personal, family], default: family }
     ListType: { type: string, enum: [TASK, SHOPPING, IDEA, MOVIE, GIFT, LINK] }
