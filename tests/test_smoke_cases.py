@@ -613,6 +613,45 @@ def test_corridor_is_wide_enough_for_measured_run_to_run_spread():
     assert 0.15 < smoke.KCAL_CORRIDOR < 0.50
 
 
+def _results(health_ok: bool, statuses: list[int], case_ok: bool = False) -> list[dict]:
+    out = [{"id": "HEALTH", "kind": "health", "status": 200 if health_ok else 404,
+            "errors": [] if health_ok else ["нет"]}]
+    out += [{"id": f"S-0{i}", "kind": "photo", "status": s,
+             "errors": [] if case_ok else ["нет"]}
+            for i, s in enumerate(statuses, 1)]
+    return out
+
+
+@pytest.mark.parametrize(
+    "results, expect_in",
+    [
+        (_results(True, [401, 401, 401]), "расходится токен бота, а не выкатка"),
+        (_results(True, [403, 403, 403]), "не в whitelist"),
+        (_results(False, [0, 0, 0]), "ни один запрос не дошёл"),
+        (_results(False, [200, 200, 200], case_ok=True), "выкачен код без эндпоинта версии"),
+    ],
+)
+def test_diagnose_names_the_likely_cause(results, expect_in):
+    """Подсказка по КАРТИНЕ отказов, а не по кейсу.
+
+    Заведена по первому же прогону против прода: живой `/health` с верным
+    коммитом плюс 401 на всех пяти кейсах — вывод «дело в токене, а не в
+    выкатке» приходилось делать вручную, хотя картина однозначная.
+    """
+    hints = smoke.diagnose(results)
+    assert any(expect_in in h for h in hints), hints
+
+
+def test_diagnose_stays_silent_on_a_green_run():
+    """Негативный контроль: подсказка на всё подряд — это шум, а не диагностика.
+
+    Молчание здесь тоже ответ: картина не типовая, думай сам.
+    """
+    assert smoke.diagnose(_results(True, [200, 200, 200], case_ok=True)) == []
+    # Смешанная картина (часть 401, часть 200) — тоже не повод угадывать.
+    assert smoke.diagnose(_results(True, [401, 200, 401])) == []
+
+
 def test_endpoint_whitelist_is_closed():
     """Белый список зашит в коде, а не берётся параметром: параметр однажды
     передадут неверно, и смоук напишет в дневник двух живых людей."""

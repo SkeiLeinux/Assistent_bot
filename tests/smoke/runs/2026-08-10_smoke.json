@@ -1,0 +1,159 @@
+{
+  "at": "2026-08-10T14:02:03+00:00",
+  "base_url": "https://bot.lifemanageronline.ru",
+  "user_id": 548089936,
+  "expect_commit": "aa2a9be",
+  "expect_model": "gpt-5.4-mini",
+  "corridor": 0.25,
+  "results": [
+    {
+      "id": "HEALTH",
+      "kind": "health",
+      "status": 200,
+      "latency_s": 0.3,
+      "body": {
+        "commit": "aa2a9be",
+        "model": "gpt-5.4-mini",
+        "fallback_model": "gpt-5.4",
+        "api_max_images": 10,
+        "llm_max_images": 5,
+        "started_at": "2026-08-10T13:48:09+00:00"
+      },
+      "errors": []
+    },
+    {
+      "id": "S-01",
+      "kind": "photo",
+      "status": 200,
+      "latency_s": 2.98,
+      "body": {
+        "items": [
+          {
+            "name": "корейка свиная Черкизовский",
+            "w": 352.0,
+            "kcal": 387.2,
+            "p": 59.8,
+            "f": 8.8,
+            "c": 14.1,
+            "source": "label",
+            "source_ref": null,
+            "matched_name": null,
+            "warnings": [
+              "barcode_invalid"
+            ],
+            "per100g": {
+              "kcal": 110.0,
+              "p": 17.0,
+              "f": 2.5,
+              "c": 4.0
+            }
+          }
+        ],
+        "unresolved": []
+      },
+      "errors": [],
+      "expected_kcal": 110.0
+    },
+    {
+      "id": "S-02",
+      "kind": "photo",
+      "status": 200,
+      "latency_s": 2.78,
+      "body": {
+        "items": [
+          {
+            "name": "сыр мягкий творожный Унагранде 65%",
+            "w": null,
+            "kcal": 210.9,
+            "p": 8.5,
+            "f": 18.5,
+            "c": 2.6,
+            "source": "label",
+            "source_ref": null,
+            "matched_name": null,
+            "per100g": {
+              "kcal": 210.9,
+              "p": 8.5,
+              "f": 18.5,
+              "c": 2.6
+            }
+          }
+        ],
+        "unresolved": []
+      },
+      "errors": [],
+      "expected_kcal": 210.9
+    },
+    {
+      "id": "S-03",
+      "kind": "photo",
+      "status": 200,
+      "latency_s": 2.02,
+      "body": {
+        "items": [
+          {
+            "name": "белок яичный жидкий пастеризованный ВВ",
+            "w": null,
+            "kcal": 56.0,
+            "p": 13.0,
+            "f": 0.0,
+            "c": 1.0,
+            "source": "label",
+            "source_ref": null,
+            "matched_name": null,
+            "per100g": {
+              "kcal": 56.0,
+              "p": 13.0,
+              "f": 0.0,
+              "c": 1.0
+            }
+          }
+        ],
+        "unresolved": []
+      },
+      "errors": [],
+      "expected_kcal": 56.0
+    },
+    {
+      "id": "S-04",
+      "kind": "text",
+      "status": 200,
+      "latency_s": 3.02,
+      "body": {
+        "items": [
+          {
+            "name": "гречка",
+            "w": 200.0,
+            "kcal": 686.0,
+            "p": 26.6,
+            "f": 6.8,
+            "c": 143.0,
+            "source": "estimate",
+            "source_ref": null,
+            "matched_name": null,
+            "per100g": {
+              "kcal": 343.0,
+              "p": 13.3,
+              "f": 3.4,
+              "c": 71.5
+            }
+          }
+        ],
+        "unresolved": []
+      },
+      "errors": []
+    },
+    {
+      "id": "S-05",
+      "kind": "cap_reject",
+      "status": 422,
+      "latency_s": 0.23,
+      "body": {
+        "code": "invalid_input",
+        "message": "Слишком много фото: 11. За один раз можно прислать не больше 10 — пришлите остальные отдельной записью."
+      },
+      "errors": [],
+      "expected_kcal": 56.0
+    }
+  ]
+}

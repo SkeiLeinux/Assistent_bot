@@ -453,6 +453,9 @@ async def run(args) -> int:
         for err in r["errors"]:
             print(f"         └─ {err}")
 
+    for hint in diagnose(results):
+        print(f"\n  ⟶ {hint}")
+
     failed = [r["id"] for r in results if r["errors"]]
     artifact = write_artifact(args, results)
     print(f"\nартефакт: {_display(artifact)}")
@@ -461,6 +464,49 @@ async def run(args) -> int:
         return 1
     print(f"ИТОГ: {expected_n} из {expected_n} — выкатка проверена")
     return 0
+
+
+def diagnose(results: list[dict]) -> list[str]:
+    """Подсказка по КАРТИНЕ отказов, а не по отдельному кейсу.
+
+    Ради этого `/health` и стоит первым (§1 задания): «выкачен не тот код» и «auth
+    не принял подпись» — два разных отказа, и различать их обязан инструмент, а не
+    человек глазами по шести одинаковым строкам. Первый прогон против прода
+    (2026-08-10) дал ровно такую картину — живой `/health` с верным коммитом плюс
+    401 на всех пяти кейсах, — и вывод «дело в токене, а не в выкатке» приходилось
+    делать вручную.
+
+    Подсказки ничего не решают и не влияют на код возврата: они только называют
+    самую вероятную причину. Молчание здесь — тоже ответ (картина не типовая).
+    """
+    cases = [r for r in results if r["kind"] != "health"]
+    health = next((r for r in results if r["kind"] == "health"), None)
+    if not cases:
+        return []
+    hints: list[str] = []
+    every = lambda code: all(r["status"] == code for r in cases)  # noqa: E731
+
+    if every(401):
+        hints.append(
+            "все кейсы 401 при живом /health: код на проде ТОТ (коммит сошёлся), а подпись "
+            "initData не принята — расходится токен бота, а не выкатка. "
+            "Прогон подписывает прод-токеном из SMOKE_BOT_TOKEN."
+        )
+    if every(403):
+        hints.append(
+            "все кейсы 403: --user-id не в whitelist прода (ALLOWED_USER_IDS в прод-.env)."
+        )
+    if every(0):
+        hints.append(
+            "ни один запрос не дошёл: проверь --base-url (у quick-туннеля "
+            "*.trycloudflare.com имя меняется при каждом рестарте) и что сервис поднят."
+        )
+    if health and health["errors"] and all(not r["errors"] for r in cases):
+        hints.append(
+            "кейсы проходят, а /health нет: похоже, выкачен код без эндпоинта версии — "
+            "то есть ровно тот случай, ради которого он и заводился."
+        )
+    return hints
 
 
 def _display(path: Path) -> str:
