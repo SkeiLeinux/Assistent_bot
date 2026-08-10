@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: Семейный ассистент — REST API (MVP / E1)
-  version: 1.0.1-mvp
+  version: 1.0.2-mvp
   description: |
-    Консолидированный контракт всех контекстов E1 по принятым ТЗ (docs/04_specs/*). Покрытие на 2026-06-20: Identity v0.5, Lists v0.4, Finance v0.4, Nutrition v0.2.2 (+инкремент R — retrieval КБЖУ), Reminders v0.4, Notifications v0.3, Analytics v0.4.
+    Консолидированный контракт всех контекстов E1 по принятым ТЗ (docs/04_specs/*). Покрытие на 2026-08-04: Identity v0.5, Lists v0.4, Finance v0.4, Nutrition v0.2.2 (+инкремент R — retrieval КБЖУ; +волна 1 по spec-nutrition-llm-contract v0.6: unresolved/warnings/alternative/кап ввода), Reminders v0.4, Notifications v0.3, Analytics v0.4.
     SSOT при расхождении — ТЗ; этот файл — производный артефакт для фронта (волна C) и standalone-шва (E5).
     Аутентификация: каждый запрос несёт Telegram initData в заголовке X-Telegram-Init-Data (HMAC, max-age 30 дней).
     Все сообщения об ошибках — на русском. Контракты E2+ добавляются на входе своих этапов.
@@ -440,19 +440,38 @@ paths:
               properties:
                 type: { type: string, enum: [text, photo] }
                 text: { type: string }
-                images: { type: array, items: { type: string }, maxItems: 5, description: "До 5 фото (dataURL/base64), один вызов LLM (I6)" }
+                images:
+                  type: array
+                  items: { type: string }
+                  maxItems: 10
+                  description: >-
+                    До `api_max_images` (=10) фото (dataURL/base64). Превышение — ОТКАЗ (422
+                    `invalid_input`), а не молчаливая обрезка: пользователь должен узнать, что
+                    оборот упаковки с таблицей выброшен. Кап РОУТА и лимит ПРОВАЙДЕРА
+                    (`llm_max_images`=5) — разные величины; их разность и даёт батчи (ТЗ §5.2).
                 image: { type: string, deprecated: true, description: "Одиночное фото (base64); обратная совместимость — предпочитать images[]" }
                 caption: { type: string }
       responses:
         "200":
-          description: Распознанные позиции (черновик, на подтверждение)
+          description: >-
+            Распознанные позиции (черновик, на подтверждение). Пустой `items` при непустом
+            `unresolved` — это тоже 200 (частичный успех), а не 502: 502 остаётся только когда
+            пусты оба массива (ТЗ контракта §6.6).
           content:
             application/json:
-              schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/FoodItemDraft" } } } }
+              schema:
+                type: object
+                required: [items, unresolved]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/FoodItemDraft" } }
+                  unresolved:
+                    type: array
+                    description: "Позиции без чисел — не блокируют сохранение остальных и НЕ приезжают нулями в items"
+                    items: { $ref: "#/components/schemas/UnresolvedItem" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
-        "429": { description: Лимит Groq, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Некорректный ввод: пустой запрос/фото, неизвестный type, либо число фото > api_max_images", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: Лимит провайдера LLM, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { description: LLMError, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /nutrition/entries:
@@ -619,24 +638,38 @@ paths:
           application/json:
             schema:
               type: object
+              required: [name, weight_g]
+              description: "Нужен `text` ИЛИ хотя бы одно фото (можно оба — режим combined)"
               properties:
+                name: { type: string, description: "Название блюда" }
+                weight_g: { type: number, description: "Вес блюда, г > 0: по нему код считает итог (L2)" }
                 text: { type: string }
-                images: { type: array, items: { type: string }, maxItems: 5, description: "base64, суммарно ≤ 4 МБ" }
+                images: { type: array, items: { type: string }, maxItems: 10, description: "base64, до `api_max_images` (=10); превышение — 422, не обрезка" }
       responses:
         "200":
-          description: "Черновик КБЖУ на 100 г (+провенанс, ADR-0013)"
+          description: >-
+            Итог блюда за заявленный вес, посчитанный КОДОМ (L2, ТЗ §5.4). Провенанс всегда
+            `estimate`: каталог — расчётный путь (ADR-0013 §17), резолвер не вызывается.
           content:
             application/json:
               schema:
-                allOf:
-                  - { $ref: "#/components/schemas/SharedFood" }
-                  - type: object
-                    properties:
-                      source: { $ref: "#/components/schemas/ProvenanceSource" }
-                      source_ref: { type: string, nullable: true }
+                type: object
+                required: [kcal, protein, fat, carbs, source]
+                properties:
+                  kcal: { type: number }
+                  protein: { type: number }
+                  fat: { type: number }
+                  carbs: { type: number }
+                  source: { $ref: "#/components/schemas/ProvenanceSource" }
+                  source_ref: { type: string, nullable: true }
+                  warnings:
+                    type: array
+                    description: "Флаги проверок §6, объединённые по ингредиентам (присутствует, только когда непустой)"
+                    items: { $ref: "#/components/schemas/NutritionWarning" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "429": { description: Лимит Groq, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Нет name/weight_g, нет ни текста ни фото, состав не разобран, либо фото > api_max_images", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: Лимит провайдера LLM, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { description: LLMError, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /reminders:
@@ -840,6 +873,38 @@ components:
         db=из каталога SharedFood, manual=ввод вручную. Заменяет прежний
         input-mode source [manual/photo/db] на провенанс данных.
       enum: ["label", "off", "web", "nutritionix", "estimate", "db", "manual"]
+    NutritionWarning:
+      type: string
+      description: >-
+        Код флага проверок §6 / маршрута §7 ТЗ контракта. Транспорт analyze→confirm,
+        в БД не персистится. Человекочитаемый текст рисует фронт ПО КОДУ — так один и тот
+        же флаг не расходится по формулировкам между экранами.
+        arith_mismatch=Атуотер не сходится (C2);
+        kj_suspected=в ккал похоже записаны кДж (C3);
+        kj_kcal_conflict=напечатанные кДж и ккал не сходятся через 4.184 (C3a);
+        bounds_fail=физически невозможные числа (C4.1–C4.3);
+        bounds_warn=калории без состава — бывает легитимно, крепкий алкоголь (C4.4);
+        barcode_invalid=контрольная сумма EAN не сошлась, признак отброшен (C4.0);
+        portion_warn=порция вне (0, 5000] г, признак отброшен (C5);
+        weight_mismatch=Σ граммовок ≠ заявленный вес блюда (C6);
+        portion_missing=позиция без граммовки не вошла в итог блюда (§5.4.b);
+        label_disagrees_with_source=этикетка разошлась с источником >resolver_disagree_pct (§7.2), рядом приезжает `alternative`;
+        fallback_provider=позицию посчитала резервная модель (ADR-0018 §2.5).
+        SSOT набора — константы `FLAG_*` в `app/contexts/nutrition/resolve/checks.py`,
+        `resolve/pipeline.py`, `services/food_service.py`; сверка — тест
+        `tests/test_openapi_contract.py`.
+      enum:
+        - arith_mismatch
+        - kj_suspected
+        - kj_kcal_conflict
+        - bounds_fail
+        - bounds_warn
+        - barcode_invalid
+        - portion_warn
+        - weight_mismatch
+        - portion_missing
+        - label_disagrees_with_source
+        - fallback_provider
     Recurrence: { type: string, enum: [none, daily, weekly, interval] }
     ReminderStatus: { type: string, enum: [ACTIVE, DONE, MISSED, CANCELLED] }
     DeliveryTarget: { type: string, enum: [owner, family, partner], nullable: true, description: "S2: адресат push; NULL ⇒ из scope (personal→owner, family→family); partner — только при наличии второго члена семьи (I10)" }
@@ -1055,7 +1120,14 @@ components:
 
     FoodItemDraft:
       type: object
-      description: Позиция на подтверждении (КБЖУ — абсолют за порцию)
+      description: >-
+        Позиция на подтверждении (КБЖУ — абсолют за порцию).
+        ⚠️ [as-built, не синхронизировано] Имена четырёх полей ниже — проектные, а НА ПРОВОДЕ
+        код шлёт и принимает короткие: description→`name`, weight_g→`w`, protein→`p`, fat→`f`,
+        carbs→`c` (`api/routes.py::_item`/`post_entries`). Расхождение предшествует волне 1 и
+        сюда не входит — правка затрагивает /entries, /entries/{id}, FoodEntry, NutritionDay,
+        NutritionPeriod и требует решения С. Поля `warnings`/`alternative`/`per100g`/`source`/
+        `source_ref`/`matched_name` названы как на проводе.
       properties:
         description: { type: string }
         weight_g: { type: number, nullable: true }
@@ -1075,6 +1147,58 @@ components:
             p: { type: number }
             f: { type: number }
             c: { type: number }
+        warnings:
+          type: array
+          description: "Флаги проверок §6 (присутствует, только когда непустой). Транспорт analyze→confirm, не персистится"
+          items: { $ref: "#/components/schemas/NutritionWarning" }
+        alternative:
+          allOf: [ { $ref: "#/components/schemas/AlternativeNutrition" } ]
+          nullable: true
+          description: >-
+            Вторая версия чисел, когда этикетка разошлась с источником более чем на
+            `resolver_disagree_pct` (ТЗ контракта §7.2). Код НЕ подменяет числа — обе версии
+            уезжают на экран подтверждения, выбирает пользователь (§2.4). Не персистится:
+            в дневник уходит выбранная версия.
+
+    AlternativeNutrition:
+      type: object
+      description: >-
+        Альтернативная версия КБЖУ той же позиции (за ту же порцию, тем же множителем).
+        Не самостоятельная позиция: без имени, без «сохранить в каталог» и без собственной
+        альтернативы. Короткие имена полей — как на проводе (см. DishIngredient).
+      properties:
+        kcal: { type: number }
+        p: { type: number, description: "белки, г" }
+        f: { type: number, description: "жиры, г" }
+        c: { type: number, description: "углеводы, г" }
+        source: { $ref: "#/components/schemas/ProvenanceSource" }
+        source_ref: { type: string, nullable: true }
+        matched_name: { type: string, nullable: true }
+        per100g:
+          type: object
+          nullable: true
+          description: "КБЖУ альтернативы на 100 г — чтобы правка веса пересчитывала и её тоже"
+          properties:
+            kcal: { type: number }
+            p: { type: number }
+            f: { type: number }
+            c: { type: number }
+
+    UnresolvedItem:
+      type: object
+      description: >-
+        Позиция без чисел (ТЗ контракта §6.6): ни модель, ни источники не смогли ответить.
+        Отдельный массив, а НЕ nullable-КБЖУ внутри items — иначе каждый потребитель (фронт,
+        save_entries, аналитика, дайджест) обязан проверять null в пути, где числа есть почти
+        всегда. Сохранение такой позиции запрещено: запись с нулями выглядит как данные и
+        портит итоги дня, прогресс к целям и дайджест.
+      properties:
+        name: { type: string, nullable: true, description: "Как позиция опознана, если опознана" }
+        note: { type: string, nullable: true, description: "Причина от модели — текст для экрана подтверждения" }
+        reason:
+          type: string
+          description: "unreadable=модель отказалась читать (ввод нечитаем); no_source=числа не дала ни одна ступень лестницы"
+          enum: [unreadable, no_source]
 
     DishIngredient:
       type: object
