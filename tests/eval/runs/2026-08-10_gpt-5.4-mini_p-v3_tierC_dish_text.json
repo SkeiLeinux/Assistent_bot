@@ -1,0 +1,670 @@
+{
+  "provider": "openai",
+  "model": "gpt-5.4-mini",
+  "tier": "C",
+  "repeat": 1,
+  "reasoning_effort": "",
+  "prompt_version": "v3",
+  "mode": "dish_text",
+  "timestamp": "2026-08-10T23:04:11",
+  "desync_alerts": [],
+  "refusal": [],
+  "records": [
+    {
+      "id": "C-01",
+      "mode": "dish_text",
+      "calls": 1,
+      "run": {
+        "items": [
+          {
+            "name": "макароны сухие",
+            "g": 100.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 350.0,
+              "protein": 12.0,
+              "fat": 1.5,
+              "carbs": 72.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "паста томатная концентрированная",
+            "g": 50.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 82.0,
+              "protein": 4.3,
+              "fat": 0.5,
+              "carbs": 18.9
+            },
+            "warnings": []
+          },
+          {
+            "name": "сыр мягкий творожный",
+            "g": 30.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 250.0,
+              "protein": 6.0,
+              "fat": 24.0,
+              "carbs": 4.0
+            },
+            "warnings": []
+          }
+        ],
+        "total": {
+          "description": "Паста с томатным соусом и сыром",
+          "weight_g": 170.0,
+          "kcal": 466.0,
+          "protein": 15.9,
+          "fat": 8.9,
+          "carbs": 82.7,
+          "source": "estimate",
+          "source_ref": null,
+          "matched_name": null,
+          "warnings": [],
+          "kcal_100g": null,
+          "protein_100g": null,
+          "fat_100g": null,
+          "carbs_100g": null,
+          "alternative": null
+        },
+        "agg_self_dev": 0.005586592178770831,
+        "dish_positions": 1,
+        "weight_mismatch": false,
+        "calls": 1,
+        "usage": {
+          "completion_tokens": 286,
+          "prompt_tokens": 1251,
+          "total_tokens": 1537,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "raw": "{\"items\":[{\"name\":\"макароны сухие\",\"brand\":null,\"fat_pct\":null,\"portion_g\":100,\"barcode\":null,\"per100g\":{\"kcal\":350,\"protein\":12,\"fat\":1.5,\"carbs\":72},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"Типовые значения для сухих макарон; этикетка не предоставлена.\",\"confidence\":0.93},{\"name\":\"паста томатная концентрированная\",\"brand\":null,\"fat_pct\":null,\"portion_g\":50,\"barcode\":null,\"per100g\":{\"kcal\":82,\"protein\":4.3,\"fat\":0.5,\"carbs\":18.9},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"Типовые значения для томатной пасты; этикетка не предоставлена.\",\"confidence\":0.92},{\"name\":\"сыр мягкий творожный\",\"brand\":null,\"fat_pct\":null,\"portion_g\":30,\"barcode\":null,\"per100g\":{\"kcal\":250,\"protein\":6,\"fat\":24,\"carbs\":4},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"Типовые значения для мягкого творожного сыра; этикетка не предоставлена.\",\"confidence\":0.9}]}",
+        "latency_s": 5.72,
+        "error": null
+      },
+      "scores": {
+        "c_json_valid": true,
+        "c1_missing": [],
+        "c1_phantom": [],
+        "c1_ok": true,
+        "c7_all_ingredients": true,
+        "c2_bad_grams": [],
+        "c2_ok": true,
+        "c3_share": 0.0,
+        "c3_max_dev": 0.5384615384615384,
+        "c9_mean_dev": 0.2911858974358974,
+        "c4_dev": 0.2605633802816901,
+        "c4_ok": false,
+        "c5_ok": true,
+        "c8_ok": true,
+        "c8_names_normalized_equal": {},
+        "c6_flag": false,
+        "c6_ok": true,
+        "agg_self_dev": 0.005586592178770831,
+        "c6_code_flag": false,
+        "c6_code_ok": true
+      },
+      "error": null
+    },
+    {
+      "id": "C-02",
+      "mode": "dish_text",
+      "calls": 1,
+      "run": {
+        "items": [
+          {
+            "name": "тортилья пшеничная",
+            "g": 60.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 310.0,
+              "protein": 8.5,
+              "fat": 8.5,
+              "carbs": 50.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "корейка варёно-копчёная",
+            "g": 50.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 250.0,
+              "protein": 16.0,
+              "fat": 20.0,
+              "carbs": 0.5
+            },
+            "warnings": []
+          },
+          {
+            "name": "сыр плавленый",
+            "g": 20.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 260.0,
+              "protein": 14.0,
+              "fat": 21.0,
+              "carbs": 4.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "сметана",
+            "g": 30.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 206.0,
+              "protein": 2.8,
+              "fat": 20.0,
+              "carbs": 3.2
+            },
+            "warnings": []
+          }
+        ],
+        "total": {
+          "description": "Тортилья с корейкой",
+          "weight_g": 175.0,
+          "kcal": 424.8,
+          "protein": 16.7,
+          "fat": 25.3,
+          "carbs": 32.0,
+          "source": "estimate",
+          "source_ref": null,
+          "matched_name": null,
+          "warnings": [],
+          "kcal_100g": null,
+          "protein_100g": null,
+          "fat_100g": null,
+          "carbs_100g": null,
+          "alternative": null
+        },
+        "agg_self_dev": 0.0023894862604541636,
+        "dish_positions": 1,
+        "weight_mismatch": false,
+        "calls": 1,
+        "usage": {
+          "completion_tokens": 317,
+          "prompt_tokens": 1263,
+          "total_tokens": 1580,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "raw": "{\"items\":[{\"name\":\"тортилья пшеничная\",\"brand\":null,\"fat_pct\":null,\"portion_g\":60,\"barcode\":null,\"per100g\":{\"kcal\":310,\"protein\":8.5,\"fat\":8.5,\"carbs\":50},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.84},{\"name\":\"корейка варёно-копчёная\",\"brand\":null,\"fat_pct\":null,\"portion_g\":50,\"barcode\":null,\"per100g\":{\"kcal\":250,\"protein\":16,\"fat\":20,\"carbs\":0.5},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.78},{\"name\":\"сыр плавленый\",\"brand\":\"Фетакса\",\"fat_pct\":null,\"portion_g\":20,\"barcode\":null,\"per100g\":{\"kcal\":260,\"protein\":14,\"fat\":21,\"carbs\":4},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.82},{\"name\":\"сметана\",\"brand\":null,\"fat_pct\":20,\"portion_g\":30,\"barcode\":null,\"per100g\":{\"kcal\":206,\"protein\":2.8,\"fat\":20,\"carbs\":3.2},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.9}]}",
+        "latency_s": 2.3,
+        "error": null
+      },
+      "scores": {
+        "c_json_valid": true,
+        "c1_missing": [],
+        "c1_phantom": [],
+        "c1_ok": true,
+        "c7_all_ingredients": true,
+        "c2_bad_grams": [],
+        "c2_ok": true,
+        "c3_share": 0.0,
+        "c3_max_dev": 7.0,
+        "c9_mean_dev": 2.038116883116883,
+        "c4_dev": 0.697986577181208,
+        "c4_ok": false,
+        "c5_ok": true,
+        "c8_ok": true,
+        "c8_names_normalized_equal": {},
+        "c6_flag": false,
+        "c6_ok": true,
+        "agg_self_dev": 0.0023894862604541636,
+        "c6_code_flag": false,
+        "c6_code_ok": true
+      },
+      "error": null
+    },
+    {
+      "id": "C-03",
+      "mode": "dish_text",
+      "calls": 1,
+      "run": {
+        "items": [
+          {
+            "name": "тунец консервированный в собственном соку",
+            "g": 80.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 116.0,
+              "protein": 26.0,
+              "fat": 1.0,
+              "carbs": 0.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "картофель отварной",
+            "g": 100.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 82.0,
+              "protein": 2.0,
+              "fat": 0.4,
+              "carbs": 17.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "корейка варёно-копчёная",
+            "g": 40.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 320.0,
+              "protein": 16.0,
+              "fat": 28.0,
+              "carbs": 0.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "сметана",
+            "g": 25.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 206.0,
+              "protein": 2.8,
+              "fat": 20.0,
+              "carbs": 3.2
+            },
+            "warnings": []
+          },
+          {
+            "name": "сыр мягкий творожный",
+            "g": 20.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 225.0,
+              "protein": 6.0,
+              "fat": 21.0,
+              "carbs": 4.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "паста томатная концентрированная",
+            "g": 15.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 82.0,
+              "protein": 4.8,
+              "fat": 0.5,
+              "carbs": 19.0
+            },
+            "warnings": []
+          }
+        ],
+        "total": {
+          "description": "Салат с тунцом",
+          "weight_g": 250.0,
+          "kcal": 411.6,
+          "protein": 31.8,
+          "fat": 21.7,
+          "carbs": 21.5,
+          "source": "estimate",
+          "source_ref": null,
+          "matched_name": null,
+          "warnings": [],
+          "kcal_100g": null,
+          "protein_100g": null,
+          "fat_100g": null,
+          "carbs_100g": null,
+          "alternative": null
+        },
+        "agg_self_dev": 0.0023310023310021983,
+        "dish_positions": 1,
+        "weight_mismatch": false,
+        "calls": 1,
+        "usage": {
+          "completion_tokens": 528,
+          "prompt_tokens": 1285,
+          "total_tokens": 1813,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "raw": "{\"items\":[{\"name\":\"тунец консервированный в собственном соку\",\"brand\":null,\"fat_pct\":null,\"portion_g\":80,\"barcode\":null,\"per100g\":{\"kcal\":116,\"protein\":26,\"fat\":1,\"carbs\":0},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"типовые значения для тунца в собственном соку\",\"confidence\":0.92},{\"name\":\"картофель отварной\",\"brand\":null,\"fat_pct\":null,\"portion_g\":100,\"barcode\":null,\"per100g\":{\"kcal\":82,\"protein\":2,\"fat\":0.4,\"carbs\":17},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"типовые значения для отварного картофеля\",\"confidence\":0.93},{\"name\":\"корейка варёно-копчёная\",\"brand\":null,\"fat_pct\":null,\"portion_g\":40,\"barcode\":null,\"per100g\":{\"kcal\":320,\"protein\":16,\"fat\":28,\"carbs\":0},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"типовые значения для варёно-копчёной корейки\",\"confidence\":0.84},{\"name\":\"сметана\",\"brand\":null,\"fat_pct\":20,\"portion_g\":25,\"barcode\":null,\"per100g\":{\"kcal\":206,\"protein\":2.8,\"fat\":20,\"carbs\":3.2},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"типовые значения для сметаны 20%\",\"confidence\":0.95},{\"name\":\"сыр мягкий творожный\",\"brand\":null,\"fat_pct\":null,\"portion_g\":20,\"barcode\":null,\"per100g\":{\"kcal\":225,\"protein\":6,\"fat\":21,\"carbs\":4},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"типовые значения для мягкого творожного сыра\",\"confidence\":0.86},{\"name\":\"паста томатная концентрированная\",\"brand\":null,\"fat_pct\":null,\"portion_g\":15,\"barcode\":null,\"per100g\":{\"kcal\":82,\"protein\":4.8,\"fat\":0.5,\"carbs\":19},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"типовые значения для томатной пасты\",\"confidence\":0.94}]}",
+        "latency_s": 3.69,
+        "error": null
+      },
+      "scores": {
+        "c_json_valid": true,
+        "c1_missing": [],
+        "c1_phantom": [],
+        "c1_ok": true,
+        "c7_all_ingredients": true,
+        "c2_bad_grams": [],
+        "c2_ok": true,
+        "c3_share": 0.0,
+        "c3_max_dev": 10.2,
+        "c9_mean_dev": 1.9812052299552299,
+        "c4_dev": 0.8368644067796607,
+        "c4_ok": false,
+        "c5_ok": true,
+        "c8_ok": true,
+        "c8_names_normalized_equal": {},
+        "c6_flag": false,
+        "c6_ok": true,
+        "agg_self_dev": 0.0023310023310021983,
+        "c6_code_flag": false,
+        "c6_code_ok": true
+      },
+      "error": null
+    },
+    {
+      "id": "C-04",
+      "mode": "dish_text",
+      "calls": 1,
+      "run": {
+        "items": [
+          {
+            "name": "тунец консервированный в собственном соку",
+            "g": 40.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 116.0,
+              "protein": 26.0,
+              "fat": 1.0,
+              "carbs": 0.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "картофель отварной",
+            "g": 80.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 82.0,
+              "protein": 2.0,
+              "fat": 0.4,
+              "carbs": 17.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "корейка варёно-копчёная",
+            "g": 20.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 320.0,
+              "protein": 16.0,
+              "fat": 28.0,
+              "carbs": 0.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "сметана",
+            "g": 20.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 206.0,
+              "protein": 2.8,
+              "fat": 20.0,
+              "carbs": 3.2
+            },
+            "warnings": []
+          },
+          {
+            "name": "сыр мягкий творожный",
+            "g": 15.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 250.0,
+              "protein": 6.0,
+              "fat": 24.0,
+              "carbs": 4.0
+            },
+            "warnings": []
+          },
+          {
+            "name": "паста томатная концентрированная",
+            "g": 15.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 82.0,
+              "protein": 4.8,
+              "fat": 0.5,
+              "carbs": 19.0
+            },
+            "warnings": []
+          }
+        ],
+        "total": {
+          "description": "Салат с тунцом, малая порция",
+          "weight_g": 170.0,
+          "kcal": 267.0,
+          "protein": 17.4,
+          "fat": 14.0,
+          "carbs": 17.7,
+          "source": "estimate",
+          "source_ref": null,
+          "matched_name": null,
+          "warnings": [],
+          "kcal_100g": null,
+          "protein_100g": null,
+          "fat_100g": null,
+          "carbs_100g": null,
+          "alternative": null
+        },
+        "agg_self_dev": 0.0011507479861909997,
+        "dish_positions": 1,
+        "weight_mismatch": false,
+        "calls": 1,
+        "usage": {
+          "completion_tokens": 469,
+          "prompt_tokens": 1290,
+          "total_tokens": 1759,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "raw": "{\"items\":[{\"name\":\"тунец консервированный в собственном соку\",\"brand\":null,\"fat_pct\":null,\"portion_g\":40,\"barcode\":null,\"per100g\":{\"kcal\":116,\"protein\":26,\"fat\":1,\"carbs\":0},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.88},{\"name\":\"картофель отварной\",\"brand\":null,\"fat_pct\":null,\"portion_g\":80,\"barcode\":null,\"per100g\":{\"kcal\":82,\"protein\":2,\"fat\":0.4,\"carbs\":17},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.92},{\"name\":\"корейка варёно-копчёная\",\"brand\":null,\"fat_pct\":null,\"portion_g\":20,\"barcode\":null,\"per100g\":{\"kcal\":320,\"protein\":16,\"fat\":28,\"carbs\":0},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.78},{\"name\":\"сметана\",\"brand\":null,\"fat_pct\":20,\"portion_g\":20,\"barcode\":null,\"per100g\":{\"kcal\":206,\"protein\":2.8,\"fat\":20,\"carbs\":3.2},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.95},{\"name\":\"сыр мягкий творожный\",\"brand\":null,\"fat_pct\":null,\"portion_g\":15,\"barcode\":null,\"per100g\":{\"kcal\":250,\"protein\":6,\"fat\":24,\"carbs\":4},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.8},{\"name\":\"паста томатная концентрированная\",\"brand\":null,\"fat_pct\":null,\"portion_g\":15,\"barcode\":null,\"per100g\":{\"kcal\":82,\"protein\":4.8,\"fat\":0.5,\"carbs\":19},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.93}]}",
+        "latency_s": 2.67,
+        "error": null
+      },
+      "scores": {
+        "c_json_valid": true,
+        "c1_missing": [],
+        "c1_phantom": [],
+        "c1_ok": true,
+        "c7_all_ingredients": true,
+        "c2_bad_grams": [],
+        "c2_ok": true,
+        "c3_share": 0.0,
+        "c3_max_dev": 10.2,
+        "c9_mean_dev": 1.9812052299552299,
+        "c4_dev": 0.6273255813953488,
+        "c4_ok": false,
+        "c5_ok": true,
+        "c8_ok": true,
+        "c8_names_normalized_equal": {},
+        "c6_flag": false,
+        "c6_ok": true,
+        "agg_self_dev": 0.0011507479861909997,
+        "c6_code_flag": false,
+        "c6_code_ok": true
+      },
+      "error": null
+    },
+    {
+      "id": "C-05",
+      "mode": "dish_text",
+      "calls": 1,
+      "run": {
+        "items": [
+          {
+            "name": "творог мягкий",
+            "g": 200.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 82.0,
+              "protein": 16.0,
+              "fat": 1.5,
+              "carbs": 3.3
+            },
+            "warnings": [
+              "weight_mismatch"
+            ]
+          },
+          {
+            "name": "творог со сливками с наполнителем черника",
+            "g": 150.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 120.0,
+              "protein": 10.0,
+              "fat": 5.0,
+              "carbs": 12.0
+            },
+            "warnings": [
+              "weight_mismatch"
+            ]
+          },
+          {
+            "name": "молоко питьевое",
+            "g": 100.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 60.0,
+              "protein": 3.0,
+              "fat": 3.2,
+              "carbs": 4.7
+            },
+            "warnings": [
+              "weight_mismatch"
+            ]
+          },
+          {
+            "name": "печенье глазированное шоколадом",
+            "g": 50.0,
+            "readout": "estimate",
+            "per100g": {
+              "kcal": 480.0,
+              "protein": 6.0,
+              "fat": 22.0,
+              "carbs": 65.0
+            },
+            "warnings": [
+              "weight_mismatch"
+            ]
+          }
+        ],
+        "total": {
+          "description": "Творожная запеканка",
+          "weight_g": 350.0,
+          "kcal": 644.0,
+          "protein": 53.0,
+          "fat": 24.7,
+          "carbs": 61.8,
+          "source": "estimate",
+          "source_ref": null,
+          "matched_name": null,
+          "warnings": [
+            "weight_mismatch"
+          ],
+          "kcal_100g": null,
+          "protein_100g": null,
+          "fat_100g": null,
+          "carbs_100g": null,
+          "alternative": null
+        },
+        "agg_self_dev": 0.0,
+        "dish_positions": 1,
+        "weight_mismatch": true,
+        "calls": 1,
+        "usage": {
+          "completion_tokens": 334,
+          "prompt_tokens": 1268,
+          "total_tokens": 1602,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 0,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cache_write_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "raw": "{\"items\":[{\"name\":\"творог мягкий\",\"brand\":null,\"fat_pct\":1.5,\"portion_g\":200,\"barcode\":null,\"per100g\":{\"kcal\":82,\"protein\":16,\"fat\":1.5,\"carbs\":3.3},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.93},{\"name\":\"творог со сливками с наполнителем черника\",\"brand\":null,\"fat_pct\":5,\"portion_g\":150,\"barcode\":null,\"per100g\":{\"kcal\":120,\"protein\":10,\"fat\":5,\"carbs\":12},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":\"оценка для творога со сливками с фруктовым наполнителем\",\"confidence\":0.72},{\"name\":\"молоко питьевое\",\"brand\":null,\"fat_pct\":3.2,\"portion_g\":100,\"barcode\":null,\"per100g\":{\"kcal\":60,\"protein\":3,\"fat\":3.2,\"carbs\":4.7},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.95},{\"name\":\"печенье глазированное шоколадом\",\"brand\":null,\"fat_pct\":null,\"portion_g\":50,\"barcode\":null,\"per100g\":{\"kcal\":480,\"protein\":6,\"fat\":22,\"carbs\":65},\"energy_kj_100g\":null,\"readout\":\"estimate\",\"note\":null,\"confidence\":0.78}]}",
+        "latency_s": 2.67,
+        "error": null
+      },
+      "scores": {
+        "c_json_valid": true,
+        "c1_missing": [
+          "A-35"
+        ],
+        "c1_phantom": [],
+        "c1_ok": false,
+        "c7_all_ingredients": false,
+        "c2_bad_grams": [
+          [
+            "A-34",
+            150.0,
+            200
+          ]
+        ],
+        "c2_ok": false,
+        "c3_share": 0.25,
+        "c3_max_dev": 3.391891891891892,
+        "c9_mean_dev": 1.54494266994267,
+        "c4_dev": 0.45411764705882346,
+        "c4_ok": false,
+        "c5_ok": true,
+        "c8_ok": false,
+        "c8_names_normalized_equal": {
+          "A-34": false
+        },
+        "c6_flag": true,
+        "c6_ok": true,
+        "agg_self_dev": 0.0,
+        "c6_code_flag": true,
+        "c6_code_ok": true
+      },
+      "error": null
+    }
+  ]
+}
